@@ -11,7 +11,12 @@ from app.bot.menu import (
     account_platform_menu,
     account_proxy_choice_menu,
     accounts_menu,
+    briefing_menu,
     dashboard_menu,
+    incident_detail_menu,
+    incident_list_menu,
+    incident_user_choice_menu,
+    incidents_menu,
     main_menu,
     model_detail_menu,
     model_edit_menu,
@@ -26,18 +31,25 @@ from app.bot.menu import (
     proxy_account_choice_menu,
     proxy_detail_menu,
     proxy_list_menu,
+    reports_menu,
     role_choice_menu,
     role_detail_menu,
     roles_menu,
     settings_menu,
+    task_detail_menu,
+    task_list_menu,
+    task_user_choice_menu,
+    tasks_menu,
     user_detail_menu,
     users_menu,
 )
 from app.models.account import ACCOUNT_PLATFORMS, Account
 from app.models.audit import AuditLog
+from app.models.incident import Incident
 from app.models.model_brand import MODEL_BRAND_RELATIONSHIP_TYPES, ModelBrand, ModelBrandMember
 from app.models.permissions import Permission, Role
 from app.models.proxy import Proxy
+from app.models.task import Task
 from app.models.user import User
 from app.services.auth import DEFAULT_PERMISSION_DESCRIPTIONS
 from app.services.dashboard import DashboardStats, dashboard_stats, placeholder_dashboard_stats
@@ -58,6 +70,24 @@ from app.services.model_brands import (
     summarize_members,
 )
 from app.services.model_health import calculate_model_health
+from app.services.incidents import (
+    critical_incidents,
+    escalation_target_for,
+    get_incident,
+    incident_audit_logs,
+    incidents_for_model,
+    list_incidents,
+    my_incidents,
+    severity_label,
+)
+from app.services.operations import (
+    chatter_dashboard,
+    executive_dashboard,
+    generate_accountability_report,
+    generate_daily_briefing,
+    operations_dashboard,
+    va_dashboard,
+)
 from app.services.proxies import (
     accounts_for_proxy,
     accounts_missing_proxy,
@@ -67,6 +97,16 @@ from app.services.proxies import (
     list_proxies,
     recent_proxy_audit_logs,
     simulation_mode_summary,
+)
+from app.services.tasks import (
+    assigned_tasks,
+    blocked_tasks,
+    get_task,
+    list_tasks,
+    my_tasks,
+    overdue_tasks,
+    task_audit_logs,
+    tasks_for_model,
 )
 
 
@@ -109,7 +149,11 @@ def render_dashboard(stats: DashboardStats | None = None, session: Session | Non
         f"Accounts Needing 2FA: {current.accounts_needing_2fa}",
         f"Critical Accounts: {current.critical_accounts}",
         f"Open Tasks: {current.open_tasks}",
+        f"Blocked Tasks: {current.blocked_tasks}",
+        f"Overdue Tasks: {current.overdue_tasks}",
+        f"Completed Today: {current.completed_tasks_today}",
         f"Open Incidents: {current.open_incidents}",
+        f"Critical Incidents: {current.critical_incidents}",
         f"Models: {current.models}",
         f"Healthy Models: {current.healthy_models}",
         f"Warning Models: {current.warning_models}",
@@ -164,6 +208,41 @@ def render_accounts_home() -> Screen:
 
 def render_proxies_home() -> Screen:
     return Screen(text="Proxy Vault\nInfrastructure intelligence.", reply_markup=proxies_menu())
+
+
+def render_tasks_home() -> Screen:
+    return Screen(text="Tasks\nOperational work queue.", reply_markup=tasks_menu())
+
+
+def render_incidents_home() -> Screen:
+    return Screen(text="Incidents\nEscalation and resolution center.", reply_markup=incidents_menu())
+
+
+def render_reports_home() -> Screen:
+    return Screen(text="Reports\nBriefings, dashboards, and accountability.", reply_markup=reports_menu())
+
+
+def _identity(user: User | None) -> str:
+    if user is None:
+        return "Unassigned"
+    return user.display_name or user.username or f"User {user.id}"
+
+
+def _status_marker(status: str) -> str:
+    return {
+        "healthy": "\U0001f7e2",
+        "active": "\U0001f7e2",
+        "open": "\U0001f7e1",
+        "in_progress": "\U0001f7e1",
+        "investigating": "\U0001f7e1",
+        "warning": "\U0001f7e1",
+        "blocked": "\U0001f534",
+        "critical": "\U0001f534",
+        "disabled": "\u26ab",
+        "archived": "\u26ab",
+        "complete": "\U0001f7e2",
+        "resolved": "\U0001f7e2",
+    }.get(status, "\u26aa")
 
 
 def _account_button(account: Account) -> tuple[str, str]:
@@ -526,6 +605,261 @@ def render_proxy_audit_page(session: Session, proxy_id: int) -> Screen:
     return Screen(text="\n".join(lines).strip(), reply_markup=page_menu(back_to=f"proxy:{proxy.id}"))
 
 
+def _task_button(task: Task) -> tuple[str, str]:
+    return f"{task.id}. {task.title[:36]} ({task.status})", f"nav:task:{task.id}"
+
+
+def render_task_list_page(
+    session: Session,
+    *,
+    tasks: list[Task] | None = None,
+    title: str = "Tasks",
+    back_to: str = "tasks",
+) -> Screen:
+    current_tasks = tasks if tasks is not None else list_tasks(session)
+    lines = [title, ""]
+    buttons: list[tuple[str, str]] = []
+    if not current_tasks:
+        lines.append("No tasks yet.")
+    for task in current_tasks[:15]:
+        due = task.due_at.isoformat() if task.due_at else "No due date"
+        model = task.model_brand.display_name if task.model_brand else "No model"
+        assignee = _identity(task.assigned_to)
+        lines.append(f"{task.id}. {_status_marker(task.status)} {task.title}")
+        lines.append(f"   Status: {task.status} | Priority: {task.priority}")
+        lines.append(f"   Model: {model} | Assigned: {assignee}")
+        lines.append(f"   Due: {due}")
+        buttons.append(_task_button(task))
+    return Screen(text="\n".join(lines), reply_markup=task_list_menu(buttons, back_to=back_to))
+
+
+def render_task_detail_page(session: Session, task_id: int) -> Screen:
+    task = get_task(session, task_id)
+    if task is None:
+        return Screen(text="Task not found.", reply_markup=page_menu(back_to="tasks:list"))
+    model = task.model_brand.display_name if task.model_brand else "No model"
+    account = f"{task.account.platform} @{task.account.username}" if task.account else "No account"
+    due = task.due_at.isoformat() if task.due_at else "No due date"
+    completed = task.completed_at.isoformat() if task.completed_at else "Not completed"
+    logs = task_audit_logs(session, task, limit=3)
+    recent = [f"- {log.action} ({log.status})" for log in logs] or ["- No recent task events"]
+    lines = [
+        "Task Detail",
+        "",
+        f"Title: {task.title}",
+        f"Description: {task.description or 'None'}",
+        f"Status: {_status_marker(task.status)} {task.status}",
+        f"Priority: {task.priority}",
+        f"Model/Brand: {model}",
+        f"Account: {account}",
+        f"Assigned To: {_identity(task.assigned_to)}",
+        f"Created By: {_identity(task.created_by)}",
+        f"Due: {due}",
+        f"Completed: {completed}",
+        "",
+        "Recent Events:",
+        *recent,
+    ]
+    return Screen(text="\n".join(lines), reply_markup=task_detail_menu(task.id))
+
+
+def render_task_assignment_page(session: Session, task_id: int) -> Screen:
+    task = get_task(session, task_id)
+    if task is None:
+        return Screen(text="Task not found.", reply_markup=page_menu(back_to="tasks:list"))
+    buttons = [
+        (_identity(user), f"nav:task:{task.id}:assign:{user.id}")
+        for user in active_users_for_assignment(session)
+        if user.id != task.assigned_to_user_id
+    ]
+    lines = ["Reassign Task", "", f"Task: {task.title}", ""]
+    if not buttons:
+        lines.append("No active users available.")
+    return Screen(text="\n".join(lines), reply_markup=task_user_choice_menu(task.id, buttons))
+
+
+def _incident_button(incident: Incident) -> tuple[str, str]:
+    return f"{incident.id}. {incident.title[:34]} ({incident.severity})", f"nav:incident:{incident.id}"
+
+
+def render_incident_list_page(
+    session: Session,
+    *,
+    incidents: list[Incident] | None = None,
+    title: str = "Incidents",
+    back_to: str = "incidents",
+) -> Screen:
+    current_incidents = incidents if incidents is not None else list_incidents(session)
+    lines = [title, ""]
+    buttons: list[tuple[str, str]] = []
+    if not current_incidents:
+        lines.append("No incidents yet.")
+    for incident in current_incidents[:15]:
+        assignee = _identity(incident.assigned_to)
+        source = incident.source_type or "manual"
+        lines.append(f"{incident.id}. {_status_marker(incident.severity)} {incident.title}")
+        lines.append(f"   Severity: {severity_label(incident.severity)} | Status: {incident.status}")
+        lines.append(f"   Source: {source} | Assigned: {assignee}")
+        buttons.append(_incident_button(incident))
+    return Screen(text="\n".join(lines), reply_markup=incident_list_menu(buttons, back_to=back_to))
+
+
+def render_incident_detail_page(session: Session, incident_id: int) -> Screen:
+    incident = get_incident(session, incident_id)
+    if incident is None:
+        return Screen(text="Incident not found.", reply_markup=page_menu(back_to="incidents:list"))
+    model = incident.model_brand.display_name if incident.model_brand else "No model"
+    account = f"{incident.account.platform} @{incident.account.username}" if incident.account else "No account"
+    proxy = f"{incident.proxy.provider} {incident.proxy.host}:{incident.proxy.port}" if incident.proxy else "No proxy"
+    resolved = incident.resolved_at.isoformat() if incident.resolved_at else "Not resolved"
+    logs = incident_audit_logs(session, incident, limit=3)
+    recent = [f"- {log.action} ({log.status})" for log in logs] or ["- No recent incident events"]
+    lines = [
+        "Incident Detail",
+        "",
+        f"Title: {incident.title}",
+        f"Description: {incident.description or 'None'}",
+        f"Severity: {_status_marker(incident.severity)} {severity_label(incident.severity)}",
+        f"Status: {incident.status}",
+        f"Source: {incident.source_type or 'manual'}",
+        f"Model/Brand: {model}",
+        f"Account: {account}",
+        f"Proxy: {proxy}",
+        f"Assigned To: {_identity(incident.assigned_to)}",
+        f"Escalation Target: {escalation_target_for(incident)}",
+        f"Resolved: {resolved}",
+        f"Resolution Notes: {incident.resolution_notes or 'None'}",
+        "",
+        "Recent Events:",
+        *recent,
+    ]
+    return Screen(text="\n".join(lines), reply_markup=incident_detail_menu(incident.id))
+
+
+def render_incident_assignment_page(session: Session, incident_id: int) -> Screen:
+    incident = get_incident(session, incident_id)
+    if incident is None:
+        return Screen(text="Incident not found.", reply_markup=page_menu(back_to="incidents:list"))
+    buttons = [
+        (_identity(user), f"nav:incident:{incident.id}:assign:{user.id}")
+        for user in active_users_for_assignment(session)
+        if user.id != incident.assigned_to_user_id
+    ]
+    lines = ["Assign Incident", "", f"Incident: {incident.title}", ""]
+    if not buttons:
+        lines.append("No active users available.")
+    return Screen(text="\n".join(lines), reply_markup=incident_user_choice_menu(incident.id, buttons))
+
+
+def render_executive_dashboard_page(session: Session) -> Screen:
+    stats = executive_dashboard(session)
+    lines = [
+        "Executive Dashboard",
+        "",
+        f"Total Models: {stats['total_models']}",
+        f"Total Accounts: {stats['total_accounts']}",
+        f"Healthy Accounts: {stats['healthy_accounts']}",
+        f"Warning Accounts: {stats['warning_accounts']}",
+        f"Critical Accounts: {stats['critical_accounts']}",
+        f"Open Tasks: {stats['open_tasks']}",
+        f"Overdue Tasks: {stats['overdue_tasks']}",
+        f"Open Incidents: {stats['open_incidents']}",
+        f"Critical Incidents: {stats['critical_incidents']}",
+        f"Completed Today: {stats['completed_tasks_today']}",
+        "",
+        "Proxy Health:",
+    ]
+    for status in ("healthy", "warning", "critical", "disabled"):
+        lines.append(f"- {status.title()}: {stats['proxy_health'].get(status, 0)}")
+    return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="reports"))
+
+
+def render_operations_dashboard_page(session: Session) -> Screen:
+    stats = operations_dashboard(session)
+    lines = [
+        "Operations Dashboard",
+        "",
+        f"Pending Tasks: {stats['pending_tasks']}",
+        f"Blocked Tasks: {stats['blocked_tasks']}",
+        f"Account/Proxy Warnings: {stats['account_warnings'] + stats['proxy_warnings']}",
+        "",
+        "Incidents by Severity:",
+    ]
+    for severity, count in stats["incidents_by_severity"].items():
+        lines.append(f"- {severity.title()}: {count}")
+    return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="reports"))
+
+
+def render_chatter_dashboard_page(session: Session, user: User | None = None) -> Screen:
+    stats = chatter_dashboard(session, user=user)
+    lines = [
+        "Chatter Dashboard",
+        "",
+        f"Assigned Models: {stats['assigned_models']}",
+        f"Open Tasks: {stats['open_tasks']}",
+        f"Escalations: {stats['escalations']}",
+        f"Notes: {stats['notes']}",
+    ]
+    return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="reports"))
+
+
+def render_va_dashboard_page(session: Session, user: User | None = None) -> Screen:
+    stats = va_dashboard(session, user=user)
+    lines = [
+        "VA Dashboard",
+        "",
+        f"Assigned Models: {stats['assigned_models']}",
+        f"Assigned Accounts: {stats['assigned_accounts']}",
+        f"Uploads/Tasks: {stats['uploads']}",
+        f"Overdue Items: {stats['overdue_items']}",
+    ]
+    return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="reports"))
+
+
+def render_daily_briefing_page(session: Session, user: User | None = None) -> Screen:
+    summary = generate_daily_briefing(session, actor=user)
+    lines = [
+        "Daily Company Briefing",
+        "",
+        f"Agency Health Score: {summary['agency_health_score']}",
+        f"Active Models: {summary['models_active']}",
+        f"Accounts Healthy/Warning/Critical: "
+        f"{summary['accounts_healthy']}/{summary['accounts_warning']}/{summary['accounts_critical']}",
+        f"Proxies Healthy/Warning/Critical: "
+        f"{summary['proxies_healthy']}/{summary['proxies_warning']}/{summary['proxies_critical']}",
+        f"Open Incidents: {summary['open_incidents']}",
+        f"Critical Incidents: {summary['critical_incidents']}",
+        f"Tasks Completed Today: {summary['tasks_completed_today']}",
+        f"Overdue Tasks: {summary['overdue_tasks']}",
+        "",
+        "Top Active Users:",
+    ]
+    if summary["top_active_users"]:
+        for row in summary["top_active_users"]:
+            lines.append(f"- {row['display_name']}: {row['completed_tasks']}")
+    else:
+        lines.append("- No completed tasks yet today")
+    lines.extend(["", "Recent Audit Highlights:"])
+    lines.extend(f"- {item}" for item in summary["recent_audit_highlights"])
+    lines.extend(["", "Recommended Actions:"])
+    lines.extend(f"- {item}" for item in summary["recommended_actions"])
+    return Screen(text="\n".join(lines), reply_markup=briefing_menu())
+
+
+def render_accountability_page(session: Session, user: User | None = None) -> Screen:
+    report = generate_accountability_report(session, actor=user)
+    lines = ["Team Accountability", "", f"Generated: {report['generated_at']}", ""]
+    if not report["users"]:
+        lines.append("No users yet.")
+    for row in report["users"][:15]:
+        roles = ", ".join(row["roles"]) or "No roles"
+        lines.append(f"{row['display_name']}")
+        lines.append(f"   Open Tasks: {row['assigned_open_tasks']} | Completed Today: {row['completed_today']}")
+        lines.append(f"   Overdue: {row['overdue_tasks']} | Incidents: {row['open_incidents_assigned']}")
+        lines.append(f"   Last Seen: {row['last_seen']} | Roles: {roles}")
+    return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="reports"))
+
+
 def _model_identity(model_brand: ModelBrand) -> str:
     if model_brand.stage_name:
         return f"{model_brand.display_name} ({model_brand.stage_name})"
@@ -611,6 +945,10 @@ def render_model_detail_page(session: Session, model_id: int) -> Screen:
         if account.status in {"warning", "critical", "disabled"}
         or account.auth_status in {"needs_login", "needs_2fa", "expired", "locked"}
     )
+    model_tasks = tasks_for_model(session, model_brand.id)
+    model_incidents = incidents_for_model(session, model_brand.id)
+    open_task_count = sum(1 for task in model_tasks if task.status in {"open", "in_progress", "blocked"})
+    open_incident_count = sum(1 for incident in model_incidents if incident.status in {"open", "investigating"})
     lines = [
         "Model Detail",
         "",
@@ -627,8 +965,8 @@ def render_model_detail_page(session: Session, model_id: int) -> Screen:
         f"OnlyFans Count: {platform_counts['onlyfans']}",
         f"Email Count: {platform_counts['email']}",
         f"Accounts Needing Attention: {attention_count}",
-        "Open Tasks: 0",
-        "Open Incidents: 0",
+        f"Open Tasks: {open_task_count}",
+        f"Open Incidents: {open_incident_count}",
     ]
     return Screen(text="\n".join(lines), reply_markup=model_detail_menu(model_brand.id))
 
@@ -942,7 +1280,7 @@ def render_denied() -> Screen:
     return Screen(text="Access denied.", reply_markup=main_menu())
 
 
-def render_page(page: str, session: Session | None = None) -> Screen:
+def render_page(page: str, session: Session | None = None, user: User | None = None) -> Screen:
     if page == "proxies":
         return render_proxies_home()
     if page == "proxies:list" and session is not None:
@@ -1055,8 +1393,87 @@ def render_page(page: str, session: Session | None = None) -> Screen:
                     title=title,
                     back_to=f"model:{model_id}",
                 )
-            if parts[2] in {"tasks", "incidents"}:
-                return render_model_placeholder_page(session, model_id, parts[2].title())
+            if parts[2] == "tasks":
+                model_brand = session.get(ModelBrand, model_id)
+                title = f"Tasks for {model_brand.display_name}" if model_brand else "Tasks"
+                return render_task_list_page(
+                    session,
+                    tasks=tasks_for_model(session, model_id),
+                    title=title,
+                    back_to=f"model:{model_id}",
+                )
+            if parts[2] == "incidents":
+                model_brand = session.get(ModelBrand, model_id)
+                title = f"Incidents for {model_brand.display_name}" if model_brand else "Incidents"
+                return render_incident_list_page(
+                    session,
+                    incidents=incidents_for_model(session, model_id),
+                    title=title,
+                    back_to=f"model:{model_id}",
+                )
+    if page == "tasks":
+        return render_tasks_home()
+    if page == "tasks:list" and session is not None:
+        return render_task_list_page(session)
+    if page == "tasks:my" and session is not None and user is not None:
+        return render_task_list_page(session, tasks=my_tasks(session, user), title="My Tasks", back_to="tasks")
+    if page == "tasks:assigned" and session is not None:
+        return render_task_list_page(
+            session,
+            tasks=assigned_tasks(session),
+            title="Assigned Tasks",
+            back_to="tasks",
+        )
+    if page == "tasks:overdue" and session is not None:
+        return render_task_list_page(session, tasks=overdue_tasks(session), title="Overdue Tasks", back_to="tasks")
+    if page == "tasks:blocked" and session is not None:
+        return render_task_list_page(session, tasks=blocked_tasks(session), title="Blocked Tasks", back_to="tasks")
+    if page.startswith("task:") and session is not None:
+        parts = page.split(":")
+        if len(parts) >= 2 and parts[1].isdigit():
+            task_id = int(parts[1])
+            if len(parts) >= 3 and parts[2] == "assign":
+                return render_task_assignment_page(session, task_id)
+            return render_task_detail_page(session, task_id)
+    if page == "incidents":
+        return render_incidents_home()
+    if page == "incidents:list" and session is not None:
+        return render_incident_list_page(session)
+    if page == "incidents:my" and session is not None and user is not None:
+        return render_incident_list_page(
+            session,
+            incidents=my_incidents(session, user),
+            title="My Incidents",
+            back_to="incidents",
+        )
+    if page == "incidents:critical" and session is not None:
+        return render_incident_list_page(
+            session,
+            incidents=critical_incidents(session),
+            title="Critical Incidents",
+            back_to="incidents",
+        )
+    if page.startswith("incident:") and session is not None:
+        parts = page.split(":")
+        if len(parts) >= 2 and parts[1].isdigit():
+            incident_id = int(parts[1])
+            if len(parts) >= 3 and parts[2] == "assign":
+                return render_incident_assignment_page(session, incident_id)
+            return render_incident_detail_page(session, incident_id)
+    if page == "reports":
+        return render_reports_home()
+    if page in {"reports:daily", "reports:daily:send_owner", "reports:daily:send_ops"} and session is not None:
+        return render_daily_briefing_page(session, user=user)
+    if page == "reports:accountability" and session is not None:
+        return render_accountability_page(session, user=user)
+    if page == "reports:executive" and session is not None:
+        return render_executive_dashboard_page(session)
+    if page == "reports:operations" and session is not None:
+        return render_operations_dashboard_page(session)
+    if page == "reports:chatter" and session is not None:
+        return render_chatter_dashboard_page(session, user=user)
+    if page == "reports:va" and session is not None:
+        return render_va_dashboard_page(session, user=user)
     if page == "users" and session is not None:
         return render_users_page(session)
     if page == "users:pending" and session is not None:

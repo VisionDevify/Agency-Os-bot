@@ -47,6 +47,23 @@ from app.services.proxies import (
     rotate_session,
     verify_location_with_rotation,
 )
+from app.services.incidents import (
+    archive_incident,
+    assign_incident,
+    create_default_incident,
+    escalate_incident,
+    get_incident,
+    resolve_incident,
+)
+from app.services.tasks import (
+    archive_task,
+    assign_task,
+    block_task,
+    complete_task,
+    create_default_task,
+    get_task,
+    start_task,
+)
 from app.services.permissions import PermissionPrincipal, require_permission
 
 PAGE_PERMISSIONS: dict[str, str] = {
@@ -74,12 +91,26 @@ def permission_for_page(page: str) -> str | None:
         return "manage_proxies"
     if page.startswith("proxy:"):
         return "manage_proxies"
+    if page.startswith("tasks:"):
+        return "manage_tasks"
+    if page.startswith("task:"):
+        return "manage_tasks"
+    if page.startswith("incidents:"):
+        return "manage_incidents"
+    if page.startswith("incident:"):
+        return "manage_incidents"
+    if page.startswith("reports:"):
+        return "manage_reports"
     if page.startswith("accounts:"):
         return "manage_accounts"
     if page.startswith("account:"):
         return "manage_accounts"
     if page.startswith("models"):
         return "view_dashboard"
+    if page.startswith("model:") and page.endswith(":tasks"):
+        return "manage_tasks"
+    if page.startswith("model:") and page.endswith(":incidents"):
+        return "manage_incidents"
     if page.startswith("model:"):
         return "view_dashboard"
     if page.startswith("users:"):
@@ -93,6 +124,53 @@ def permission_for_page(page: str) -> str | None:
 
 def _perform_admin_action(page: str, session: Session, actor: User) -> str | None:
     parts = page.split(":")
+    if page == "tasks:create":
+        task = create_default_task(session, actor=actor)
+        return f"task:{task.id}"
+    if len(parts) >= 3 and parts[0] == "task" and parts[1].isdigit():
+        task = get_task(session, int(parts[1]))
+        if task is None:
+            return "tasks:list"
+        action = parts[2]
+        if action == "start":
+            start_task(session, task, actor=actor)
+            return f"task:{task.id}"
+        if action == "block":
+            block_task(session, task, actor=actor)
+            return f"task:{task.id}"
+        if action == "complete":
+            complete_task(session, task, actor=actor)
+            return f"task:{task.id}"
+        if action == "archive":
+            archive_task(session, task, actor=actor)
+            return f"task:{task.id}"
+        if action == "assign" and len(parts) >= 4 and parts[3].isdigit():
+            assignee = get_user_by_id(session, int(parts[3]))
+            if assignee is not None:
+                assign_task(session, task, assignee, actor=actor)
+            return f"task:{task.id}"
+    if page == "incidents:create":
+        incident = create_default_incident(session, actor=actor)
+        return f"incident:{incident.id}"
+    if len(parts) >= 3 and parts[0] == "incident" and parts[1].isdigit():
+        incident = get_incident(session, int(parts[1]))
+        if incident is None:
+            return "incidents:list"
+        action = parts[2]
+        if action == "assign" and len(parts) >= 4 and parts[3].isdigit():
+            assignee = get_user_by_id(session, int(parts[3]))
+            if assignee is not None:
+                assign_incident(session, incident, assignee, actor=actor)
+            return f"incident:{incident.id}"
+        if action == "escalate":
+            escalate_incident(session, incident, actor=actor)
+            return f"incident:{incident.id}"
+        if action == "resolve":
+            resolve_incident(session, incident, actor=actor)
+            return f"incident:{incident.id}"
+        if action == "archive":
+            archive_incident(session, incident, actor=actor)
+            return f"incident:{incident.id}"
     if page == "proxies:create":
         proxy = create_default_proxy(session, actor=actor)
         return f"proxy:{proxy.id}"
@@ -356,11 +434,16 @@ def screen_for_page(
         or normalized == "permissions"
         or normalized.startswith("accounts:")
         or normalized.startswith("account:")
+        or normalized.startswith("tasks:")
+        or normalized.startswith("task:")
+        or normalized.startswith("incidents:")
+        or normalized.startswith("incident:")
+        or normalized.startswith("reports:")
         or normalized.startswith("models:")
         or normalized.startswith("model:")
         or normalized.startswith("users:")
         or normalized.startswith("user:")
         or normalized.startswith("role:")
     ):
-        return render_page(normalized, session=session)
+        return render_page(normalized, session=session, user=user)
     return render_main_menu()

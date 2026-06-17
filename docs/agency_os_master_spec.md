@@ -15,11 +15,11 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Sprint 4: Models/Brands command center, team assignments, model health scoring, model-specific audit history, dashboard model metrics, and lightweight model event emission.
 - Sprint 5: Accounts foundation attached to Models/Brands, account status/auth tracking, secure auth-session records, hashed 2FA submission flow, account health, dashboard account metrics, and account audit history.
 - Sprint 6: Infrastructure intelligence layer with Proxy Vault, encrypted proxy passwords, session rotation/rollback, proxy health scoring, account proxy assignment, location verification, proxy incidents, simulation mode, and self-healing V1.
+- Sprint 7: Operations command layer with real tasks, real incidents, escalation paths, department dashboards, daily company briefing, team accountability reporting, and operations event emission.
 
 ## Roadmap
 
-- Sprint 7: Task and Incident operations workflows.
-- Sprint 8: Reports, metrics, and notification routing.
+- Sprint 8: Models/Brands + Accounts workflow refinement, operator input flows, and notification routing.
 - Sprint 9: Automations with simulation mode as the default safety posture.
 - Sprint 10: Self-healing playbooks and repair event tracking.
 - Sprint 11: AI Operations Brain for summaries, anomaly explanations, and recommended next actions.
@@ -34,9 +34,9 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Audit Logs: append-only safety trail for important actions and denied attempts.
 - Accounts: Model/Brand-attached account inventory for Instagram, X, OnlyFans, Email, and Other, including auth-state tracking, credential references, short-lived auth sessions, and hashed verification-code submissions.
 - Proxies: encrypted Proxy Vault with account assignment, session suffix rotation, rollback, health scoring, location verification, simulation, and repair workflows.
-- Tasks: placeholder resource model for future work queues.
-- Incidents: source-linked incident records used first by proxy repair/location workflows.
-- Reports: placeholder resource model for future operational reports.
+- Tasks: real work queue with status, priority, assignment, due dates, completion, model/account attachment, and audit/event history.
+- Incidents: real escalation and resolution records with severity, source, assignment, proxy/account/model attachment, escalation history, and audit/event history.
+- Reports: generated daily briefing, accountability report, executive dashboard, operations dashboard, chatter dashboard placeholder, and VA dashboard placeholder.
 - Automations: placeholder resource model with simulation-mode placeholder.
 - Settings: administrative utilities including audit log access.
 
@@ -143,6 +143,20 @@ Important actions should use stable event-style names, such as:
 - `proxy.incident.created`
 - `proxy.repair.succeeded`
 - `proxy.repair.failed`
+- `task.created`
+- `task.assigned`
+- `task.started`
+- `task.blocked`
+- `task.completed`
+- `task.archived`
+- `task.overdue`
+- `incident.created`
+- `incident.assigned`
+- `incident.escalated`
+- `incident.resolved`
+- `incident.archived`
+- `briefing.generated`
+- `accountability.generated`
 - `access.denied`
 - `owner.protection_triggered`
 
@@ -162,9 +176,9 @@ Telegram is the operator console, so navigation should be calm and predictable:
 - Models/Brands: model and brand profiles, ownership, account grouping, and operating rules.
 - Accounts: account inventory, Model/Brand attachment, status, auth status, credential references, secure auth-session handling, and hashed verification-code workflows.
 - Proxy Vault: proxy records, encrypted passwords, health checks, rotation events, account assignment, and repair workflows.
-- Tasks: assigned work, status movement, approvals, and SLA signals.
-- Incidents: incident creation, triage, severity, ownership, and resolution.
-- Reports: operational summaries, audit summaries, health metrics, and exportable views.
+- Tasks: assigned work, status movement, overdue queues, model/account attachment, and SLA signals.
+- Incidents: incident creation, triage, severity, ownership, escalation, and resolution.
+- Reports: operational summaries, daily briefings, team accountability reports, audit summaries, health metrics, and exportable views.
 - Automations: repeatable workflows with simulation mode before live execution.
 - Simulation Mode: dry-run execution that records intended changes without performing risky actions.
 - Self-Healing: playbooks that detect failures, attempt safe repairs, and emit repair events.
@@ -265,6 +279,42 @@ Self-Healing V1 follows the Agency OS safety pattern:
 
 The current repair workflow can rotate and retest a failing proxy, close open proxy incidents when repaired, or create a critical incident when repair fails. Automatic repair activation remains gated by owner approval; simulation mode shows what would rotate, repair, and fail without applying changes.
 
+## Operations Command Layer
+
+Sprint 7 turns daily operations into first-class records.
+
+Tasks now support:
+
+- `open`, `in_progress`, `blocked`, `complete`, and `archived` status.
+- `low`, `normal`, `high`, and `urgent` priority.
+- assignment to a user.
+- optional Model/Brand and Account attachment.
+- optional due date and completion timestamp.
+- Telegram flows for viewing, creating, reassignment, blocking, completion, archiving, overdue work, and assigned work.
+
+Incidents now support:
+
+- `info`, `warning`, and `critical` severity.
+- `open`, `investigating`, `resolved`, and `archived` status.
+- `manual`, `account`, `proxy`, `automation`, and `system` source types.
+- optional Model/Brand, Account, and Proxy attachment.
+- assignment, escalation, resolution notes, and escalation history.
+
+Escalation paths:
+
+- Chatter issues: Chatter -> Senior Chatter -> Chatter Manager -> Manager -> Owner.
+- VA issues: VA -> Manager -> Owner.
+- Proxy/System issues: Admin/Manager -> Owner.
+
+Department dashboards:
+
+- Executive Dashboard: models, accounts, proxy health, open/overdue work, incidents, and completed tasks today.
+- Operations Dashboard: pending/blocked work, incidents by severity, account warnings, and proxy warnings.
+- Chatter Dashboard: assigned models, open tasks, escalations, and notes placeholder.
+- VA Dashboard: assigned models/accounts, upload/task placeholder, and overdue items.
+
+Daily Company Briefing aggregates agency health, model/account/proxy health, incidents, completed work, overdue work, top users by completed tasks, recent audit highlights, and recommended actions. Team Accountability summarizes each user by open tasks, completed work today, overdue work, assigned incidents, last seen, and roles.
+
 ## Foundation Hardening Review
 
 GREEN:
@@ -278,6 +328,8 @@ GREEN:
 - Account auth flow stores verification-code hashes only and uses safe audit metadata.
 - Proxy Vault encrypts proxy passwords and keeps Telegram/audit views credential-safe.
 - Infrastructure dashboard now summarizes proxy health, assignment, rotations, failures, incidents, and average health score.
+- Tasks and incidents now have domain models, service-level permission checks, Telegram workflows, and audit-backed events.
+- Reports now include daily briefing, accountability, and department dashboards without external analytics.
 
 YELLOW:
 
@@ -290,10 +342,12 @@ YELLOW:
 - User status now has a database check constraint.
 - Accounts graduated from placeholder resources to Model/Brand-attached records with platform, account status, auth status, and health constraints.
 - Proxies and incidents graduated from placeholder resources to domain tables while preserving legacy placeholder columns for migration safety.
+- Tasks graduated from placeholder resources to a real domain table while preserving legacy placeholder columns in PostgreSQL for migration safety.
+- Sprint 6 mojibake in health labels was cleaned to explicit Unicode escapes.
 
 RED:
 
 - The original `users.role_id` column exists in the earliest migration but is not used by the current model. It should be removed in a future cleanup migration only after explicit approval because it is a schema deletion.
 - The audit log is still the only event sink. A dedicated event table or queue should wait until real automation/reporting consumers exist.
-- Task, report, and automation placeholder tables are intentionally thin. Their domain-specific constraints should be added when each module is built.
+- Reports and automations are still placeholder tables. Current generated report screens are computed from live records and audit events.
 - Proxy health tests are simulated service results until a real provider/network adapter is introduced.

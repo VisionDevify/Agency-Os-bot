@@ -22,7 +22,7 @@ def calculate_account_health(account: Account) -> AccountHealth:
         return AccountHealth(
             score=0,
             status=ACCOUNT_HEALTH_DISABLED,
-            label="⚫ Disabled",
+            label="\u26ab Disabled",
             reasons=("disabled_or_archived",),
         )
 
@@ -52,9 +52,9 @@ def calculate_account_health(account: Account) -> AccountHealth:
 
     score = max(0, min(100, score))
     if score >= 80:
-        status, label = ACCOUNT_HEALTH_HEALTHY, "🟢 Healthy"
+        status, label = ACCOUNT_HEALTH_HEALTHY, "\U0001f7e2 Healthy"
     elif score >= 50:
-        status, label = ACCOUNT_HEALTH_WARNING, "🟡 Warning"
+        status, label = ACCOUNT_HEALTH_WARNING, "\U0001f7e1 Warning"
     else:
-        status, label = ACCOUNT_HEALTH_CRITICAL, "🔴 Critical"
+        status, label = ACCOUNT_HEALTH_CRITICAL, "\U0001f534 Critical"
     return AccountHealth(score=score, status=status, label=label, reasons=tuple(reasons))

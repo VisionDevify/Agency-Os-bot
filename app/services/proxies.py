@@ -14,6 +14,7 @@ from app.models.user import User
 from app.services.auth import audit_action, user_has_permission
 from app.services.crypto import encrypt_secret
 from app.services.events import emit_event
+from app.services.incidents import normalize_severity
 
 PROXY_HEALTH_HEALTHY = "healthy"
 PROXY_HEALTH_WARNING = "warning"
@@ -116,7 +117,7 @@ def _safe_proxy_payload(proxy: Proxy, extra: dict | None = None) -> dict:
 
 def calculate_proxy_health(proxy: Proxy) -> ProxyHealth:
     if proxy.status == "disabled":
-        return ProxyHealth(PROXY_HEALTH_DISABLED, "⚫ Disabled", 0, ("disabled",))
+        return ProxyHealth(PROXY_HEALTH_DISABLED, "\u26ab Disabled", 0, ("disabled",))
 
     score = 100
     reasons: list[str] = []
@@ -145,13 +146,13 @@ def calculate_proxy_health(proxy: Proxy) -> ProxyHealth:
 
     if score >= 80:
         status = PROXY_HEALTH_HEALTHY
-        label = "🟢 Healthy"
+        label = "\U0001f7e2 Healthy"
     elif score >= 50:
         status = PROXY_HEALTH_WARNING
-        label = "🟡 Warning"
+        label = "\U0001f7e1 Warning"
     else:
         status = PROXY_HEALTH_CRITICAL
-        label = "🔴 Critical"
+        label = "\U0001f534 Critical"
     return ProxyHealth(status, label, score, tuple(reasons))
 
 
@@ -536,7 +537,7 @@ def verify_location_with_rotation(
         proxy,
         actor=actor,
         title="Proxy location mismatch",
-        severity="high",
+        severity="warning",
         reason="location_mismatch",
     )
     return False
@@ -554,10 +555,13 @@ def create_proxy_incident(
     incident = Incident(
         name=title,
         title=title,
+        description=f"Proxy event: {reason}",
         status="open",
-        severity=severity,
+        severity=normalize_severity(severity),
         source_type="proxy",
         source_id=str(proxy.id),
+        proxy_id=proxy.id,
+        created_by_user_id=actor.id if actor else None,
         metadata_json={"reason": reason, "proxy_id": proxy.id},
     )
     session.add(incident)
@@ -580,13 +584,14 @@ def close_proxy_incidents(session: Session, proxy: Proxy, *, actor: User | None,
             select(Incident).where(
                 Incident.source_type == "proxy",
                 Incident.source_id == str(proxy.id),
-                Incident.status.in_(("open", "in_progress")),
+                Incident.status.in_(("open", "investigating")),
             )
         ).all()
     )
     for incident in incidents:
         incident.status = "resolved"
         incident.resolution_notes = notes
+        incident.resolved_by_user_id = actor.id if actor else None
         incident.resolved_at = _now()
     if incidents:
         session.flush()

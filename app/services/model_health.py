@@ -26,10 +26,10 @@ class ModelHealth:
 
 def _status_for_score(score: int) -> tuple[str, str]:
     if score >= 80:
-        return HEALTH_HEALTHY, "🟢 Healthy"
+        return HEALTH_HEALTHY, "\U0001f7e2 Healthy"
     if score >= 50:
-        return HEALTH_WARNING, "🟡 Warning"
-    return HEALTH_CRITICAL, "🔴 Critical"
+        return HEALTH_WARNING, "\U0001f7e1 Warning"
+    return HEALTH_CRITICAL, "\U0001f534 Critical"
 
 
 def calculate_model_health(

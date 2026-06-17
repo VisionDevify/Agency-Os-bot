@@ -160,6 +160,125 @@ def proxies_menu() -> InlineKeyboardMarkup:
     )
 
 
+def tasks_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="View Tasks", callback_data=callback_for("tasks:list"))],
+            [InlineKeyboardButton(text="Create Task", callback_data=callback_for("tasks:create"))],
+            [
+                InlineKeyboardButton(text="My Tasks", callback_data=callback_for("tasks:my")),
+                InlineKeyboardButton(text="Assigned Tasks", callback_data=callback_for("tasks:assigned")),
+            ],
+            [
+                InlineKeyboardButton(text="Overdue Tasks", callback_data=callback_for("tasks:overdue")),
+                InlineKeyboardButton(text="Blocked Tasks", callback_data=callback_for("tasks:blocked")),
+            ],
+            *page_controls(back_to="menu"),
+        ]
+    )
+
+
+def task_list_menu(task_buttons: list[tuple[str, str]], *, back_to: str = "tasks") -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in task_buttons]
+    rows.extend(page_controls(back_to=back_to))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def task_detail_menu(task_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Start", callback_data=f"nav:task:{task_id}:start"),
+                InlineKeyboardButton(text="Block", callback_data=f"nav:task:{task_id}:block"),
+            ],
+            [
+                InlineKeyboardButton(text="Complete Task", callback_data=f"nav:task:{task_id}:complete"),
+                InlineKeyboardButton(text="Archive Task", callback_data=f"nav:task:{task_id}:archive"),
+            ],
+            [InlineKeyboardButton(text="Reassign Task", callback_data=f"nav:task:{task_id}:assign")],
+            *page_controls(back_to="tasks:list"),
+        ]
+    )
+
+
+def task_user_choice_menu(task_id: int, user_buttons: list[tuple[str, str]]) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in user_buttons]
+    rows.extend(page_controls(back_to=f"task:{task_id}"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def incidents_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="View Incidents", callback_data=callback_for("incidents:list"))],
+            [InlineKeyboardButton(text="Create Incident", callback_data=callback_for("incidents:create"))],
+            [
+                InlineKeyboardButton(text="My Incidents", callback_data=callback_for("incidents:my")),
+                InlineKeyboardButton(text="Critical Incidents", callback_data=callback_for("incidents:critical")),
+            ],
+            *page_controls(back_to="menu"),
+        ]
+    )
+
+
+def incident_list_menu(incident_buttons: list[tuple[str, str]], *, back_to: str = "incidents") -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in incident_buttons]
+    rows.extend(page_controls(back_to=back_to))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def incident_detail_menu(incident_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Assign Incident", callback_data=f"nav:incident:{incident_id}:assign")],
+            [
+                InlineKeyboardButton(text="Escalate Incident", callback_data=f"nav:incident:{incident_id}:escalate"),
+                InlineKeyboardButton(text="Resolve Incident", callback_data=f"nav:incident:{incident_id}:resolve"),
+            ],
+            [InlineKeyboardButton(text="Archive Incident", callback_data=f"nav:incident:{incident_id}:archive")],
+            *page_controls(back_to="incidents:list"),
+        ]
+    )
+
+
+def incident_user_choice_menu(incident_id: int, user_buttons: list[tuple[str, str]]) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in user_buttons]
+    rows.extend(page_controls(back_to=f"incident:{incident_id}"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def reports_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Daily Briefing", callback_data=callback_for("reports:daily"))],
+            [InlineKeyboardButton(text="Team Accountability", callback_data=callback_for("reports:accountability"))],
+            [InlineKeyboardButton(text="Executive Dashboard", callback_data=callback_for("reports:executive"))],
+            [InlineKeyboardButton(text="Operations Dashboard", callback_data=callback_for("reports:operations"))],
+            [
+                InlineKeyboardButton(text="Chatter Dashboard", callback_data=callback_for("reports:chatter")),
+                InlineKeyboardButton(text="VA Dashboard", callback_data=callback_for("reports:va")),
+            ],
+            *page_controls(back_to="menu"),
+        ]
+    )
+
+
+def briefing_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Generate Daily Briefing", callback_data=callback_for("reports:daily")),
+                InlineKeyboardButton(text="Refresh", callback_data=callback_for("reports:daily")),
+            ],
+            [
+                InlineKeyboardButton(text="Send to Owner", callback_data=callback_for("reports:daily:send_owner")),
+                InlineKeyboardButton(text="Send to Operations Group", callback_data=callback_for("reports:daily:send_ops")),
+            ],
+            *page_controls(back_to="reports"),
+        ]
+    )
+
+
 def proxy_list_menu(proxy_buttons: list[tuple[str, str]], *, back_to: str = "proxies") -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in proxy_buttons]
     rows.extend(page_controls(back_to=back_to))

@@ -7,6 +7,7 @@ from app.models.account import Account
 from app.models.audit import AuditLog
 from app.models.incident import Incident
 from app.models.model_brand import ModelBrand, ModelBrandMember
+from app.models.task import Task
 from app.models.user import User
 from app.services.account_health import ACCOUNT_HEALTH_CRITICAL, calculate_account_health
 from app.services.model_health import HEALTH_CRITICAL, HEALTH_HEALTHY, HEALTH_WARNING, calculate_model_health
@@ -36,6 +37,10 @@ class DashboardStats:
     average_proxy_health_score: int = 0
     open_tasks: int = 0
     open_incidents: int = 0
+    overdue_tasks: int = 0
+    blocked_tasks: int = 0
+    completed_tasks_today: int = 0
+    critical_incidents: int = 0
     models: int = 0
     healthy_models: int = 0
     warning_models: int = 0
@@ -144,8 +149,42 @@ def dashboard_stats(session: Session) -> DashboardStats:
         1 for account in accounts if calculate_account_health(account).status == ACCOUNT_HEALTH_CRITICAL
     )
     infrastructure = infrastructure_stats(session)
+    open_tasks = (
+        session.scalar(select(func.count(Task.id)).where(Task.status.in_(("open", "in_progress", "blocked"))))
+        or 0
+    )
+    overdue_tasks = (
+        session.scalar(
+            select(func.count(Task.id)).where(
+                Task.due_at.is_not(None),
+                Task.due_at < func.now(),
+                Task.status.in_(("open", "in_progress", "blocked")),
+            )
+        )
+        or 0
+    )
+    blocked_tasks = session.scalar(select(func.count(Task.id)).where(Task.status == "blocked")) or 0
+    completed_tasks_today = (
+        session.scalar(
+            select(func.count(Task.id)).where(
+                Task.status == "complete",
+                Task.completed_at.is_not(None),
+                func.date(Task.completed_at) == func.current_date(),
+            )
+        )
+        or 0
+    )
     open_incidents = (
-        session.scalar(select(func.count(Incident.id)).where(Incident.status.in_(("open", "in_progress"))))
+        session.scalar(select(func.count(Incident.id)).where(Incident.status.in_(("open", "investigating"))))
+        or 0
+    )
+    critical_incidents = (
+        session.scalar(
+            select(func.count(Incident.id)).where(
+                Incident.status.in_(("open", "investigating")),
+                Incident.severity == "critical",
+            )
+        )
         or 0
     )
 
@@ -169,8 +208,12 @@ def dashboard_stats(session: Session) -> DashboardStats:
         recent_proxy_failures=infrastructure.recent_failures,
         recent_proxy_incidents=infrastructure.recent_incidents,
         average_proxy_health_score=infrastructure.average_health_score,
-        open_tasks=0,
+        open_tasks=open_tasks,
         open_incidents=open_incidents,
+        overdue_tasks=overdue_tasks,
+        blocked_tasks=blocked_tasks,
+        completed_tasks_today=completed_tasks_today,
+        critical_incidents=critical_incidents,
         models=len(models),
         healthy_models=health_counts[HEALTH_HEALTHY],
         warning_models=health_counts[HEALTH_WARNING],

@@ -21,10 +21,10 @@ Future events can feed:
 
 ## Current Lightweight Pattern
 
-Sprint 6 keeps event work lightweight:
+Sprint 7 keeps event work lightweight:
 
 - Admin and access events are written through audit helpers.
-- Model/Brand, Account, and Proxy domain events are emitted through `app.services.events.emit_event`.
+- Model/Brand, Account, Proxy, Task, Incident, Briefing, and Accountability domain events are emitted through `app.services.events.emit_event`.
 - Event names use a consistent dotted format.
 - Sensitive metadata is masked or omitted.
 - No separate event bus exists yet.
@@ -71,10 +71,22 @@ This avoids over-engineering while preserving a clean upgrade path.
 - `proxy.incident.created`: proxy workflow created an incident.
 - `proxy.repair.succeeded`: self-healing repair workflow succeeded.
 - `proxy.repair.failed`: self-healing repair workflow failed and requires attention.
+- `task.created`: task opened.
+- `task.assigned`: task assigned or reassigned to a user.
+- `task.started`: task moved to in-progress.
+- `task.blocked`: task marked blocked.
+- `task.completed`: task completed.
+- `task.archived`: task archived without deletion.
+- `task.overdue`: task crossed its due date while still active.
+- `incident.created`: incident opened.
+- `incident.assigned`: incident assigned or reassigned.
+- `incident.escalated`: incident escalated to the next path step.
+- `incident.resolved`: incident resolved with notes/history retained.
+- `incident.archived`: incident archived without deletion.
+- `briefing.generated`: daily company briefing generated.
+- `accountability.generated`: team accountability report generated.
 - `access.denied`: user attempted a restricted or blocked action.
 - `owner.protection_triggered`: lockout protection blocked a risky action.
-- `incident.created`: future incident opened.
-- `task.completed`: future task completed.
 - `automation.simulated`: future automation dry-run completed.
 - `repair.succeeded`: future self-healing repair succeeded.
 
@@ -122,3 +134,9 @@ Simulation mode should produce reviewable summaries before automatic repair is a
 - Simulate
 - Approve
 - Execute
+
+## Operations Event Notes
+
+Tasks and incidents now emit operational events through the audit-backed event helper. Safe task metadata can include task ID, status, priority, model/brand ID, account ID, assigned user ID, and due/completion state. Safe incident metadata can include incident ID, status, severity, source type, model/brand ID, account ID, proxy ID, assigned user ID, escalation level, and safe resolution state.
+
+Daily briefing and accountability events are report-generation events. They should include only aggregate counts, not secrets or sensitive message content. Future notification routing can consume these events to send summaries to the owner or operations group after explicit operator approval.

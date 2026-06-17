@@ -1,6 +1,6 @@
 # Database Schema
 
-This document describes the current schema as of Sprint 6 and the planned direction. PostgreSQL is the production database, SQLAlchemy owns the models, and Alembic owns migrations.
+This document describes the current schema as of Sprint 7 and the planned direction. PostgreSQL is the production database, SQLAlchemy owns the models, and Alembic owns migrations.
 
 ## Current Tables
 
@@ -301,21 +301,61 @@ Indexes and constraints:
 - `ix_proxy_rotation_history_status`.
 - `ix_proxy_rotation_history_created_at`.
 
+### tasks
+
+Operational task queue. The production table retains legacy `name` and `metadata_json` columns from the Sprint 1 placeholder resource migration for compatibility, but the current model uses the domain columns below.
+
+Columns:
+
+- `id`: primary key.
+- `title`: required task title.
+- `description`: optional task details.
+- `status`: one of `open`, `in_progress`, `blocked`, `complete`, or `archived`.
+- `priority`: one of `low`, `normal`, `high`, or `urgent`.
+- `model_brand_id`: nullable foreign key to `model_brands.id`, set null on model deletion.
+- `account_id`: nullable foreign key to `accounts.id`, set null on account deletion.
+- `assigned_to_user_id`: nullable foreign key to `users.id`, set null on user deletion.
+- `created_by_user_id`: nullable foreign key to `users.id`, set null on user deletion.
+- `due_at`: optional due timestamp.
+- `completed_at`: nullable completion timestamp.
+- `created_at`, `updated_at`: timestamps.
+
+Indexes and constraints:
+
+- `ck_tasks_status`.
+- `ck_tasks_priority`.
+- `ix_tasks_status`.
+- `ix_tasks_priority`.
+- `ix_tasks_model_brand_id`.
+- `ix_tasks_account_id`.
+- `ix_tasks_assigned_to_user_id`.
+- `ix_tasks_created_by_user_id`.
+- `ix_tasks_due_at`.
+
 ### incidents
 
-Incident records used first for proxy repair, location mismatch, and repeated failure workflows. The table retains legacy `name` and `metadata_json` columns for compatibility.
+Incident records for manual, account, proxy, automation, and system issues. The table retains legacy `name`, `source_id`, `assigned_user_id`, and `metadata_json` columns for compatibility with Sprint 6 proxy repair rows.
 
 Columns:
 
 - `id`: primary key.
 - `name`: nullable legacy display name.
 - `title`: required incident title.
-- `status`: one of `open`, `in_progress`, `resolved`, or `closed`.
-- `severity`: one of `low`, `medium`, `high`, or `critical`.
-- `source_type`: optional source family, such as `proxy`.
-- `source_id`: optional source resource ID.
-- `assigned_user_id`: nullable foreign key to `users.id`.
+- `description`: optional incident details.
+- `status`: one of `open`, `investigating`, `resolved`, or `archived`.
+- `severity`: one of `info`, `warning`, or `critical`.
+- `source_type`: optional source family: `manual`, `account`, `proxy`, `automation`, or `system`.
+- `source_id`: legacy optional source resource ID.
+- `assigned_user_id`: legacy nullable foreign key to `users.id`.
+- `model_brand_id`: nullable foreign key to `model_brands.id`, set null on model deletion.
+- `account_id`: nullable foreign key to `accounts.id`, set null on account deletion.
+- `proxy_id`: nullable foreign key to `proxies.id`, set null on proxy deletion.
+- `assigned_to_user_id`: nullable foreign key to `users.id`, set null on user deletion.
+- `created_by_user_id`: nullable foreign key to `users.id`, set null on user deletion.
+- `resolved_by_user_id`: nullable foreign key to `users.id`, set null on user deletion.
 - `resolution_notes`: optional safe resolution note.
+- `escalation_level`: numeric escalation step.
+- `escalation_history`: JSON list of safe escalation history entries.
 - `resolved_at`: nullable resolution timestamp.
 - `metadata_json`: safe non-secret metadata.
 - `created_at`, `updated_at`: timestamps.
@@ -324,12 +364,18 @@ Indexes and constraints:
 
 - `ck_incidents_status`.
 - `ck_incidents_severity`.
+- `ck_incidents_source_type`.
 - `ix_incidents_status`.
 - `ix_incidents_severity`.
 - `ix_incidents_source`.
 - `ix_incidents_assigned_user_id`.
+- `ix_incidents_model_brand_id`.
+- `ix_incidents_account_id`.
+- `ix_incidents_proxy_id`.
+- `ix_incidents_assigned_to_user_id`.
+- `ix_incidents_created_by_user_id`.
 
-### tasks, reports, automations
+### reports, automations
 
 Current placeholder resource tables.
 
@@ -354,6 +400,8 @@ These tables are intentionally minimal until their modules are implemented.
 - A model/brand can have many accounts through `accounts.model_brand_id`.
 - A proxy can have many accounts through `accounts.assigned_proxy_id`.
 - A proxy can have many rotation history rows through `proxy_rotation_history.proxy_id`.
+- A task can attach to a model/brand, account, assigned user, and creator.
+- An incident can attach to a model/brand, account, proxy, assigned user, creator, and resolver.
 - An account can have many auth sessions through `account_auth_sessions.account_id`.
 - An auth session can have many hashed verification-code submissions through `account_verification_codes.auth_session_id`.
 - An incident can point to a source resource through `source_type` and `source_id`.
@@ -402,9 +450,24 @@ Proxy status:
 Incident status:
 
 - `open`: active incident requiring attention.
-- `in_progress`: incident is being worked.
+- `investigating`: incident is being worked or has been escalated.
 - `resolved`: incident has been repaired with notes/history retained.
-- `closed`: incident is administratively closed.
+- `archived`: incident is administratively archived.
+
+Task status:
+
+- `open`: task is queued and not started.
+- `in_progress`: task is actively being worked.
+- `blocked`: task cannot move until another issue is resolved.
+- `complete`: task is completed and has `completed_at`.
+- `archived`: task is hidden from default active lists while preserving history.
+
+Task priority:
+
+- `low`: low urgency.
+- `normal`: default urgency.
+- `high`: elevated priority.
+- `urgent`: immediate attention required.
 
 Soft-delete strategy:
 
@@ -413,7 +476,8 @@ Soft-delete strategy:
 - Model/Brand records should use `disabled` or `archived` instead of hard deletion.
 - Account records should use `disabled` or `archived` instead of hard deletion.
 - Proxy records should use `disabled` instead of hard deletion.
-- Incidents should use `resolved` or `closed` instead of hard deletion.
+- Tasks should use `complete` or `archived` instead of hard deletion.
+- Incidents should use `resolved` or `archived` instead of hard deletion.
 - Future business resources should prefer status-based archival before hard deletes.
 
 ## Future Planned Tables
@@ -421,8 +485,8 @@ Soft-delete strategy:
 - `account_credentials`: secret references only, not raw secrets.
 - `proxy_credentials`: secret references only, not raw secrets.
 - `proxy_health_checks`: proxy check results and failure reasons.
-- `task_assignments`: task ownership and handoff history.
-- `incident_events`: incident timeline events.
+- `task_assignments`: richer task ownership and handoff history if one-assignee tasks become insufficient.
+- `incident_events`: richer incident timeline events if escalation history JSON becomes insufficient.
 - `report_runs`: report generation records.
 - `automation_runs`: simulation and live automation run records.
 - `events`: durable operational event stream once multiple consumers need it.
