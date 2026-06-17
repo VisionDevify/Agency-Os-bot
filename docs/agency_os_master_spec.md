@@ -12,20 +12,22 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Sprint 1.5: Telegram inline UI framework with dashboard, main menu, back/main controls, and in-place message edits to avoid chat spam.
 - Sprint 2: persistent PostgreSQL-backed users, roles, permissions, owner setup, pending users, audit logs, and real permission checks.
 - Sprint 2.5/3: foundation hardening, living architecture docs, stricter audit naming, masked audit metadata, pending-user queue, user admin workflows, role assignment/removal, role permission editing, owner protection checks, and expanded tests.
+- Sprint 4: Models/Brands command center, team assignments, model health scoring, model-specific audit history, dashboard model metrics, and lightweight model event emission.
 
 ## Roadmap
 
-- Sprint 4: Models/Brands + Accounts Foundation.
-- Sprint 5: Proxy Vault and health-check model.
-- Sprint 6: Task and Incident operations workflows.
-- Sprint 7: Reports, metrics, and notification routing.
-- Sprint 8: Automations with simulation mode as the default safety posture.
-- Sprint 9: Self-healing playbooks and repair event tracking.
-- Sprint 10: AI Operations Brain for summaries, anomaly explanations, and recommended next actions.
+- Sprint 5: Accounts Foundation attached to Models/Brands.
+- Sprint 6: Proxy Vault and health-check model.
+- Sprint 7: Task and Incident operations workflows.
+- Sprint 8: Reports, metrics, and notification routing.
+- Sprint 9: Automations with simulation mode as the default safety posture.
+- Sprint 10: Self-healing playbooks and repair event tracking.
+- Sprint 11: AI Operations Brain for summaries, anomaly explanations, and recommended next actions.
 
 ## Core Modules
 
 - Dashboard: operational summary for users, accounts, proxies, tasks, and incidents.
+- Models: central command object for model/brand identity, team assignments, health, future accounts, work, incidents, reports, revenue, and audit history.
 - Users: Telegram principals, statuses, role assignment, and recent audit context.
 - Roles: default and custom role records with permission memberships.
 - Permissions: named capability flags checked by services and Telegram navigation.
@@ -74,6 +76,8 @@ Default permissions:
 
 Owner bypass is implemented at the service layer and should remain the final authority. Permission checks should be called from workflows before management actions and from Telegram navigation before restricted screens render.
 
+Model/Brand assignment changes require `manage_users` or `manage_accounts`. Model creation, status updates, and archival require `manage_accounts`.
+
 ## Security Rules
 
 - Never commit `.env`, bot tokens, owner IDs, encryption keys, database passwords, or live session strings.
@@ -104,6 +108,13 @@ Important actions should use stable event-style names, such as:
 - `role.removed`
 - `permission.added_to_role`
 - `permission.removed_from_role`
+- `model.created`
+- `model.updated`
+- `model.disabled`
+- `model.archived`
+- `member.assigned`
+- `member.removed`
+- `model.health.changed`
 - `access.denied`
 - `owner.protection_triggered`
 
@@ -130,6 +141,44 @@ Telegram is the operator console, so navigation should be calm and predictable:
 - Simulation Mode: dry-run execution that records intended changes without performing risky actions.
 - Self-Healing: playbooks that detect failures, attempt safe repairs, and emit repair events.
 - AI Operations Brain: contextual summaries, anomaly explanations, and recommended actions based on events and current state.
+
+## Model/Brand Command Center
+
+Model/Brand is now the central object. Future operational data should attach to it directly or through account/task/incident/report relationships.
+
+Intended relationship map:
+
+- Instagram Accounts
+- X Accounts
+- OnlyFans Accounts
+- Assigned Chatters
+- Assigned Managers
+- Assigned VAs
+- Tasks
+- Incidents
+- Reports
+- Revenue
+- Health
+- Audit History
+
+Current team relationship types:
+
+- `manager`
+- `chatter_manager`
+- `senior_chatter`
+- `chatter`
+- `va`
+- `viewer`
+
+Current health score inputs:
+
+- open incidents
+- disabled accounts
+- warning accounts
+- unassigned manager
+- unassigned chatter team
+
+Accounts, Revenue, Proxy Assignments, Automation Rules, Daily Briefings, and AI Operations Brain integration are intentionally TODO hooks until those modules have real records.
 
 ## Foundation Hardening Review
 

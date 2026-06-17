@@ -21,9 +21,10 @@ Future events can feed:
 
 ## Current Lightweight Pattern
 
-Sprint 2.5/3 keeps event work lightweight:
+Sprint 4 keeps event work lightweight:
 
 - Admin and access events are written through audit helpers.
+- Model/Brand domain events are emitted through `app.services.events.emit_event`.
 - Event names use a consistent dotted format.
 - Sensitive metadata is masked or omitted.
 - No separate event bus exists yet.
@@ -41,6 +42,13 @@ This avoids over-engineering while preserving a clean upgrade path.
 - `role.removed`: role removed from a user.
 - `permission.added_to_role`: permission added to a role.
 - `permission.removed_from_role`: permission removed from a role.
+- `model.created`: model/brand record created.
+- `model.updated`: model/brand metadata or status updated.
+- `model.disabled`: model/brand disabled.
+- `model.archived`: model/brand archived.
+- `member.assigned`: user assigned to a model/brand team.
+- `member.removed`: user removed from a model/brand team.
+- `model.health.changed`: model/brand health snapshot emitted after a meaningful model/team change.
 - `access.denied`: user attempted a restricted or blocked action.
 - `owner.protection_triggered`: lockout protection blocked a risky action.
 - `account.added`: future account inventory item created.

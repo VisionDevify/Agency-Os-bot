@@ -110,6 +110,9 @@ def test_dynamic_admin_callbacks_do_not_crash() -> None:
 
         pages = [
             "dashboard:refresh",
+            "models",
+            "models:list",
+            "models:dashboard",
             "users",
             "users:pending",
             f"user:{user.id}",

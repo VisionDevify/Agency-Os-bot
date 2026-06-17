@@ -1,6 +1,6 @@
 # Database Schema
 
-This document describes the current schema as of Sprint 2.5/3 and the planned direction. PostgreSQL is the production database, SQLAlchemy owns the models, and Alembic owns migrations.
+This document describes the current schema as of Sprint 4 and the planned direction. PostgreSQL is the production database, SQLAlchemy owns the models, and Alembic owns migrations.
 
 ## Current Tables
 
@@ -117,6 +117,45 @@ Indexes and constraints:
 - `ix_audit_logs_resource` on `resource_type`, `resource_id`.
 - `ix_audit_logs_created_at`.
 
+### model_brands
+
+Central model/brand command object.
+
+Columns:
+
+- `id`: primary key.
+- `display_name`: required public/admin display name.
+- `stage_name`: optional stage or brand-facing name.
+- `status`: one of `active`, `warning`, `disabled`, or `archived`.
+- `notes`: optional operator notes.
+- `created_at`, `updated_at`: timestamps.
+
+Indexes and constraints:
+
+- `ck_model_brands_status`.
+- `ix_model_brands_display_name`.
+- `ix_model_brands_stage_name`.
+- `ix_model_brands_status`.
+
+### model_brand_members
+
+Relationship table between Model/Brand records and assigned users.
+
+Columns:
+
+- `model_brand_id`: foreign key to `model_brands.id`, cascade delete.
+- `user_id`: foreign key to `users.id`, cascade delete.
+- `relationship_type`: one of `manager`, `chatter_manager`, `senior_chatter`, `chatter`, `va`, or `viewer`.
+
+Indexes and constraints:
+
+- Composite primary key on `model_brand_id`, `user_id`, `relationship_type`.
+- `uq_model_brand_members_model_user_type`.
+- `ck_model_brand_members_relationship_type`.
+- `ix_model_brand_members_model_brand_id`.
+- `ix_model_brand_members_user_id`.
+- `ix_model_brand_members_relationship_type`.
+
 ### accounts, proxies, tasks, incidents, reports, automations
 
 Current placeholder resource tables.
@@ -137,6 +176,8 @@ These tables are intentionally minimal until their modules are implemented.
 - A role can have many users through `user_roles`.
 - A role can have many permissions through `role_permissions`.
 - A permission can belong to many roles through `role_permissions`.
+- A model/brand can have many assigned users through `model_brand_members`.
+- A user can be assigned to many model/brands through `model_brand_members`.
 - An audit log may reference an actor user through `actor_user_id`.
 
 ## Status Strategy
@@ -148,17 +189,23 @@ User status:
 - `disabled`: blocked by an admin action. Can be reactivated.
 - `denied`: rejected by an admin action. Can be reactivated if policy allows.
 
+Model/Brand status:
+
+- `active`: operating normally.
+- `warning`: requires attention but remains operational.
+- `disabled`: operationally blocked without deleting history.
+- `archived`: hidden from default active lists while preserving history.
+
 Soft-delete strategy:
 
 - Users are not deleted during normal admin flows. Use `disabled` or `denied`.
 - Roles and permissions should not be deleted casually because they affect audit interpretation and historical access context.
+- Model/Brand records should use `disabled` or `archived` instead of hard deletion.
 - Future business resources should prefer status-based archival before hard deletes.
 
 ## Future Planned Tables
 
-- `models`: managed model/persona records.
-- `brands`: brand/workspace records.
-- `model_brand_memberships`: relationships between models and brands.
+- `model_brand_accounts`: links between model/brand records and platform accounts if account ownership becomes many-to-many.
 - `account_credentials`: secret references only, not raw secrets.
 - `proxy_credentials`: secret references only, not raw secrets.
 - `proxy_health_checks`: proxy check results and failure reasons.

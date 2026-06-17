@@ -19,10 +19,19 @@ from app.services.auth import (
     mask_telegram_id,
     user_has_permission,
 )
+from app.services.model_brands import (
+    archive_model_brand,
+    assign_model_member,
+    create_default_model_brand,
+    get_model_brand,
+    remove_model_member,
+    update_model_brand,
+)
 from app.services.permissions import PermissionPrincipal, require_permission
 
 PAGE_PERMISSIONS: dict[str, str] = {
     "dashboard": "view_dashboard",
+    "models": "view_dashboard",
     "users": "manage_users",
     "roles": "manage_roles",
     "accounts": "manage_accounts",
@@ -37,6 +46,10 @@ PAGE_PERMISSIONS: dict[str, str] = {
 
 
 def permission_for_page(page: str) -> str | None:
+    if page.startswith("models"):
+        return "view_dashboard"
+    if page.startswith("model:"):
+        return "view_dashboard"
     if page.startswith("users:"):
         return "manage_users"
     if page.startswith("user:"):
@@ -48,6 +61,38 @@ def permission_for_page(page: str) -> str | None:
 
 def _perform_admin_action(page: str, session: Session, actor: User) -> str | None:
     parts = page.split(":")
+    if page == "models:create":
+        model_brand = create_default_model_brand(session, actor=actor)
+        return f"model:{model_brand.id}"
+    if len(parts) >= 3 and parts[0] == "model" and parts[1].isdigit():
+        model_brand = get_model_brand(session, int(parts[1]))
+        if model_brand is None:
+            return "models:list"
+        action = parts[2]
+        if action == "archive":
+            archive_model_brand(session, model_brand, actor=actor)
+            return f"model:{model_brand.id}"
+        if action == "status" and len(parts) >= 4:
+            status = parts[3]
+            if status == "archived":
+                archive_model_brand(session, model_brand, actor=actor)
+            else:
+                update_model_brand(session, model_brand, actor=actor, status=status)
+            return f"model:{model_brand.id}"
+        if action == "team" and len(parts) >= 6:
+            team_action = parts[3]
+            relationship_type = parts[4]
+            if not parts[5].isdigit():
+                return f"model:{model_brand.id}:team"
+            target = get_user_by_id(session, int(parts[5]))
+            if target is None:
+                return f"model:{model_brand.id}:team"
+            if team_action == "assign":
+                assign_model_member(session, model_brand, target, relationship_type, actor=actor)
+                return f"model:{model_brand.id}:team"
+            if team_action == "remove":
+                remove_model_member(session, model_brand, target, relationship_type, actor=actor)
+                return f"model:{model_brand.id}:team"
     if len(parts) >= 3 and parts[0] == "user" and parts[1].isdigit():
         target = get_user_by_id(session, int(parts[1]))
         if target is None:
@@ -171,15 +216,17 @@ def screen_for_page(
             action="management_action.performed",
             resource_type="telegram_page",
             resource_id=normalized,
-            details={"telegram_id": principal.telegram_id},
+            details={"telegram_id_masked": mask_telegram_id(principal.telegram_id)},
         )
 
     if normalized == "dashboard":
-        return render_dashboard()
+        return render_dashboard(session=session)
     if (
         normalized in PAGE_TITLES
         or normalized == "audit_logs"
         or normalized == "permissions"
+        or normalized.startswith("models:")
+        or normalized.startswith("model:")
         or normalized.startswith("users:")
         or normalized.startswith("user:")
         or normalized.startswith("role:")

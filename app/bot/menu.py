@@ -2,6 +2,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 MENU_ITEMS: tuple[tuple[str, str], ...] = (
     ("Dashboard", "dashboard"),
+    ("Models", "models"),
     ("Users", "users"),
     ("Roles", "roles"),
     ("Accounts", "accounts"),
@@ -69,6 +70,95 @@ def users_menu(user_buttons: list[tuple[str, str]]) -> InlineKeyboardMarkup:
         [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in user_buttons]
     )
     rows.extend(page_controls(back_to="menu"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def models_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="View Models", callback_data=callback_for("models:list"))],
+            [InlineKeyboardButton(text="Create Model", callback_data=callback_for("models:create"))],
+            [InlineKeyboardButton(text="Search Model", callback_data=callback_for("models:search"))],
+            [InlineKeyboardButton(text="Model Dashboard", callback_data=callback_for("models:dashboard"))],
+            *page_controls(back_to="menu"),
+        ]
+    )
+
+
+def model_list_menu(model_buttons: list[tuple[str, str]]) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in model_buttons]
+    rows.extend(page_controls(back_to="models"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def model_detail_menu(model_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Edit Model", callback_data=f"nav:model:{model_id}:edit"),
+                InlineKeyboardButton(text="Manage Team", callback_data=f"nav:model:{model_id}:team"),
+            ],
+            [
+                InlineKeyboardButton(text="View Accounts", callback_data=f"nav:model:{model_id}:accounts"),
+                InlineKeyboardButton(text="View Tasks", callback_data=f"nav:model:{model_id}:tasks"),
+            ],
+            [
+                InlineKeyboardButton(text="View Incidents", callback_data=f"nav:model:{model_id}:incidents"),
+                InlineKeyboardButton(text="Audit History", callback_data=f"nav:model:{model_id}:audit"),
+            ],
+            *page_controls(back_to="models:list"),
+        ]
+    )
+
+
+def model_edit_menu(model_id: int, status: str) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = [
+        [
+            InlineKeyboardButton(text="Set Active", callback_data=f"nav:model:{model_id}:status:active"),
+            InlineKeyboardButton(text="Set Warning", callback_data=f"nav:model:{model_id}:status:warning"),
+        ],
+        [
+            InlineKeyboardButton(text="Disable", callback_data=f"nav:model:{model_id}:status:disabled"),
+            InlineKeyboardButton(text="Archive", callback_data=f"nav:model:{model_id}:archive"),
+        ],
+    ]
+    if status == "archived":
+        rows.insert(0, [InlineKeyboardButton(text="Reactivate", callback_data=f"nav:model:{model_id}:status:active")])
+    rows.extend(page_controls(back_to=f"model:{model_id}"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def model_team_menu(model_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Assign Manager", callback_data=f"nav:model:{model_id}:team:assign:manager")],
+            [
+                InlineKeyboardButton(
+                    text="Assign Chatter Manager",
+                    callback_data=f"nav:model:{model_id}:team:assign:chatter_manager",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="Assign Senior Chatter",
+                    callback_data=f"nav:model:{model_id}:team:assign:senior_chatter",
+                )
+            ],
+            [InlineKeyboardButton(text="Assign Chatter", callback_data=f"nav:model:{model_id}:team:assign:chatter")],
+            [InlineKeyboardButton(text="Assign VA", callback_data=f"nav:model:{model_id}:team:assign:va")],
+            [InlineKeyboardButton(text="Remove Assignment", callback_data=f"nav:model:{model_id}:team:remove")],
+            *page_controls(back_to=f"model:{model_id}"),
+        ]
+    )
+
+
+def model_member_choice_menu(
+    model_id: int,
+    relationship_type: str,
+    user_buttons: list[tuple[str, str]],
+) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in user_buttons]
+    rows.extend(page_controls(back_to=f"model:{model_id}:team"))
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
