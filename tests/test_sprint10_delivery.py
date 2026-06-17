@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from app.bot.screens import render_bot_status_page, render_notification_target_detail_page
@@ -133,3 +134,12 @@ def test_railway_config_and_smoke_doc_presence() -> None:
 
     assert (root / "railway.json").exists()
     assert (root / "docs" / "production_smoke_test.md").exists()
+
+
+def test_railway_config_does_not_override_worker_command() -> None:
+    root = Path(__file__).resolve().parents[1]
+    railway_config = json.loads((root / "railway.json").read_text())
+    deploy_config = railway_config.get("deploy", {})
+
+    assert "startCommand" not in deploy_config
+    assert "healthcheckPath" not in deploy_config

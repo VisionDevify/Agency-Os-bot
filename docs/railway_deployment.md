@@ -60,11 +60,17 @@ The root `railway.json` is suitable for shared repo deployments:
 
 - Dockerfile builder.
 - restart on failure.
-- start command on port `8000`.
+- no shared start command, so it does not override the bot worker.
 
 The API exposes `/health`. Verify it manually after deployment, or configure an API-only Railway
 healthcheck in the API service settings. Do not put a shared healthcheck in `railway.json`, because
 the bot worker service runs as a polling worker and should not be treated as an HTTP service.
+
+The API uses the Dockerfile default command:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
 
 After deployment, verify:
 
@@ -87,6 +93,9 @@ Create a separate Railway service from the same repo and override the start comm
 ```bash
 python -m app.bot.runner
 ```
+
+Verify the worker container command with `/proc/1/cmdline`; it should show `python -m app.bot.runner`,
+not `uvicorn app.main:app`.
 
 Do not expose an HTTP domain for the worker unless a future webhook mode is added. Current bot mode uses polling.
 
