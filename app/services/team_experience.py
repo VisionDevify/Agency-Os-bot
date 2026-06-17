@@ -115,6 +115,7 @@ def role_home_items(user: User | None) -> list[tuple[str, str]]:
         return [
             ("Executive Command Center", "reports:executive"),
             ("Intelligence", "intelligence"),
+            ("Opportunities", "opportunities"),
             ("Models", "models"),
             ("Accounts", "accounts"),
             ("Proxies", "proxies"),
