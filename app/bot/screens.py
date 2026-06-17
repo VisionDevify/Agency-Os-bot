@@ -13,6 +13,7 @@ from app.bot.menu import (
     accounts_menu,
     briefing_menu,
     dashboard_menu,
+    executive_dashboard_menu,
     incident_detail_menu,
     incident_list_menu,
     incident_user_choice_menu,
@@ -24,6 +25,9 @@ from app.bot.menu import (
     model_member_choice_menu,
     model_team_menu,
     models_menu,
+    notification_target_detail_menu,
+    notification_targets_menu,
+    operations_dashboard_menu,
     page_menu,
     platform_filter_menu,
     permission_choice_menu,
@@ -49,6 +53,7 @@ from app.models.incident import Incident
 from app.models.model_brand import MODEL_BRAND_RELATIONSHIP_TYPES, ModelBrand, ModelBrandMember
 from app.models.permissions import Permission, Role
 from app.models.proxy import Proxy
+from app.models.reporting import NotificationTarget
 from app.models.task import Task
 from app.models.user import User
 from app.services.auth import DEFAULT_PERMISSION_DESCRIPTIONS
@@ -85,9 +90,15 @@ from app.services.operations import (
     executive_dashboard,
     generate_accountability_report,
     generate_daily_briefing,
+    record_dashboard_view,
+    record_report_view,
     operations_dashboard,
+    request_briefing_send,
     va_dashboard,
+    view_accountability_report,
+    view_latest_daily_briefing,
 )
+from app.services.notifications import list_notification_targets, mask_chat_id
 from app.services.proxies import (
     accounts_for_proxy,
     accounts_missing_proxy,
@@ -751,46 +762,79 @@ def render_incident_assignment_page(session: Session, incident_id: int) -> Scree
     return Screen(text="\n".join(lines), reply_markup=incident_user_choice_menu(incident.id, buttons))
 
 
-def render_executive_dashboard_page(session: Session) -> Screen:
+def render_executive_dashboard_page(session: Session, user: User | None = None) -> Screen:
+    record_dashboard_view(session, actor=user, dashboard_name="executive")
     stats = executive_dashboard(session)
     lines = [
         "Executive Dashboard",
         "",
+        f"Agency Health Score: {stats['agency_health_score']}",
         f"Total Models: {stats['total_models']}",
+        f"Healthy Models: {stats['healthy_models']}",
+        f"Warning Models: {stats['warning_models']}",
+        f"Critical Models: {stats['critical_models']}",
         f"Total Accounts: {stats['total_accounts']}",
         f"Healthy Accounts: {stats['healthy_accounts']}",
         f"Warning Accounts: {stats['warning_accounts']}",
         f"Critical Accounts: {stats['critical_accounts']}",
+        f"Accounts Needing Login: {stats['accounts_needing_login']}",
+        f"Accounts Needing 2FA: {stats['accounts_needing_2fa']}",
+        f"Total Proxies: {stats['total_proxies']}",
+        f"Healthy Proxies: {stats['healthy_proxies']}",
+        f"Warning Proxies: {stats['warning_proxies']}",
+        f"Critical Proxies: {stats['critical_proxies']}",
+        f"Accounts Missing Proxy: {stats['accounts_missing_proxy']}",
         f"Open Tasks: {stats['open_tasks']}",
         f"Overdue Tasks: {stats['overdue_tasks']}",
         f"Open Incidents: {stats['open_incidents']}",
         f"Critical Incidents: {stats['critical_incidents']}",
         f"Completed Today: {stats['completed_tasks_today']}",
         "",
-        "Proxy Health:",
+        "Recent High-Risk Events:",
     ]
-    for status in ("healthy", "warning", "critical", "disabled"):
-        lines.append(f"- {status.title()}: {stats['proxy_health'].get(status, 0)}")
-    return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="reports"))
+    lines.extend(f"- {item}" for item in stats["recent_high_risk_events"][:5])
+    if not stats["recent_high_risk_events"]:
+        lines.append("- No high-risk events found")
+    return Screen(text="\n".join(lines), reply_markup=executive_dashboard_menu())
 
 
-def render_operations_dashboard_page(session: Session) -> Screen:
+def render_operations_dashboard_page(session: Session, user: User | None = None) -> Screen:
+    record_dashboard_view(session, actor=user, dashboard_name="operations")
     stats = operations_dashboard(session)
     lines = [
         "Operations Dashboard",
         "",
         f"Pending Tasks: {stats['pending_tasks']}",
         f"Blocked Tasks: {stats['blocked_tasks']}",
-        f"Account/Proxy Warnings: {stats['account_warnings'] + stats['proxy_warnings']}",
+        f"Accounts Needing Attention: {stats['accounts_needing_attention']}",
+        f"Proxies Needing Attention: {stats['proxies_needing_attention']}",
+        f"Models Needing Attention: {stats['models_needing_attention']}",
         "",
-        "Incidents by Severity:",
+        "Tasks by Status:",
     ]
+    for status, count in stats["tasks_by_status"].items():
+        lines.append(f"- {status}: {count}")
+    lines.extend(
+        [
+            "",
+            "Incidents by Severity:",
+        ]
+    )
     for severity, count in stats["incidents_by_severity"].items():
         lines.append(f"- {severity.title()}: {count}")
-    return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="reports"))
+    lines.extend(["", "Recent Escalations:"])
+    lines.extend(f"- {item}" for item in stats["recent_escalations"][:5])
+    if not stats["recent_escalations"]:
+        lines.append("- No recent escalations")
+    lines.extend(["", "Recent Failed Repairs:"])
+    lines.extend(f"- {item}" for item in stats["recent_failed_repairs"][:5])
+    if not stats["recent_failed_repairs"]:
+        lines.append("- No recent failed repairs")
+    return Screen(text="\n".join(lines), reply_markup=operations_dashboard_menu())
 
 
 def render_chatter_dashboard_page(session: Session, user: User | None = None) -> Screen:
+    record_dashboard_view(session, actor=user, dashboard_name="chatter")
     stats = chatter_dashboard(session, user=user)
     lines = [
         "Chatter Dashboard",
@@ -799,32 +843,58 @@ def render_chatter_dashboard_page(session: Session, user: User | None = None) ->
         f"Open Tasks: {stats['open_tasks']}",
         f"Escalations: {stats['escalations']}",
         f"Notes: {stats['notes']}",
+        "",
+        "Future Metrics:",
     ]
+    lines.extend(f"- {item}" for item in stats["future_metrics"])
     return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="reports"))
 
 
 def render_va_dashboard_page(session: Session, user: User | None = None) -> Screen:
+    record_dashboard_view(session, actor=user, dashboard_name="va")
     stats = va_dashboard(session, user=user)
     lines = [
         "VA Dashboard",
         "",
         f"Assigned Models: {stats['assigned_models']}",
         f"Assigned Accounts: {stats['assigned_accounts']}",
-        f"Uploads/Tasks: {stats['uploads']}",
-        f"Overdue Items: {stats['overdue_items']}",
+        f"Open Tasks: {stats['open_tasks']}",
+        f"Overdue Tasks: {stats['overdue_items']}",
+        f"Content/Upload: {stats['uploads']}",
+        f"Approvals: {stats['approvals']}",
     ]
     return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="reports"))
 
 
-def render_daily_briefing_page(session: Session, user: User | None = None) -> Screen:
-    summary = generate_daily_briefing(session, actor=user)
+def render_daily_briefing_page(
+    session: Session,
+    user: User | None = None,
+    *,
+    mode: str = "generate",
+) -> Screen:
+    if mode == "latest":
+        summary = view_latest_daily_briefing(session, actor=user)
+        if summary is None:
+            return Screen(
+                text="Daily Company Briefing\n\nNo briefing has been generated yet.",
+                reply_markup=briefing_menu(),
+            )
+    else:
+        summary = generate_daily_briefing(session, actor=user)
+    record_report_view(session, actor=user, report_name="daily_briefing")
     lines = [
         "Daily Company Briefing",
         "",
+        f"Briefing ID: {summary.get('briefing_id', 'pending')}",
+        f"Summary: {summary['summary_text']}",
+        f"Overall Status: {summary['overall_status']}",
         f"Agency Health Score: {summary['agency_health_score']}",
         f"Active Models: {summary['models_active']}",
+        f"Models Healthy/Warning/Critical: "
+        f"{summary['models_healthy']}/{summary['models_warning']}/{summary['models_critical']}",
         f"Accounts Healthy/Warning/Critical: "
         f"{summary['accounts_healthy']}/{summary['accounts_warning']}/{summary['accounts_critical']}",
+        f"Accounts Needing Login/2FA: {summary['accounts_needing_login']}/{summary['accounts_needing_2fa']}",
         f"Proxies Healthy/Warning/Critical: "
         f"{summary['proxies_healthy']}/{summary['proxies_warning']}/{summary['proxies_critical']}",
         f"Open Incidents: {summary['open_incidents']}",
@@ -847,7 +917,9 @@ def render_daily_briefing_page(session: Session, user: User | None = None) -> Sc
 
 
 def render_accountability_page(session: Session, user: User | None = None) -> Screen:
+    view_accountability_report(session, actor=user)
     report = generate_accountability_report(session, actor=user)
+    record_report_view(session, actor=user, report_name="team_accountability")
     lines = ["Team Accountability", "", f"Generated: {report['generated_at']}", ""]
     if not report["users"]:
         lines.append("No users yet.")
@@ -855,9 +927,46 @@ def render_accountability_page(session: Session, user: User | None = None) -> Sc
         roles = ", ".join(row["roles"]) or "No roles"
         lines.append(f"{row['display_name']}")
         lines.append(f"   Open Tasks: {row['assigned_open_tasks']} | Completed Today: {row['completed_today']}")
-        lines.append(f"   Overdue: {row['overdue_tasks']} | Incidents: {row['open_incidents_assigned']}")
+        lines.append(
+            f"   Overdue: {row['overdue_tasks']} | Open Incidents: {row['open_incidents_assigned']}"
+        )
+        lines.append(f"   Resolved Today: {row['resolved_incidents_today']} | Score: {row['score']}")
         lines.append(f"   Last Seen: {row['last_seen']} | Roles: {roles}")
     return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="reports"))
+
+
+def render_notification_targets_page(session: Session) -> Screen:
+    targets = list_notification_targets(session)
+    lines = ["Notification Targets", ""]
+    buttons: list[tuple[str, str]] = []
+    if not targets:
+        lines.append("No notification targets yet.")
+    for target in targets[:15]:
+        status = "active" if target.is_active else "disabled"
+        lines.append(f"{target.id}. {target.name}")
+        lines.append(f"   Type: {target.target_type} | Purpose: {target.purpose} | Status: {status}")
+        lines.append(f"   Chat: {mask_chat_id(target.telegram_chat_id)}")
+        buttons.append((f"{target.id}. {target.name} ({status})", f"nav:notification_target:{target.id}"))
+    return Screen(text="\n".join(lines), reply_markup=notification_targets_menu(buttons))
+
+
+def render_notification_target_detail_page(session: Session, target_id: int) -> Screen:
+    target = session.get(NotificationTarget, target_id)
+    if target is None:
+        return Screen(text="Notification target not found.", reply_markup=page_menu(back_to="notification_targets"))
+    status = "active" if target.is_active else "disabled"
+    lines = [
+        "Notification Target",
+        "",
+        f"Name: {target.name}",
+        f"Type: {target.target_type}",
+        f"Purpose: {target.purpose}",
+        f"Status: {status}",
+        f"Telegram Chat ID: {mask_chat_id(target.telegram_chat_id)}",
+        "",
+        "Sending is placeholder-only until a real operations group is configured.",
+    ]
+    return Screen(text="\n".join(lines), reply_markup=notification_target_detail_menu(target.id))
 
 
 def _model_identity(model_brand: ModelBrand) -> str:
@@ -1462,14 +1571,20 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
             return render_incident_detail_page(session, incident_id)
     if page == "reports":
         return render_reports_home()
-    if page in {"reports:daily", "reports:daily:send_owner", "reports:daily:send_ops"} and session is not None:
+    if page in {"reports:daily", "reports:daily:generate"} and session is not None:
         return render_daily_briefing_page(session, user=user)
+    if page == "reports:daily:latest" and session is not None:
+        return render_daily_briefing_page(session, user=user, mode="latest")
+    if page in {"reports:daily:send_owner", "reports:daily:send_ops"} and session is not None:
+        target = "owner" if page.endswith("send_owner") else "operations"
+        request_briefing_send(session, actor=user, target=target)
+        return render_daily_briefing_page(session, user=user, mode="latest")
     if page == "reports:accountability" and session is not None:
         return render_accountability_page(session, user=user)
     if page == "reports:executive" and session is not None:
-        return render_executive_dashboard_page(session)
+        return render_executive_dashboard_page(session, user=user)
     if page == "reports:operations" and session is not None:
-        return render_operations_dashboard_page(session)
+        return render_operations_dashboard_page(session, user=user)
     if page == "reports:chatter" and session is not None:
         return render_chatter_dashboard_page(session, user=user)
     if page == "reports:va" and session is not None:
@@ -1496,6 +1611,12 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_default_permissions_page()
     if page == "audit_logs" and session is not None:
         return render_audit_logs_page(session)
+    if page == "notification_targets" and session is not None:
+        return render_notification_targets_page(session)
+    if page.startswith("notification_target:") and session is not None:
+        parts = page.split(":")
+        if len(parts) >= 2 and parts[1].isdigit():
+            return render_notification_target_detail_page(session, int(parts[1]))
     if page == "settings":
         return Screen(text="Settings\n\nAdministrative tools.", reply_markup=settings_menu())
     title = PAGE_TITLES.get(page, "Unknown")

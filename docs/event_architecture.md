@@ -1,6 +1,6 @@
 # Event Architecture
 
-Agency OS should become event-driven over time. The current audit log is the first durable record of important events. A dedicated event table, queue, or stream should be added only when reports, notifications, automations, self-healing, or AI operations need a shared event feed.
+Agency OS should become event-driven over time. Audit logs remain the operator-facing safety record. Sprint 8 adds `event_logs` as the first lightweight durable event feed for reports, notifications, automations, self-healing, and future AI operations.
 
 ## Principle
 
@@ -21,13 +21,14 @@ Future events can feed:
 
 ## Current Lightweight Pattern
 
-Sprint 7 keeps event work lightweight:
+Sprint 8 keeps event work lightweight:
 
 - Admin and access events are written through audit helpers.
-- Model/Brand, Account, Proxy, Task, Incident, Briefing, and Accountability domain events are emitted through `app.services.events.emit_event`.
+- Model/Brand, Account, Proxy, Task, Incident, Briefing, Accountability, Dashboard, Report, and Notification Target domain events are emitted through `app.services.events.emit_event`.
+- `emit_event` writes an `audit_logs` row and an `event_logs` row with sanitized metadata.
 - Event names use a consistent dotted format.
 - Sensitive metadata is masked or omitted.
-- No separate event bus exists yet.
+- No queue, stream, or asynchronous worker exists yet.
 
 This avoids over-engineering while preserving a clean upgrade path.
 
@@ -84,7 +85,14 @@ This avoids over-engineering while preserving a clean upgrade path.
 - `incident.resolved`: incident resolved with notes/history retained.
 - `incident.archived`: incident archived without deletion.
 - `briefing.generated`: daily company briefing generated.
+- `briefing.viewed`: latest daily briefing viewed.
+- `briefing.send_requested`: operator requested a send placeholder.
 - `accountability.generated`: team accountability report generated.
+- `accountability.viewed`: accountability report viewed.
+- `dashboard.viewed`: dashboard page viewed.
+- `report.viewed`: report page viewed.
+- `notification_target.created`: notification target placeholder created.
+- `notification_target.disabled`: notification target disabled.
 - `access.denied`: user attempted a restricted or blocked action.
 - `owner.protection_triggered`: lockout protection blocked a risky action.
 - `automation.simulated`: future automation dry-run completed.
@@ -92,19 +100,17 @@ This avoids over-engineering while preserving a clean upgrade path.
 
 ## Future Event Shape
 
-A future `events` table or stream should likely include:
+Current `event_logs` table includes:
 
 - `id`
-- `event_name`
+- `event_type`
 - `actor_user_id`
-- `resource_type`
-- `resource_id`
-- `status`
-- `payload`
-- `correlation_id`
+- `entity_type`
+- `entity_id`
+- `metadata_json`
 - `created_at`
 
-The audit log can remain a consumer of events. Not every event must be shown to operators, but every security-relevant event should be auditable.
+Future queue/stream expansion can add status, correlation IDs, delivery attempts, and replay controls when real consumers need them. Not every event must be shown to operators, but every security-relevant event should remain auditable.
 
 ## Safety Rules
 
@@ -140,3 +146,9 @@ Simulation mode should produce reviewable summaries before automatic repair is a
 Tasks and incidents now emit operational events through the audit-backed event helper. Safe task metadata can include task ID, status, priority, model/brand ID, account ID, assigned user ID, and due/completion state. Safe incident metadata can include incident ID, status, severity, source type, model/brand ID, account ID, proxy ID, assigned user ID, escalation level, and safe resolution state.
 
 Daily briefing and accountability events are report-generation events. They should include only aggregate counts, not secrets or sensitive message content. Future notification routing can consume these events to send summaries to the owner or operations group after explicit operator approval.
+
+## Executive Intelligence Event Notes
+
+Executive dashboards emit `dashboard.viewed` events for report visibility. Daily briefings persist metrics in `daily_briefings` and emit `briefing.generated`; viewing or requesting placeholder sends is audited. Team accountability persists per-user `accountability_snapshots` and emits `accountability.generated`.
+
+Notification Target events should include only type and purpose. Telegram chat IDs should be encrypted or omitted and never emitted as raw event metadata.

@@ -267,13 +267,39 @@ def briefing_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="Generate Daily Briefing", callback_data=callback_for("reports:daily")),
+                InlineKeyboardButton(text="Generate Today's Briefing", callback_data=callback_for("reports:daily:generate")),
+            ],
+            [
+                InlineKeyboardButton(text="View Latest Briefing", callback_data=callback_for("reports:daily:latest")),
                 InlineKeyboardButton(text="Refresh", callback_data=callback_for("reports:daily")),
             ],
             [
                 InlineKeyboardButton(text="Send to Owner", callback_data=callback_for("reports:daily:send_owner")),
                 InlineKeyboardButton(text="Send to Operations Group", callback_data=callback_for("reports:daily:send_ops")),
             ],
+            *page_controls(back_to="reports"),
+        ]
+    )
+
+
+def executive_dashboard_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Refresh", callback_data=callback_for("reports:executive"))],
+            *page_controls(back_to="reports"),
+        ]
+    )
+
+
+def operations_dashboard_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="View Tasks", callback_data=callback_for("tasks")),
+                InlineKeyboardButton(text="View Incidents", callback_data=callback_for("incidents")),
+            ],
+            [InlineKeyboardButton(text="View Accounts Needing Attention", callback_data=callback_for("accounts:attention"))],
+            [InlineKeyboardButton(text="View Proxies Needing Attention", callback_data=callback_for("proxies:dashboard"))],
             *page_controls(back_to="reports"),
         ]
     )
@@ -477,9 +503,29 @@ def settings_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="View Audit Logs", callback_data=callback_for("audit_logs"))],
+            [InlineKeyboardButton(text="Notification Targets", callback_data=callback_for("notification_targets"))],
             [
                 InlineKeyboardButton(text="Back", callback_data=callback_for("menu")),
                 InlineKeyboardButton(text="Main Menu", callback_data=callback_for("menu")),
             ],
+        ]
+    )
+
+
+def notification_targets_menu(target_buttons: list[tuple[str, str]]) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in target_buttons]
+    rows.append([InlineKeyboardButton(text="Add Target", callback_data=callback_for("notification_targets:add"))])
+    rows.extend(page_controls(back_to="settings"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def notification_target_detail_menu(target_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Disable Target", callback_data=f"nav:notification_target:{target_id}:disable"),
+                InlineKeyboardButton(text="Test Send", callback_data=f"nav:notification_target:{target_id}:test"),
+            ],
+            *page_controls(back_to="notification_targets"),
         ]
     )

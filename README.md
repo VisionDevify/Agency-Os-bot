@@ -51,8 +51,57 @@ pytest
 - Permission checks and audit logging are centralized in `app.services`.
 - Proxy session-string rotation, automation simulation mode, and self-healing are placeholders until concrete production workflows are defined.
 
+## Current Modules
+
+- Telegram owner setup, users, roles, permissions, and audits.
+- Models/Brands command center.
+- Account inventory with secure auth-session and hashed 2FA-code flow.
+- Proxy Vault with encrypted proxy passwords, rotation placeholders, health scoring, incidents, and simulation mode.
+- Tasks and incidents operations layer.
+- Executive Dashboard V2, Daily Company Briefings, Team Accountability, Operations Dashboard, Chatter Dashboard placeholder, and VA Dashboard placeholder.
+- Notification Target placeholders for future owner/operations/incident routing.
+- Lightweight EventLog persistence for report and operational event feeds.
+
+## Railway Deployment
+
+Railway inspection found no existing project in the logged-in workspace. The repo is prepared for Railway, but project/service creation and billing-impacting actions require explicit approval.
+
+Expected Railway services:
+
+- API service from this repo using `railway.json`.
+- Bot worker service from this repo with start command `python -m app.bot.runner`.
+- PostgreSQL.
+- Redis.
+
+API start command:
+
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
+```
+
+Bot worker start command:
+
+```bash
+python -m app.bot.runner
+```
+
+Run migrations after Railway variables and PostgreSQL are attached:
+
+```bash
+alembic upgrade head
+```
+
+Health check:
+
+```bash
+GET /health
+```
+
+See `docs/railway_deployment.md` for the full production checklist and blockers.
+
 ## Architecture Docs
 
 - `docs/agency_os_master_spec.md`
 - `docs/database_schema.md`
 - `docs/event_architecture.md`
+- `docs/railway_deployment.md`

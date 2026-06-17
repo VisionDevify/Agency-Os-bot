@@ -181,6 +181,7 @@ def test_dynamic_admin_callbacks_do_not_crash() -> None:
             "reports:chatter",
             "reports:va",
             "reports:daily",
+            "reports:daily:latest",
             "reports:accountability",
             "users",
             "users:pending",
@@ -189,6 +190,7 @@ def test_dynamic_admin_callbacks_do_not_crash() -> None:
             "roles",
             "permissions",
             "audit_logs",
+            "notification_targets",
         ]
 
         for page in pages:

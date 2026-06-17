@@ -16,13 +16,14 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Sprint 5: Accounts foundation attached to Models/Brands, account status/auth tracking, secure auth-session records, hashed 2FA submission flow, account health, dashboard account metrics, and account audit history.
 - Sprint 6: Infrastructure intelligence layer with Proxy Vault, encrypted proxy passwords, session rotation/rollback, proxy health scoring, account proxy assignment, location verification, proxy incidents, simulation mode, and self-healing V1.
 - Sprint 7: Operations command layer with real tasks, real incidents, escalation paths, department dashboards, daily company briefing, team accountability reporting, and operations event emission.
+- Sprint 8: Executive intelligence and Railway production readiness with database-backed daily briefings, accountability snapshots, EventLog, Notification Targets, Executive Dashboard V2, operations reporting, and Railway deployment documentation/config.
 
 ## Roadmap
 
-- Sprint 8: Models/Brands + Accounts workflow refinement, operator input flows, and notification routing.
 - Sprint 9: Automations with simulation mode as the default safety posture.
-- Sprint 10: Self-healing playbooks and repair event tracking.
-- Sprint 11: AI Operations Brain for summaries, anomaly explanations, and recommended next actions.
+- Sprint 10: Notification routing activation, incident delivery targets, and production deploy verification.
+- Sprint 11: Self-healing playbooks and repair event tracking.
+- Sprint 12: AI Operations Brain for summaries, anomaly explanations, and recommended next actions.
 
 ## Core Modules
 
@@ -36,9 +37,9 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Proxies: encrypted Proxy Vault with account assignment, session suffix rotation, rollback, health scoring, location verification, simulation, and repair workflows.
 - Tasks: real work queue with status, priority, assignment, due dates, completion, model/account attachment, and audit/event history.
 - Incidents: real escalation and resolution records with severity, source, assignment, proxy/account/model attachment, escalation history, and audit/event history.
-- Reports: generated daily briefing, accountability report, executive dashboard, operations dashboard, chatter dashboard placeholder, and VA dashboard placeholder.
+- Reports: database-backed daily briefing, accountability snapshots, executive dashboard, operations dashboard, chatter dashboard placeholder, VA dashboard placeholder, and event-backed report view/generation tracking.
 - Automations: placeholder resource model with simulation-mode placeholder.
-- Settings: administrative utilities including audit log access.
+- Settings: administrative utilities including audit log access and Notification Target placeholders.
 
 ## Roles
 
@@ -156,7 +157,14 @@ Important actions should use stable event-style names, such as:
 - `incident.resolved`
 - `incident.archived`
 - `briefing.generated`
+- `briefing.viewed`
+- `briefing.send_requested`
 - `accountability.generated`
+- `accountability.viewed`
+- `dashboard.viewed`
+- `report.viewed`
+- `notification_target.created`
+- `notification_target.disabled`
 - `access.denied`
 - `owner.protection_triggered`
 
@@ -330,6 +338,8 @@ GREEN:
 - Infrastructure dashboard now summarizes proxy health, assignment, rotations, failures, incidents, and average health score.
 - Tasks and incidents now have domain models, service-level permission checks, Telegram workflows, and audit-backed events.
 - Reports now include daily briefing, accountability, and department dashboards without external analytics.
+- Sprint 8 adds dedicated EventLog persistence while preserving audit logs as the operator-facing safety trail.
+- Railway readiness files and docs exist, with project creation blocked until explicit owner approval.
 
 YELLOW:
 
@@ -348,6 +358,52 @@ YELLOW:
 RED:
 
 - The original `users.role_id` column exists in the earliest migration but is not used by the current model. It should be removed in a future cleanup migration only after explicit approval because it is a schema deletion.
-- The audit log is still the only event sink. A dedicated event table or queue should wait until real automation/reporting consumers exist.
+- EventLog is now a lightweight event sink. A queue/stream should wait until real automation/reporting consumers need asynchronous delivery.
 - Reports and automations are still placeholder tables. Current generated report screens are computed from live records and audit events.
 - Proxy health tests are simulated service results until a real provider/network adapter is introduced.
+- Railway has no project/services in the inspected workspace yet. Production deploy still requires creating API, bot worker, PostgreSQL, and Redis services and setting variables in Railway.
+
+## Executive Intelligence Layer
+
+Sprint 8 makes reporting durable and executive-facing.
+
+Executive Dashboard V2 shows:
+
+- agency health score
+- model health counts
+- account health/auth attention counts
+- proxy health and accounts missing proxy
+- open and overdue work
+- open and critical incidents
+- today's completed tasks
+- recent high-risk events
+
+Daily Company Briefings are persisted in `daily_briefings` with a date, generator, health score, summary text, metrics JSON, recommendations JSON, and timestamp. The Telegram reports screen supports generating today's briefing, viewing the latest briefing, refreshing, and safe send placeholders for owner and operations destinations.
+
+Team Accountability now writes `accountability_snapshots` per user. Scores are intentionally lightweight visibility signals, not punitive metrics. Current inputs include open assigned tasks, completed tasks today, overdue tasks, open assigned incidents, resolved incidents today, last seen time, and roles.
+
+Notification Targets are placeholders for future routing. They can represent Telegram users, groups, or channels for owner, operations, incidents, automation logs, or testing purposes. Chat IDs are encrypted or omitted and are never shown raw in Telegram.
+
+EventLog is the durable lightweight event feed for reporting and future automations. It stores event type, actor, entity type/id, safe metadata, and timestamp. AuditLog remains the human safety trail.
+
+## Railway Production Readiness
+
+The repo has a Railway API service config, `/health` endpoint, Docker `PORT` support, and deployment docs. Railway inspection found the logged-in workspace has zero projects, so no production services or variables currently exist to verify.
+
+Expected production services:
+
+- API service
+- Bot worker service
+- PostgreSQL
+- Redis
+
+Required variables:
+
+- `TELEGRAM_BOT_TOKEN`
+- `DATABASE_URL`
+- `REDIS_URL`
+- `APP_SECRET_KEY`
+- `ENCRYPTION_KEY`
+- `OWNER_TELEGRAM_ID`
+
+Production blockers are documented in `docs/railway_deployment.md`.

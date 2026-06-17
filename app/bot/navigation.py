@@ -64,6 +64,12 @@ from app.services.tasks import (
     get_task,
     start_task,
 )
+from app.services.notifications import (
+    create_placeholder_notification_target,
+    disable_notification_target,
+    get_notification_target,
+    test_notification_target,
+)
 from app.services.permissions import PermissionPrincipal, require_permission
 
 PAGE_PERMISSIONS: dict[str, str] = {
@@ -83,43 +89,57 @@ PAGE_PERMISSIONS: dict[str, str] = {
 
 
 def permission_for_page(page: str) -> str | None:
+    permissions = permissions_for_page(page)
+    if not permissions:
+        return None
+    return permissions[0]
+
+
+def permissions_for_page(page: str) -> tuple[str, ...] | None:
     if page.startswith("account:") and ":auth:" in page:
         return None
     if page.startswith("account:") and ":proxy:" in page:
-        return "manage_proxies"
+        return ("manage_proxies",)
     if page.startswith("proxies:"):
-        return "manage_proxies"
+        return ("manage_proxies",)
     if page.startswith("proxy:"):
-        return "manage_proxies"
+        return ("manage_proxies",)
     if page.startswith("tasks:"):
-        return "manage_tasks"
+        return ("manage_tasks",)
     if page.startswith("task:"):
-        return "manage_tasks"
+        return ("manage_tasks",)
     if page.startswith("incidents:"):
-        return "manage_incidents"
+        return ("manage_incidents",)
     if page.startswith("incident:"):
-        return "manage_incidents"
+        return ("manage_incidents",)
+    if page.startswith("reports:chatter"):
+        return ("view_chatter_dashboard", "manage_chatter_team")
+    if page.startswith("reports:va"):
+        return ("upload_content", "manage_tasks", "view_dashboard")
     if page.startswith("reports:"):
-        return "manage_reports"
+        return ("manage_reports",)
     if page.startswith("accounts:"):
-        return "manage_accounts"
+        return ("manage_accounts",)
     if page.startswith("account:"):
-        return "manage_accounts"
+        return ("manage_accounts",)
     if page.startswith("models"):
-        return "view_dashboard"
+        return ("view_dashboard",)
     if page.startswith("model:") and page.endswith(":tasks"):
-        return "manage_tasks"
+        return ("manage_tasks",)
     if page.startswith("model:") and page.endswith(":incidents"):
-        return "manage_incidents"
+        return ("manage_incidents",)
     if page.startswith("model:"):
-        return "view_dashboard"
+        return ("view_dashboard",)
     if page.startswith("users:"):
-        return "manage_users"
+        return ("manage_users",)
     if page.startswith("user:"):
-        return "manage_users"
+        return ("manage_users",)
     if page.startswith("role:") or page == "permissions":
-        return "manage_roles"
-    return PAGE_PERMISSIONS.get(page)
+        return ("manage_roles",)
+    if page.startswith("notification_targets") or page.startswith("notification_target:"):
+        return ("manage_reports", "manage_roles")
+    permission = PAGE_PERMISSIONS.get(page)
+    return (permission,) if permission else None
 
 
 def _perform_admin_action(page: str, session: Session, actor: User) -> str | None:
@@ -339,6 +359,20 @@ def _perform_admin_action(page: str, session: Session, actor: User) -> str | Non
         if action == "remove_permission":
             remove_permission_from_role(session, role, permission_key, actor=actor)
             return f"role:{role.id}"
+    if page == "notification_targets:add":
+        target = create_placeholder_notification_target(session, actor=actor)
+        return f"notification_target:{target.id}"
+    if len(parts) >= 3 and parts[0] == "notification_target" and parts[1].isdigit():
+        target = get_notification_target(session, int(parts[1]))
+        if target is None:
+            return "notification_targets"
+        action = parts[2]
+        if action == "disable":
+            disable_notification_target(session, target, actor=actor)
+            return f"notification_target:{target.id}"
+        if action == "test":
+            test_notification_target(session, target, actor=actor)
+            return f"notification_target:{target.id}"
     return None
 
 
@@ -368,14 +402,22 @@ def screen_for_page(
             )
         return render_main_menu()
 
-    permission = permission_for_page(normalized)
-    if permission is not None:
+    permissions = permissions_for_page(normalized)
+    if permissions is not None:
         try:
             if user is not None:
-                if not user_has_permission(user, permission):
-                    raise PermissionError(f"Missing permission: {permission}")
+                if not any(user_has_permission(user, permission) for permission in permissions):
+                    raise PermissionError(f"Missing one of: {', '.join(permissions)}")
             else:
-                require_permission(principal, permission)
+                last_error: PermissionError | None = None
+                for permission in permissions:
+                    try:
+                        require_permission(principal, permission)
+                        break
+                    except PermissionError as exc:
+                        last_error = exc
+                else:
+                    raise last_error or PermissionError(f"Missing one of: {', '.join(permissions)}")
         except PermissionError:
             if session is not None:
                 audit_action(
@@ -387,7 +429,7 @@ def screen_for_page(
                     status="denied",
                     details={
                         "telegram_id_masked": mask_telegram_id(principal.telegram_id),
-                        "permission": permission,
+                        "permission": "_or_".join(permissions),
                     },
                 )
             else:
@@ -398,7 +440,7 @@ def screen_for_page(
                     resource_id=normalized,
                     details={
                         "telegram_id_masked": mask_telegram_id(principal.telegram_id),
-                        "permission": permission,
+                        "permission": "_or_".join(permissions),
                     },
                 )
             raise
@@ -444,6 +486,8 @@ def screen_for_page(
         or normalized.startswith("users:")
         or normalized.startswith("user:")
         or normalized.startswith("role:")
+        or normalized.startswith("notification_targets")
+        or normalized.startswith("notification_target:")
     ):
         return render_page(normalized, session=session, user=user)
     return render_main_menu()

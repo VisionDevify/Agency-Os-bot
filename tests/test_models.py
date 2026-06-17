@@ -2,13 +2,17 @@ def test_model_tables_are_registered() -> None:
     from app.db.base import Base
     from app.models import (
         Account,
+        AccountabilitySnapshot,
         AuditLog,
         Automation,
         Incident,
         AccountAuthSession,
         AccountVerificationCode,
+        DailyBriefing,
+        EventLog,
         ModelBrand,
         ModelBrandMember,
+        NotificationTarget,
         Proxy,
         ProxyRotationHistory,
         Report,
@@ -21,11 +25,15 @@ def test_model_tables_are_registered() -> None:
         "accounts",
         "account_auth_sessions",
         "account_verification_codes",
+        "accountability_snapshots",
         "audit_logs",
         "automations",
+        "daily_briefings",
+        "event_logs",
         "incidents",
         "model_brand_members",
         "model_brands",
+        "notification_targets",
         "proxies",
         "proxy_rotation_history",
         "reports",
@@ -40,6 +48,10 @@ def test_model_tables_are_registered() -> None:
     assert Role.__tablename__ == "roles"
     assert AuditLog.__tablename__ == "audit_logs"
     assert "status" in AuditLog.__table__.columns
+    assert EventLog.__tablename__ == "event_logs"
+    assert DailyBriefing.__tablename__ == "daily_briefings"
+    assert AccountabilitySnapshot.__tablename__ == "accountability_snapshots"
+    assert NotificationTarget.__tablename__ == "notification_targets"
     assert Account.__tablename__ == "accounts"
     assert AccountAuthSession.__tablename__ == "account_auth_sessions"
     assert AccountVerificationCode.__tablename__ == "account_verification_codes"

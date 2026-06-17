@@ -1,6 +1,6 @@
 # Database Schema
 
-This document describes the current schema as of Sprint 7 and the planned direction. PostgreSQL is the production database, SQLAlchemy owns the models, and Alembic owns migrations.
+This document describes the current schema as of Sprint 8 and the planned direction. PostgreSQL is the production database, SQLAlchemy owns the models, and Alembic owns migrations.
 
 ## Current Tables
 
@@ -116,6 +116,27 @@ Indexes and constraints:
 - `ix_audit_logs_action`.
 - `ix_audit_logs_resource` on `resource_type`, `resource_id`.
 - `ix_audit_logs_created_at`.
+
+### event_logs
+
+Lightweight durable event feed for reports, notifications, automations, self-healing, and future AI operations.
+
+Columns:
+
+- `id`: primary key.
+- `event_type`: stable dotted event type.
+- `actor_user_id`: nullable foreign key to `users.id`.
+- `entity_type`: optional affected resource family.
+- `entity_id`: optional affected resource ID.
+- `metadata_json`: safe non-secret event metadata.
+- `created_at`: timestamp.
+
+Indexes and constraints:
+
+- `ix_event_logs_event_type`.
+- `ix_event_logs_actor_user_id`.
+- `ix_event_logs_entity` on `entity_type`, `entity_id`.
+- `ix_event_logs_created_at`.
 
 ### model_brands
 
@@ -389,6 +410,76 @@ Shared columns:
 
 These tables are intentionally minimal until their modules are implemented.
 
+### daily_briefings
+
+Persistent daily company briefing records generated from current database state.
+
+Columns:
+
+- `id`: primary key.
+- `briefing_date`: date the briefing describes.
+- `generated_by_user_id`: nullable foreign key to `users.id`.
+- `agency_health_score`: 0-100 generated health score.
+- `summary_text`: human-readable summary.
+- `metrics_json`: aggregate metrics, safe only.
+- `recommendations_json`: recommended actions, safe only.
+- `created_at`: timestamp.
+
+Indexes and constraints:
+
+- `ix_daily_briefings_briefing_date`.
+- `ix_daily_briefings_generated_by_user_id`.
+- `ix_daily_briefings_created_at`.
+
+### accountability_snapshots
+
+Per-user accountability report snapshots. These are visibility snapshots, not punitive scoring records.
+
+Columns:
+
+- `id`: primary key.
+- `snapshot_date`: date the snapshot describes.
+- `user_id`: foreign key to `users.id`.
+- `roles_json`: role names at generation time.
+- `assigned_open_tasks`: active assigned task count.
+- `completed_tasks_today`: completed task count for the snapshot date.
+- `overdue_tasks`: overdue assigned task count.
+- `assigned_open_incidents`: active assigned incident count.
+- `resolved_incidents_today`: incidents resolved by the user that day.
+- `last_seen_at`: nullable latest Telegram interaction timestamp.
+- `score`: nullable lightweight visibility score.
+- `created_at`: timestamp.
+
+Indexes and constraints:
+
+- `ix_accountability_snapshots_snapshot_date`.
+- `ix_accountability_snapshots_user_id`.
+- `ix_accountability_snapshots_date_user` on `snapshot_date`, `user_id`.
+- `ix_accountability_snapshots_created_at`.
+
+### notification_targets
+
+Future routing targets for owner, operations, incidents, automation logs, and testing. Telegram chat IDs are encrypted or omitted and never shown raw in Telegram.
+
+Columns:
+
+- `id`: primary key.
+- `name`: operator-facing label.
+- `target_type`: one of `telegram_user`, `telegram_group`, or `telegram_channel`.
+- `telegram_chat_id`: encrypted or null Telegram chat reference.
+- `purpose`: one of `owner`, `operations`, `incidents`, `automation_logs`, or `testing`.
+- `is_active`: active/disabled flag.
+- `created_at`, `updated_at`: timestamps.
+
+Indexes and constraints:
+
+- `ck_notification_targets_target_type`.
+- `ck_notification_targets_purpose`.
+- `ix_notification_targets_name`.
+- `ix_notification_targets_target_type`.
+- `ix_notification_targets_purpose`.
+- `ix_notification_targets_is_active`.
+
 ## Relationships
 
 - A user can have many roles through `user_roles`.
@@ -406,6 +497,9 @@ These tables are intentionally minimal until their modules are implemented.
 - An auth session can have many hashed verification-code submissions through `account_verification_codes.auth_session_id`.
 - An incident can point to a source resource through `source_type` and `source_id`.
 - An audit log may reference an actor user through `actor_user_id`.
+- An event log may reference an actor user through `actor_user_id`.
+- A daily briefing may reference the user who generated it.
+- An accountability snapshot references the user it describes.
 
 ## Status Strategy
 
@@ -469,6 +563,11 @@ Task priority:
 - `high`: elevated priority.
 - `urgent`: immediate attention required.
 
+Notification target state:
+
+- `is_active = true`: eligible for future routing.
+- `is_active = false`: disabled without deleting historical configuration or events.
+
 Soft-delete strategy:
 
 - Users are not deleted during normal admin flows. Use `disabled` or `denied`.
@@ -478,6 +577,8 @@ Soft-delete strategy:
 - Proxy records should use `disabled` instead of hard deletion.
 - Tasks should use `complete` or `archived` instead of hard deletion.
 - Incidents should use `resolved` or `archived` instead of hard deletion.
+- Notification targets should be disabled instead of deleted.
+- Daily briefings, accountability snapshots, event logs, and audit logs are append-style history records.
 - Future business resources should prefer status-based archival before hard deletes.
 
 ## Future Planned Tables
@@ -487,8 +588,8 @@ Soft-delete strategy:
 - `proxy_health_checks`: proxy check results and failure reasons.
 - `task_assignments`: richer task ownership and handoff history if one-assignee tasks become insufficient.
 - `incident_events`: richer incident timeline events if escalation history JSON becomes insufficient.
-- `report_runs`: report generation records.
+- `report_runs`: richer report generation records if daily briefings/accountability snapshots are not enough.
 - `automation_runs`: simulation and live automation run records.
-- `events`: durable operational event stream once multiple consumers need it.
+- `event_deliveries`: notification/event delivery attempts once routing is activated.
 - `repair_attempts`: self-healing attempts and outcomes.
 - `ai_recommendations`: AI operations suggestions, confidence, and operator disposition.
