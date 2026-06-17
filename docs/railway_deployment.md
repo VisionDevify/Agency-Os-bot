@@ -57,12 +57,15 @@ API service variables:
 
 ## API Service
 
-The root `railway.json` is suitable for the API service:
+The root `railway.json` is suitable for shared repo deployments:
 
 - Dockerfile builder.
-- `/health` health check.
 - restart on failure.
 - start command using Railway `PORT`.
+
+The API exposes `/health`. Verify it manually after deployment, or configure an API-only Railway
+healthcheck in the API service settings. Do not put a shared healthcheck in `railway.json`, because
+the bot worker service runs as a polling worker and should not be treated as an HTTP service.
 
 After deployment, verify:
 
