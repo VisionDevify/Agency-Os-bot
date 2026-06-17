@@ -9,6 +9,7 @@ from app.bot.menu import (
     account_list_menu,
     account_model_choice_menu,
     account_platform_menu,
+    account_proxy_choice_menu,
     accounts_menu,
     dashboard_menu,
     main_menu,
@@ -21,6 +22,10 @@ from app.bot.menu import (
     page_menu,
     platform_filter_menu,
     permission_choice_menu,
+    proxies_menu,
+    proxy_account_choice_menu,
+    proxy_detail_menu,
+    proxy_list_menu,
     role_choice_menu,
     role_detail_menu,
     roles_menu,
@@ -32,6 +37,7 @@ from app.models.account import ACCOUNT_PLATFORMS, Account
 from app.models.audit import AuditLog
 from app.models.model_brand import MODEL_BRAND_RELATIONSHIP_TYPES, ModelBrand, ModelBrandMember
 from app.models.permissions import Permission, Role
+from app.models.proxy import Proxy
 from app.models.user import User
 from app.services.auth import DEFAULT_PERMISSION_DESCRIPTIONS
 from app.services.dashboard import DashboardStats, dashboard_stats, placeholder_dashboard_stats
@@ -52,6 +58,16 @@ from app.services.model_brands import (
     summarize_members,
 )
 from app.services.model_health import calculate_model_health
+from app.services.proxies import (
+    accounts_for_proxy,
+    accounts_missing_proxy,
+    affected_models_for_proxy,
+    calculate_proxy_health,
+    infrastructure_stats,
+    list_proxies,
+    recent_proxy_audit_logs,
+    simulation_mode_summary,
+)
 
 
 @dataclass(frozen=True)
@@ -92,7 +108,6 @@ def render_dashboard(stats: DashboardStats | None = None, session: Session | Non
         f"Accounts Needing Login: {current.accounts_needing_login}",
         f"Accounts Needing 2FA: {current.accounts_needing_2fa}",
         f"Critical Accounts: {current.critical_accounts}",
-        f"Healthy Proxies: {current.healthy_proxies}",
         f"Open Tasks: {current.open_tasks}",
         f"Open Incidents: {current.open_incidents}",
         f"Models: {current.models}",
@@ -109,6 +124,32 @@ def render_dashboard(stats: DashboardStats | None = None, session: Session | Non
     lines.extend(f"- {item}" for item in current.recent_model_events[:5])
     if not current.recent_model_events:
         lines.append("- No model events yet")
+    lines.extend(
+        [
+            "",
+            "Infrastructure:",
+            f"Total Proxies: {current.total_proxies}",
+            f"Healthy Proxies: {current.healthy_proxies}",
+            f"Warning Proxies: {current.warning_proxies}",
+            f"Critical Proxies: {current.critical_proxies}",
+            f"Accounts Assigned Proxy: {current.accounts_assigned_proxy}",
+            f"Accounts Missing Proxy: {current.accounts_missing_proxy}",
+            f"Average Health Score: {current.average_proxy_health_score}",
+            "",
+            "Recent Rotations:",
+        ]
+    )
+    lines.extend(f"- {item}" for item in current.recent_proxy_rotations[:5])
+    if not current.recent_proxy_rotations:
+        lines.append("- No rotations yet")
+    lines.extend(["", "Recent Failures:"])
+    lines.extend(f"- {item}" for item in current.recent_proxy_failures[:5])
+    if not current.recent_proxy_failures:
+        lines.append("- No failures yet")
+    lines.extend(["", "Recent Incidents:"])
+    lines.extend(f"- {item}" for item in current.recent_proxy_incidents[:5])
+    if not current.recent_proxy_incidents:
+        lines.append("- No proxy incidents yet")
     text = "\n".join(lines)
     return Screen(text=text, reply_markup=dashboard_menu())
 
@@ -119,6 +160,10 @@ def render_models_home() -> Screen:
 
 def render_accounts_home() -> Screen:
     return Screen(text="Accounts\nSecure account management.", reply_markup=accounts_menu())
+
+
+def render_proxies_home() -> Screen:
+    return Screen(text="Proxy Vault\nInfrastructure intelligence.", reply_markup=proxies_menu())
 
 
 def _account_button(account: Account) -> tuple[str, str]:
@@ -209,13 +254,22 @@ def render_account_detail_page(session: Session, account_id: int) -> Screen:
     account = session.scalar(
         select(Account)
         .where(Account.id == account_id)
-        .options(selectinload(Account.model_brand), selectinload(Account.auth_sessions))
+        .options(
+            selectinload(Account.model_brand),
+            selectinload(Account.auth_sessions),
+            selectinload(Account.assigned_proxy),
+        )
     )
     if account is None:
         return Screen(text="Account not found.", reply_markup=page_menu(back_to="accounts:list"))
     model_name = account.model_brand.display_name if account.model_brand else "Unassigned"
     health = account_health(account)
     last_checked = account.last_checked_at.isoformat() if account.last_checked_at else "Not checked yet"
+    proxy_assignment = (
+        f"{account.assigned_proxy.provider} {account.assigned_proxy.host}:{account.assigned_proxy.port}"
+        if account.assigned_proxy
+        else "Not assigned"
+    )
     lines = [
         "Account Detail",
         "",
@@ -226,11 +280,29 @@ def render_account_detail_page(session: Session, account_id: int) -> Screen:
         f"Status: {account.status}",
         f"Auth Status: {account.auth_status}",
         f"Health: {health.label} {health.score}/100",
-        "Proxy Assignment: Not assigned",
+        f"Proxy Assignment: {proxy_assignment}",
         f"Last Checked: {last_checked}",
         f"Notes: {account.notes or 'None'}",
     ]
     return Screen(text="\n".join(lines), reply_markup=account_detail_menu(account.id))
+
+
+def render_account_proxy_assignment_page(session: Session, account_id: int) -> Screen:
+    account = session.get(Account, account_id)
+    if account is None:
+        return Screen(text="Account not found.", reply_markup=page_menu(back_to="accounts:list"))
+    proxies = list_proxies(session, include_disabled=False)
+    buttons = [
+        (
+            f"{proxy.id}. {proxy.provider} {proxy.host}:{proxy.port}",
+            f"nav:account:{account.id}:proxy:assign:{proxy.id}",
+        )
+        for proxy in proxies
+    ]
+    lines = ["Assign Proxy", "", f"Account: @{account.username}", ""]
+    if not buttons:
+        lines.append("No active proxies available.")
+    return Screen(text="\n".join(lines), reply_markup=account_proxy_choice_menu(account.id, buttons))
 
 
 def render_account_auth_prompt_page(session: Session, account_id: int) -> Screen:
@@ -271,6 +343,187 @@ def render_account_audit_page(session: Session, account_id: int) -> Screen:
         lines.append(f"Action: {log.action} | Status: {log.status}")
         lines.append("")
     return Screen(text="\n".join(lines).strip(), reply_markup=page_menu(back_to=f"account:{account.id}"))
+
+
+def _proxy_button(proxy: Proxy) -> tuple[str, str]:
+    return f"{proxy.id}. {proxy.provider} {proxy.host}:{proxy.port}", f"nav:proxy:{proxy.id}"
+
+
+def render_proxy_list_page(session: Session) -> Screen:
+    proxies = list_proxies(session)
+    lines = ["Proxy Vault", ""]
+    buttons: list[tuple[str, str]] = []
+    if not proxies:
+        lines.append("No proxies yet.")
+    for proxy in proxies[:15]:
+        health = calculate_proxy_health(proxy)
+        lines.append(f"{proxy.id}. {proxy.provider} {proxy.host}:{proxy.port}")
+        lines.append(f"   Status: {proxy.status} | Health: {health.label} {health.score}/100")
+        lines.append(f"   Target: {proxy.target_state or proxy.target_country or 'Not set'}")
+        buttons.append(_proxy_button(proxy))
+    return Screen(text="\n".join(lines), reply_markup=proxy_list_menu(buttons))
+
+
+def render_proxy_detail_page(session: Session, proxy_id: int) -> Screen:
+    proxy = session.scalar(
+        select(Proxy)
+        .where(Proxy.id == proxy_id)
+        .options(selectinload(Proxy.accounts).selectinload(Account.model_brand))
+    )
+    if proxy is None:
+        return Screen(text="Proxy not found.", reply_markup=page_menu(back_to="proxies:list"))
+    health = calculate_proxy_health(proxy)
+    assigned_accounts = accounts_for_proxy(session, proxy)
+    affected_models = affected_models_for_proxy(session, proxy)
+    target_location = ", ".join(
+        item for item in [proxy.target_city, proxy.target_state, proxy.target_country] if item
+    ) or "Not set"
+    detected_location = ", ".join(
+        item for item in [proxy.detected_city, proxy.detected_state, proxy.detected_country] if item
+    ) or "Not checked yet"
+    lines = [
+        "Proxy Detail",
+        "",
+        f"Provider: {proxy.provider}",
+        f"Host: {proxy.host}:{proxy.port}",
+        f"Status: {proxy.status}",
+        f"Health: {health.label} {health.score}/100",
+        f"Current Session: {proxy.session_suffix}",
+        f"Previous Session: {proxy.previous_session_suffix or 'None'}",
+        f"Rotation Count: {proxy.rotation_count}",
+        f"Generated Username: {proxy.generated_username}",
+        "Password: encrypted and hidden",
+        f"Target Location: {target_location}",
+        f"Detected Location: {detected_location}",
+        f"Last Health Check: {proxy.last_health_check.isoformat() if proxy.last_health_check else 'Not checked yet'}",
+        f"Last Rotation: {proxy.last_rotation.isoformat() if proxy.last_rotation else 'Never'}",
+        f"Last Successful Rotation: {proxy.last_successful_rotation.isoformat() if proxy.last_successful_rotation else 'Never'}",
+        f"Accounts Using Proxy: {len(assigned_accounts)}",
+        f"Accounts Missing Proxy: {len(accounts_missing_proxy(session))}",
+        f"Models Affected: {len(affected_models)}",
+    ]
+    if health.reasons:
+        lines.extend(["", "Health Reasons:"])
+        lines.extend(f"- {reason}" for reason in health.reasons)
+    return Screen(text="\n".join(lines), reply_markup=proxy_detail_menu(proxy.id))
+
+
+def render_proxy_assigned_accounts_page(session: Session, proxy_id: int) -> Screen:
+    proxy = session.get(Proxy, proxy_id)
+    if proxy is None:
+        return Screen(text="Proxy not found.", reply_markup=page_menu(back_to="proxies:list"))
+    accounts = accounts_for_proxy(session, proxy)
+    return render_account_list_page(
+        session,
+        accounts=accounts,
+        title=f"Accounts Using Proxy {proxy.id}",
+        back_to=f"proxy:{proxy.id}",
+    )
+
+
+def render_proxy_assign_account_page(session: Session, proxy_id: int) -> Screen:
+    proxy = session.get(Proxy, proxy_id)
+    if proxy is None:
+        return Screen(text="Proxy not found.", reply_markup=page_menu(back_to="proxies:list"))
+    buttons = [
+        (
+            f"{account.id}. @{account.username}",
+            f"nav:proxy:{proxy.id}:assign:{account.id}",
+        )
+        for account in accounts_missing_proxy(session)
+    ]
+    lines = ["Assign Account to Proxy", "", f"Proxy: {proxy.provider} {proxy.host}:{proxy.port}", ""]
+    if not buttons:
+        lines.append("No accounts are missing proxies.")
+    return Screen(text="\n".join(lines), reply_markup=proxy_account_choice_menu(proxy.id, buttons, "assign"))
+
+
+def render_proxy_remove_account_page(session: Session, proxy_id: int) -> Screen:
+    proxy = session.get(Proxy, proxy_id)
+    if proxy is None:
+        return Screen(text="Proxy not found.", reply_markup=page_menu(back_to="proxies:list"))
+    buttons = [
+        (
+            f"{account.id}. @{account.username}",
+            f"nav:proxy:{proxy.id}:remove:{account.id}",
+        )
+        for account in accounts_for_proxy(session, proxy)
+    ]
+    lines = ["Remove Account from Proxy", "", f"Proxy: {proxy.provider} {proxy.host}:{proxy.port}", ""]
+    if not buttons:
+        lines.append("No accounts are assigned to this proxy.")
+    return Screen(text="\n".join(lines), reply_markup=proxy_account_choice_menu(proxy.id, buttons, "remove"))
+
+
+def render_accounts_missing_proxy_page(session: Session) -> Screen:
+    return render_account_list_page(
+        session,
+        accounts=accounts_missing_proxy(session),
+        title="Accounts Missing Proxy",
+        back_to="proxies",
+    )
+
+
+def render_proxy_simulation_page(session: Session) -> Screen:
+    summary = simulation_mode_summary(session)
+    lines = [
+        "Simulation Mode",
+        "",
+        "Yesterday:",
+        f"Would Rotate: {summary.would_rotate} Proxies",
+        f"Would Repair: {summary.would_repair} Proxies",
+        f"Would Fail: {summary.would_fail} Proxies",
+        "",
+        "No changes applied.",
+        "Owner approval is required before automatic repair activation.",
+    ]
+    return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="proxies"))
+
+
+def render_infrastructure_dashboard_page(session: Session) -> Screen:
+    stats = infrastructure_stats(session)
+    lines = [
+        "Infrastructure Dashboard",
+        "",
+        f"Total Proxies: {stats.total_proxies}",
+        f"Healthy: {stats.healthy_proxies}",
+        f"Warning: {stats.warning_proxies}",
+        f"Critical: {stats.critical_proxies}",
+        f"Disabled: {stats.disabled_proxies}",
+        f"Accounts Assigned: {stats.accounts_assigned_proxy}",
+        f"Accounts Missing Proxy: {stats.accounts_missing_proxy}",
+        f"Average Health Score: {stats.average_health_score}",
+        "",
+        "Recent Rotations:",
+    ]
+    lines.extend(f"- {item}" for item in stats.recent_rotations[:5])
+    if not stats.recent_rotations:
+        lines.append("- No rotations yet")
+    lines.extend(["", "Recent Failures:"])
+    lines.extend(f"- {item}" for item in stats.recent_failures[:5])
+    if not stats.recent_failures:
+        lines.append("- No failures yet")
+    lines.extend(["", "Recent Incidents:"])
+    lines.extend(f"- {item}" for item in stats.recent_incidents[:5])
+    if not stats.recent_incidents:
+        lines.append("- No proxy incidents yet")
+    return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="proxies"))
+
+
+def render_proxy_audit_page(session: Session, proxy_id: int) -> Screen:
+    proxy = session.get(Proxy, proxy_id)
+    if proxy is None:
+        return Screen(text="Proxy not found.", reply_markup=page_menu(back_to="proxies:list"))
+    logs = recent_proxy_audit_logs(session, proxy)
+    lines = ["Proxy Audit History", "", f"Proxy: {proxy.provider} {proxy.host}:{proxy.port}", ""]
+    if not logs:
+        lines.append("No proxy audit events yet.")
+    for log in logs:
+        timestamp = log.created_at.isoformat() if log.created_at else "pending timestamp"
+        lines.append(f"{timestamp}")
+        lines.append(f"Action: {log.action} | Status: {log.status}")
+        lines.append("")
+    return Screen(text="\n".join(lines).strip(), reply_markup=page_menu(back_to=f"proxy:{proxy.id}"))
 
 
 def _model_identity(model_brand: ModelBrand) -> str:
@@ -690,6 +943,31 @@ def render_denied() -> Screen:
 
 
 def render_page(page: str, session: Session | None = None) -> Screen:
+    if page == "proxies":
+        return render_proxies_home()
+    if page == "proxies:list" and session is not None:
+        return render_proxy_list_page(session)
+    if page == "proxies:missing" and session is not None:
+        return render_accounts_missing_proxy_page(session)
+    if page == "proxies:simulation" and session is not None:
+        return render_proxy_simulation_page(session)
+    if page == "proxies:dashboard" and session is not None:
+        return render_infrastructure_dashboard_page(session)
+    if page.startswith("proxy:") and session is not None:
+        parts = page.split(":")
+        if len(parts) >= 2 and parts[1].isdigit():
+            proxy_id = int(parts[1])
+            if len(parts) == 2:
+                return render_proxy_detail_page(session, proxy_id)
+            if parts[2] == "assign":
+                return render_proxy_assign_account_page(session, proxy_id)
+            if parts[2] == "remove":
+                return render_proxy_remove_account_page(session, proxy_id)
+            if parts[2] == "accounts":
+                return render_proxy_assigned_accounts_page(session, proxy_id)
+            if parts[2] == "audit":
+                return render_proxy_audit_page(session, proxy_id)
+            return render_proxy_detail_page(session, proxy_id)
     if page == "accounts":
         return render_accounts_home()
     if page == "accounts:list" and session is not None:
@@ -743,6 +1021,8 @@ def render_page(page: str, session: Session | None = None) -> Screen:
                 return render_account_audit_page(session, account_id)
             if parts[2] == "auth" and len(parts) >= 4 and parts[3] == "enter":
                 return render_account_auth_prompt_page(session, account_id)
+            if parts[2] == "proxy" and len(parts) >= 4 and parts[3] == "assign":
+                return render_account_proxy_assignment_page(session, account_id)
             return render_account_detail_page(session, account_id)
     if page == "models":
         return render_models_home()

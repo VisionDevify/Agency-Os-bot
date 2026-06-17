@@ -1,8 +1,10 @@
 from app.models.account import Account, AccountAuthSession, AccountVerificationCode
 from app.models.audit import AuditLog
-from app.models.core import Automation, Incident, Proxy, Report, Task
+from app.models.core import Automation, Report, Task
+from app.models.incident import Incident
 from app.models.model_brand import ModelBrand, ModelBrandMember
 from app.models.permissions import Permission, Role, RolePermission, UserRole
+from app.models.proxy import Proxy, ProxyRotationHistory
 from app.models.user import User
 
 __all__ = [
@@ -16,6 +18,7 @@ __all__ = [
     "ModelBrandMember",
     "Permission",
     "Proxy",
+    "ProxyRotationHistory",
     "Report",
     "Role",
     "RolePermission",

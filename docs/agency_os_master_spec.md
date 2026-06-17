@@ -14,10 +14,10 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Sprint 2.5/3: foundation hardening, living architecture docs, stricter audit naming, masked audit metadata, pending-user queue, user admin workflows, role assignment/removal, role permission editing, owner protection checks, and expanded tests.
 - Sprint 4: Models/Brands command center, team assignments, model health scoring, model-specific audit history, dashboard model metrics, and lightweight model event emission.
 - Sprint 5: Accounts foundation attached to Models/Brands, account status/auth tracking, secure auth-session records, hashed 2FA submission flow, account health, dashboard account metrics, and account audit history.
+- Sprint 6: Infrastructure intelligence layer with Proxy Vault, encrypted proxy passwords, session rotation/rollback, proxy health scoring, account proxy assignment, location verification, proxy incidents, simulation mode, and self-healing V1.
 
 ## Roadmap
 
-- Sprint 6: Proxy Vault and health-check model.
 - Sprint 7: Task and Incident operations workflows.
 - Sprint 8: Reports, metrics, and notification routing.
 - Sprint 9: Automations with simulation mode as the default safety posture.
@@ -33,9 +33,9 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Permissions: named capability flags checked by services and Telegram navigation.
 - Audit Logs: append-only safety trail for important actions and denied attempts.
 - Accounts: Model/Brand-attached account inventory for Instagram, X, OnlyFans, Email, and Other, including auth-state tracking, credential references, short-lived auth sessions, and hashed verification-code submissions.
-- Proxies: placeholder resource model and session-string rotation placeholder.
+- Proxies: encrypted Proxy Vault with account assignment, session suffix rotation, rollback, health scoring, location verification, simulation, and repair workflows.
 - Tasks: placeholder resource model for future work queues.
-- Incidents: placeholder resource model for future incident handling and repair tracking.
+- Incidents: source-linked incident records used first by proxy repair/location workflows.
 - Reports: placeholder resource model for future operational reports.
 - Automations: placeholder resource model with simulation-mode placeholder.
 - Settings: administrative utilities including audit log access.
@@ -94,6 +94,8 @@ Model/Brand assignment changes require `manage_users` or `manage_accounts`. Mode
 - Account credential values are never stored directly; account records may only keep credential references.
 - Plaintext passwords and plaintext 2FA codes must never be stored, logged, audited, or shown in Telegram.
 - Verification codes are hashed immediately, expire quickly, and the bot should try to delete Telegram messages that contain submitted codes.
+- Proxy passwords are encrypted at rest and never shown in Telegram, events, audits, or logs.
+- Proxy session suffixes may be shown because they are operational identity controls, but raw provider passwords and credentials must remain hidden.
 - Future real platform connections should prefer official APIs or OAuth where available.
 - Destructive repo or database cleanup requires explicit confirmation.
 
@@ -130,6 +132,17 @@ Important actions should use stable event-style names, such as:
 - `account.auth_session.failed`
 - `account.auth_session.expired`
 - `account.auth_status.changed`
+- `proxy.created`
+- `proxy.assigned`
+- `proxy.unassigned`
+- `proxy.health.changed`
+- `proxy.rotation.started`
+- `proxy.rotation.succeeded`
+- `proxy.rotation.failed`
+- `proxy.location.mismatch`
+- `proxy.incident.created`
+- `proxy.repair.succeeded`
+- `proxy.repair.failed`
 - `access.denied`
 - `owner.protection_triggered`
 
@@ -148,7 +161,7 @@ Telegram is the operator console, so navigation should be calm and predictable:
 
 - Models/Brands: model and brand profiles, ownership, account grouping, and operating rules.
 - Accounts: account inventory, Model/Brand attachment, status, auth status, credential references, secure auth-session handling, and hashed verification-code workflows.
-- Proxy Vault: proxy records, health checks, rotation events, and credential-safe storage.
+- Proxy Vault: proxy records, encrypted passwords, health checks, rotation events, account assignment, and repair workflows.
 - Tasks: assigned work, status movement, approvals, and SLA signals.
 - Incidents: incident creation, triage, severity, ownership, and resolution.
 - Reports: operational summaries, audit summaries, health metrics, and exportable views.
@@ -219,6 +232,39 @@ The Telegram account workflow supports viewing accounts, adding an account to a 
 
 Account health currently considers disabled or archived state, auth state, critical/warning flags, and missing Model/Brand attachment. Proxy health is intentionally a future hook.
 
+## Infrastructure Intelligence Layer
+
+Sprint 6 introduces the first active maintenance subsystem.
+
+Proxy Vault records store:
+
+- provider, host, port, base username, generated username, and current session suffix
+- encrypted password only, never plaintext
+- target and detected location
+- health score, status, latency, test counters, mismatch counters, and rotation counters
+- last health check, last rotation, and last successful rotation timestamps
+
+Session identity is driven by `session_suffix`. Changing any character creates a new provider session identity. Rotation stores current and previous sessions and appends `proxy_rotation_history` records. Rollback swaps back to the previous session when available.
+
+Location verification compares detected country, state, and optional city against the target. If location does not match, the service can rotate again until a match or max attempts is reached. Mismatches emit safe events and can create proxy incidents.
+
+Proxy health score is currently deterministic and based on:
+
+- success/failure rate
+- latency
+- location mismatches
+- rotation success/failure rate
+- disabled state
+
+Self-Healing V1 follows the Agency OS safety pattern:
+
+- Preview
+- Simulate
+- Approve
+- Execute
+
+The current repair workflow can rotate and retest a failing proxy, close open proxy incidents when repaired, or create a critical incident when repair fails. Automatic repair activation remains gated by owner approval; simulation mode shows what would rotate, repair, and fail without applying changes.
+
 ## Foundation Hardening Review
 
 GREEN:
@@ -230,6 +276,8 @@ GREEN:
 - Core auth tables use unique constraints and join-table uniqueness to prevent duplicate memberships.
 - Audit logging exists for admin actions and denied access attempts.
 - Account auth flow stores verification-code hashes only and uses safe audit metadata.
+- Proxy Vault encrypts proxy passwords and keeps Telegram/audit views credential-safe.
+- Infrastructure dashboard now summarizes proxy health, assignment, rotations, failures, incidents, and average health score.
 
 YELLOW:
 
@@ -241,9 +289,11 @@ YELLOW:
 - Role removal choices now show only assigned roles.
 - User status now has a database check constraint.
 - Accounts graduated from placeholder resources to Model/Brand-attached records with platform, account status, auth status, and health constraints.
+- Proxies and incidents graduated from placeholder resources to domain tables while preserving legacy placeholder columns for migration safety.
 
 RED:
 
 - The original `users.role_id` column exists in the earliest migration but is not used by the current model. It should be removed in a future cleanup migration only after explicit approval because it is a schema deletion.
 - The audit log is still the only event sink. A dedicated event table or queue should wait until real automation/reporting consumers exist.
-- Proxy, task, incident, report, and automation placeholder tables are intentionally thin. Their domain-specific constraints should be added when each module is built.
+- Task, report, and automation placeholder tables are intentionally thin. Their domain-specific constraints should be added when each module is built.
+- Proxy health tests are simulated service results until a real provider/network adapter is introduced.

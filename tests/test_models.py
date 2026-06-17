@@ -10,6 +10,7 @@ def test_model_tables_are_registered() -> None:
         ModelBrand,
         ModelBrandMember,
         Proxy,
+        ProxyRotationHistory,
         Report,
         Role,
         Task,
@@ -26,6 +27,7 @@ def test_model_tables_are_registered() -> None:
         "model_brand_members",
         "model_brands",
         "proxies",
+        "proxy_rotation_history",
         "reports",
         "roles",
         "tasks",
@@ -43,8 +45,12 @@ def test_model_tables_are_registered() -> None:
     assert AccountVerificationCode.__tablename__ == "account_verification_codes"
     assert "auth_status" in Account.__table__.columns
     assert Proxy.__tablename__ == "proxies"
+    assert ProxyRotationHistory.__tablename__ == "proxy_rotation_history"
+    assert "encrypted_password" in Proxy.__table__.columns
+    assert "assigned_proxy_id" in Account.__table__.columns
     assert Task.__tablename__ == "tasks"
     assert Incident.__tablename__ == "incidents"
+    assert "title" in Incident.__table__.columns
     assert ModelBrand.__tablename__ == "model_brands"
     assert ModelBrandMember.__tablename__ == "model_brand_members"
     assert Report.__tablename__ == "reports"

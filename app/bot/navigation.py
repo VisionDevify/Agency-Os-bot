@@ -36,6 +36,17 @@ from app.services.model_brands import (
     remove_model_member,
     update_model_brand,
 )
+from app.services.proxies import (
+    ProxyTestResult,
+    assign_proxy_to_account,
+    create_default_proxy,
+    get_proxy,
+    remove_proxy_from_account,
+    repair_proxy,
+    rollback_session,
+    rotate_session,
+    verify_location_with_rotation,
+)
 from app.services.permissions import PermissionPrincipal, require_permission
 
 PAGE_PERMISSIONS: dict[str, str] = {
@@ -57,6 +68,12 @@ PAGE_PERMISSIONS: dict[str, str] = {
 def permission_for_page(page: str) -> str | None:
     if page.startswith("account:") and ":auth:" in page:
         return None
+    if page.startswith("account:") and ":proxy:" in page:
+        return "manage_proxies"
+    if page.startswith("proxies:"):
+        return "manage_proxies"
+    if page.startswith("proxy:"):
+        return "manage_proxies"
     if page.startswith("accounts:"):
         return "manage_accounts"
     if page.startswith("account:"):
@@ -76,6 +93,64 @@ def permission_for_page(page: str) -> str | None:
 
 def _perform_admin_action(page: str, session: Session, actor: User) -> str | None:
     parts = page.split(":")
+    if page == "proxies:create":
+        proxy = create_default_proxy(session, actor=actor)
+        return f"proxy:{proxy.id}"
+    if len(parts) >= 3 and parts[0] == "proxy" and parts[1].isdigit():
+        proxy = get_proxy(session, int(parts[1]))
+        if proxy is None:
+            return "proxies:list"
+        action = parts[2]
+        if action == "rotate":
+            rotate_session(session, proxy, actor=actor)
+            return f"proxy:{proxy.id}"
+        if action == "rollback":
+            try:
+                rollback_session(session, proxy, actor=actor)
+            except ValueError:
+                pass
+            return f"proxy:{proxy.id}"
+        if action == "verify":
+            verify_location_with_rotation(
+                session,
+                proxy,
+                actor=actor,
+                attempts=[
+                    ProxyTestResult(
+                        success=True,
+                        latency_ms=250,
+                        detected_country=proxy.target_country,
+                        detected_state=proxy.target_state,
+                        detected_city=proxy.target_city,
+                    )
+                ],
+            )
+            return f"proxy:{proxy.id}"
+        if action == "repair":
+            repair_proxy(
+                session,
+                proxy,
+                actor=actor,
+                initial_result=ProxyTestResult(success=False, latency_ms=0, failure_reason="telegram_test_failed"),
+                repair_result=ProxyTestResult(
+                    success=True,
+                    latency_ms=240,
+                    detected_country=proxy.target_country,
+                    detected_state=proxy.target_state,
+                    detected_city=proxy.target_city,
+                ),
+            )
+            return f"proxy:{proxy.id}"
+        if action == "assign" and len(parts) >= 4 and parts[3].isdigit():
+            account = get_account(session, int(parts[3]))
+            if account is not None:
+                assign_proxy_to_account(session, proxy, account, actor=actor)
+            return f"proxy:{proxy.id}"
+        if action == "remove" and len(parts) >= 4 and parts[3].isdigit():
+            account = get_account(session, int(parts[3]))
+            if account is not None:
+                remove_proxy_from_account(session, account, actor=actor)
+            return f"proxy:{proxy.id}"
     if len(parts) >= 3 and parts[0] == "account" and parts[1].isdigit():
         account = get_account(session, int(parts[1]))
         if account is None:
@@ -98,6 +173,16 @@ def _perform_admin_action(page: str, session: Session, actor: User) -> str | Non
                 return f"account:{account.id}"
             if auth_action == "needs_login":
                 update_account(session, account, actor=actor, auth_status="needs_login")
+                return f"account:{account.id}"
+        if action == "proxy" and len(parts) >= 4:
+            proxy_action = parts[3]
+            if proxy_action == "assign" and len(parts) >= 5 and parts[4].isdigit():
+                proxy = get_proxy(session, int(parts[4]))
+                if proxy is not None:
+                    assign_proxy_to_account(session, proxy, account, actor=actor)
+                return f"account:{account.id}"
+            if proxy_action == "remove":
+                remove_proxy_from_account(session, account, actor=actor)
                 return f"account:{account.id}"
         if action == "disable":
             update_account(session, account, actor=actor, status="disabled")

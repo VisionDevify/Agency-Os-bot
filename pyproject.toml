@@ -7,6 +7,7 @@ dependencies = [
     "aiogram>=3.7,<4",
     "alembic>=1.13,<2",
     "asyncpg>=0.29,<1",
+    "cryptography>=42,<49",
     "fastapi>=0.111,<1",
     "psycopg[binary]>=3.2,<4",
     "pydantic-settings>=2.3,<3",

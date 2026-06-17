@@ -1,6 +1,6 @@
 # Database Schema
 
-This document describes the current schema as of Sprint 5 and the planned direction. PostgreSQL is the production database, SQLAlchemy owns the models, and Alembic owns migrations.
+This document describes the current schema as of Sprint 6 and the planned direction. PostgreSQL is the production database, SQLAlchemy owns the models, and Alembic owns migrations.
 
 ## Current Tables
 
@@ -235,7 +235,101 @@ Indexes and constraints:
 - `ix_account_verification_codes_auth_session_id`.
 - `ix_account_verification_codes_expires_at`.
 
-### proxies, tasks, incidents, reports, automations
+### proxies
+
+Encrypted proxy inventory and health state. The table retains legacy `name` and `metadata_json` columns from the placeholder resource migration for compatibility.
+
+Columns:
+
+- `id`: primary key.
+- `name`: nullable legacy display name.
+- `metadata_json`: safe non-secret metadata.
+- `provider`: proxy provider label.
+- `host`: proxy host.
+- `port`: proxy port.
+- `base_username`: provider username base.
+- `session_suffix`: current session identity suffix.
+- `previous_session_suffix`: rollback session suffix.
+- `encrypted_password`: encrypted proxy password; never shown in Telegram or audits.
+- `generated_username`: base username plus current session suffix.
+- `status`: one of `healthy`, `warning`, `critical`, or `disabled`.
+- `health_score`: 0-100 health score.
+- `target_country`, `target_state`, `target_city`: desired location.
+- `detected_country`, `detected_state`, `detected_city`: latest detected location.
+- `last_health_check`: latest proxy check timestamp.
+- `last_rotation`: latest rotation attempt timestamp.
+- `last_successful_rotation`: latest successful rotation timestamp.
+- `rotation_count`: total rotation attempts.
+- `success_count`, `failure_count`: connection-test counters.
+- `connection_test_count`: total connection tests.
+- `location_mismatch_count`: target/detected mismatch counter.
+- `rotation_success_count`, `rotation_failure_count`: rotation outcome counters.
+- `latency_ms`: latest test latency.
+- `created_at`, `updated_at`: timestamps.
+
+Indexes and constraints:
+
+- `ck_proxies_status`.
+- `ck_proxies_health_score`.
+- `ck_proxies_port`.
+- `ix_proxies_provider`.
+- `ix_proxies_status`.
+- `ix_proxies_health_score`.
+- `ix_proxies_target_location`.
+
+### proxy_rotation_history
+
+Append-style proxy rotation records used for rotation history and rollback context.
+
+Columns:
+
+- `id`: primary key.
+- `proxy_id`: foreign key to `proxies.id`, cascade delete.
+- `previous_session_suffix`: previous session suffix.
+- `new_session_suffix`: generated session suffix.
+- `status`: one of `started`, `succeeded`, `failed`, or `rolled_back`.
+- `detected_country`, `detected_state`, `detected_city`: location detected during rotation.
+- `latency_ms`: observed latency.
+- `failure_reason`: safe failure reason.
+- `created_by_user_id`: nullable foreign key to `users.id`.
+- `created_at`: timestamp.
+
+Indexes and constraints:
+
+- `ck_proxy_rotation_history_status`.
+- `ix_proxy_rotation_history_proxy_id`.
+- `ix_proxy_rotation_history_status`.
+- `ix_proxy_rotation_history_created_at`.
+
+### incidents
+
+Incident records used first for proxy repair, location mismatch, and repeated failure workflows. The table retains legacy `name` and `metadata_json` columns for compatibility.
+
+Columns:
+
+- `id`: primary key.
+- `name`: nullable legacy display name.
+- `title`: required incident title.
+- `status`: one of `open`, `in_progress`, `resolved`, or `closed`.
+- `severity`: one of `low`, `medium`, `high`, or `critical`.
+- `source_type`: optional source family, such as `proxy`.
+- `source_id`: optional source resource ID.
+- `assigned_user_id`: nullable foreign key to `users.id`.
+- `resolution_notes`: optional safe resolution note.
+- `resolved_at`: nullable resolution timestamp.
+- `metadata_json`: safe non-secret metadata.
+- `created_at`, `updated_at`: timestamps.
+
+Indexes and constraints:
+
+- `ck_incidents_status`.
+- `ck_incidents_severity`.
+- `ix_incidents_status`.
+- `ix_incidents_severity`.
+- `ix_incidents_source`.
+- `ix_incidents_assigned_user_id`.
+
+### tasks, reports, automations
 
 Current placeholder resource tables.
 
@@ -258,8 +352,11 @@ These tables are intentionally minimal until their modules are implemented.
 - A model/brand can have many assigned users through `model_brand_members`.
 - A user can be assigned to many model/brands through `model_brand_members`.
 - A model/brand can have many accounts through `accounts.model_brand_id`.
+- A proxy can have many accounts through `accounts.assigned_proxy_id`.
+- A proxy can have many rotation history rows through `proxy_rotation_history.proxy_id`.
 - An account can have many auth sessions through `account_auth_sessions.account_id`.
 - An auth session can have many hashed verification-code submissions through `account_verification_codes.auth_session_id`.
+- An incident can point to a source resource through `source_type` and `source_id`.
 - An audit log may reference an actor user through `actor_user_id`.
 
 ## Status Strategy
@@ -295,12 +392,28 @@ Account auth status:
 - `expired`: auth/session state expired.
 - `locked`: platform-side lockout or equivalent operator intervention required.
 
+Proxy status:
+
+- `healthy`: proxy is operating normally.
+- `warning`: proxy needs attention but remains usable.
+- `critical`: proxy is failing, mismatched, or otherwise high risk.
+- `disabled`: proxy is intentionally blocked.
+
+Incident status:
+
+- `open`: active incident requiring attention.
+- `in_progress`: incident is being worked.
+- `resolved`: incident has been repaired with notes/history retained.
+- `closed`: incident is administratively closed.
+
 Soft-delete strategy:
 
 - Users are not deleted during normal admin flows. Use `disabled` or `denied`.
 - Roles and permissions should not be deleted casually because they affect audit interpretation and historical access context.
 - Model/Brand records should use `disabled` or `archived` instead of hard deletion.
 - Account records should use `disabled` or `archived` instead of hard deletion.
+- Proxy records should use `disabled` instead of hard deletion.
+- Incidents should use `resolved` or `closed` instead of hard deletion.
 - Future business resources should prefer status-based archival before hard deletes.
 
 ## Future Planned Tables

@@ -137,10 +137,67 @@ def account_detail_menu(account_id: int) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="Disable Account", callback_data=f"nav:account:{account_id}:disable"),
                 InlineKeyboardButton(text="Archive Account", callback_data=f"nav:account:{account_id}:archive"),
             ],
+            [
+                InlineKeyboardButton(text="Assign Proxy", callback_data=f"nav:account:{account_id}:proxy:assign"),
+                InlineKeyboardButton(text="Remove Proxy", callback_data=f"nav:account:{account_id}:proxy:remove"),
+            ],
             [InlineKeyboardButton(text="View Audit History", callback_data=f"nav:account:{account_id}:audit")],
             *page_controls(back_to="accounts:list"),
         ]
     )
+
+
+def proxies_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="View Proxies", callback_data=callback_for("proxies:list"))],
+            [InlineKeyboardButton(text="Create Proxy", callback_data=callback_for("proxies:create"))],
+            [InlineKeyboardButton(text="Accounts Missing Proxy", callback_data=callback_for("proxies:missing"))],
+            [InlineKeyboardButton(text="Simulation Mode", callback_data=callback_for("proxies:simulation"))],
+            [InlineKeyboardButton(text="Infrastructure Dashboard", callback_data=callback_for("proxies:dashboard"))],
+            *page_controls(back_to="menu"),
+        ]
+    )
+
+
+def proxy_list_menu(proxy_buttons: list[tuple[str, str]], *, back_to: str = "proxies") -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in proxy_buttons]
+    rows.extend(page_controls(back_to=back_to))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def proxy_detail_menu(proxy_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Assign Account", callback_data=f"nav:proxy:{proxy_id}:assign"),
+                InlineKeyboardButton(text="Remove Account", callback_data=f"nav:proxy:{proxy_id}:remove"),
+            ],
+            [InlineKeyboardButton(text="View Assigned Accounts", callback_data=f"nav:proxy:{proxy_id}:accounts")],
+            [
+                InlineKeyboardButton(text="Rotate Session", callback_data=f"nav:proxy:{proxy_id}:rotate"),
+                InlineKeyboardButton(text="Rollback Session", callback_data=f"nav:proxy:{proxy_id}:rollback"),
+            ],
+            [
+                InlineKeyboardButton(text="Verify Location", callback_data=f"nav:proxy:{proxy_id}:verify"),
+                InlineKeyboardButton(text="Repair/Test", callback_data=f"nav:proxy:{proxy_id}:repair"),
+            ],
+            [InlineKeyboardButton(text="Audit History", callback_data=f"nav:proxy:{proxy_id}:audit")],
+            *page_controls(back_to="proxies:list"),
+        ]
+    )
+
+
+def proxy_account_choice_menu(proxy_id: int, account_buttons: list[tuple[str, str]], action: str) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in account_buttons]
+    rows.extend(page_controls(back_to=f"proxy:{proxy_id}"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def account_proxy_choice_menu(account_id: int, proxy_buttons: list[tuple[str, str]]) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in proxy_buttons]
+    rows.extend(page_controls(back_to=f"account:{account_id}"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def models_menu() -> InlineKeyboardMarkup:

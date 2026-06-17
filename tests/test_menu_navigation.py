@@ -15,6 +15,7 @@ from app.services.auth import (
 )
 from app.services.model_brands import create_model_brand
 from app.services.permissions import PermissionPrincipal, RoleName
+from app.services.proxies import create_proxy
 from tests.utils import session_scope
 
 
@@ -123,6 +124,15 @@ def test_dynamic_admin_callbacks_do_not_crash() -> None:
             username="callback",
             actor=owner,
         )
+        proxy = create_proxy(
+            session,
+            actor=owner,
+            provider="provider",
+            host="proxy.local",
+            port=8010,
+            base_username="base",
+            password="secret",
+        )
         principal = PermissionPrincipal(telegram_id=owner.telegram_id, is_owner=True, role=RoleName.OWNER)
 
         pages = [
@@ -139,9 +149,20 @@ def test_dynamic_admin_callbacks_do_not_crash() -> None:
             "accounts:attention",
             f"account:{account.id}",
             f"account:{account.id}:audit",
+            f"account:{account.id}:proxy:assign",
             "models",
             "models:list",
             "models:dashboard",
+            "proxies",
+            "proxies:list",
+            "proxies:missing",
+            "proxies:simulation",
+            "proxies:dashboard",
+            f"proxy:{proxy.id}",
+            f"proxy:{proxy.id}:accounts",
+            f"proxy:{proxy.id}:assign",
+            f"proxy:{proxy.id}:remove",
+            f"proxy:{proxy.id}:audit",
             "users",
             "users:pending",
             f"user:{user.id}",

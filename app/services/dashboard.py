@@ -5,10 +5,12 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.models.account import Account
 from app.models.audit import AuditLog
+from app.models.incident import Incident
 from app.models.model_brand import ModelBrand, ModelBrandMember
 from app.models.user import User
 from app.services.account_health import ACCOUNT_HEALTH_CRITICAL, calculate_account_health
 from app.services.model_health import HEALTH_CRITICAL, HEALTH_HEALTHY, HEALTH_WARNING, calculate_model_health
+from app.services.proxies import infrastructure_stats
 
 
 @dataclass(frozen=True)
@@ -23,6 +25,15 @@ class DashboardStats:
     accounts_needing_2fa: int = 0
     critical_accounts: int = 0
     healthy_proxies: int = 0
+    warning_proxies: int = 0
+    critical_proxies: int = 0
+    total_proxies: int = 0
+    accounts_assigned_proxy: int = 0
+    accounts_missing_proxy: int = 0
+    recent_proxy_rotations: tuple[str, ...] = ()
+    recent_proxy_failures: tuple[str, ...] = ()
+    recent_proxy_incidents: tuple[str, ...] = ()
+    average_proxy_health_score: int = 0
     open_tasks: int = 0
     open_incidents: int = 0
     models: int = 0
@@ -45,6 +56,12 @@ def placeholder_dashboard_stats() -> DashboardStats:
         accounts_needing_2fa=0,
         critical_accounts=0,
         healthy_proxies=0,
+        warning_proxies=0,
+        critical_proxies=0,
+        total_proxies=0,
+        accounts_assigned_proxy=0,
+        accounts_missing_proxy=0,
+        average_proxy_health_score=0,
         open_tasks=0,
         open_incidents=0,
         models=0,
@@ -126,6 +143,11 @@ def dashboard_stats(session: Session) -> DashboardStats:
     critical_accounts = sum(
         1 for account in accounts if calculate_account_health(account).status == ACCOUNT_HEALTH_CRITICAL
     )
+    infrastructure = infrastructure_stats(session)
+    open_incidents = (
+        session.scalar(select(func.count(Incident.id)).where(Incident.status.in_(("open", "in_progress"))))
+        or 0
+    )
 
     return DashboardStats(
         total_users=total_users,
@@ -137,9 +159,18 @@ def dashboard_stats(session: Session) -> DashboardStats:
         accounts_needing_login=sum(1 for account in accounts if account.auth_status == "needs_login"),
         accounts_needing_2fa=sum(1 for account in accounts if account.auth_status == "needs_2fa"),
         critical_accounts=critical_accounts,
-        healthy_proxies=0,
+        healthy_proxies=infrastructure.healthy_proxies,
+        warning_proxies=infrastructure.warning_proxies,
+        critical_proxies=infrastructure.critical_proxies,
+        total_proxies=infrastructure.total_proxies,
+        accounts_assigned_proxy=infrastructure.accounts_assigned_proxy,
+        accounts_missing_proxy=infrastructure.accounts_missing_proxy,
+        recent_proxy_rotations=infrastructure.recent_rotations,
+        recent_proxy_failures=infrastructure.recent_failures,
+        recent_proxy_incidents=infrastructure.recent_incidents,
+        average_proxy_health_score=infrastructure.average_health_score,
         open_tasks=0,
-        open_incidents=0,
+        open_incidents=open_incidents,
         models=len(models),
         healthy_models=health_counts[HEALTH_HEALTHY],
         warning_models=health_counts[HEALTH_WARNING],

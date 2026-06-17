@@ -72,6 +72,11 @@ class Account(TimestampMixin, Base):
     notes: Mapped[str | None] = mapped_column(Text(), nullable=True)
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     model_brand: Mapped["ModelBrand | None"] = relationship("ModelBrand", lazy="selectin")
+    assigned_proxy: Mapped["Proxy | None"] = relationship(
+        "Proxy",
+        back_populates="accounts",
+        lazy="selectin",
+    )
     auth_sessions: Mapped[list["AccountAuthSession"]] = relationship(
         back_populates="account",
         cascade="all, delete-orphan",
