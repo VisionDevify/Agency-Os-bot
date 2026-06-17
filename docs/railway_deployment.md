@@ -4,7 +4,7 @@ Sprint 8 inspected Railway and found the logged-in workspace had no project yet.
 
 ## Current Railway Status
 
-- Project created: Agency OS Bot.
+- Project created for Agency OS production. The visible Railway project label may still be the generated project name unless it is renamed in the Railway UI.
 - Production API service: created from `VisionDevify/Agency-Os-bot`.
 - Production bot worker service: created from `VisionDevify/Agency-Os-bot`.
 - Production PostgreSQL: created and attached.
