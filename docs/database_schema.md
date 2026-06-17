@@ -1,6 +1,6 @@
 # Database Schema
 
-This document describes the current schema as of Sprint 17 and the planned direction. PostgreSQL is the production database, SQLAlchemy owns the models, and Alembic owns migrations.
+This document describes the current schema as of Sprint 18 and the planned direction. PostgreSQL is the production database, SQLAlchemy owns the models, and Alembic owns migrations.
 
 ## Current Tables
 
@@ -984,13 +984,19 @@ Columns:
 - `id`: primary key.
 - `source_id`: nullable foreign key to `opportunity_sources.id`.
 - `platform`: `x`, `instagram`, `reddit`, or `other`.
+- `source_type`: nullable `manual`, `creator_watch`, or `own_post`.
+- `source_reference_id`: nullable source record ID for creator/post/manual context.
 - `title`, `url`, `niche`: opportunity metadata.
 - `model_brand_id`: nullable foreign key to `model_brands.id`.
 - `score`: 0-100 deterministic score.
+- `priority`: `low`, `normal`, `high`, or `critical`.
 - `status`: `discovered`, `reviewing`, `approved`, `assigned`, `completed`, `rejected`, or `archived`.
 - `reason`: safe reason text.
 - `suggested_angle`: safe human-approved angle.
 - `assigned_to_user_id`: nullable foreign key to `users.id`.
+- `due_at`: nullable due timestamp.
+- `assigned_at`: nullable assignment timestamp.
+- `completed_at`: nullable completion timestamp.
 - `created_at`, `updated_at`: timestamps.
 
 ### opportunity_results
@@ -1004,6 +1010,7 @@ Columns:
 - `posted_by_user_id`: nullable foreign key to `users.id`.
 - `status`: `not_posted`, `posted`, `skipped`, `failed`, or `rejected`.
 - `clicks`, `conversions`: nullable manual result counts.
+- `reason`: safe reason/result note.
 - `notes`: safe operator notes.
 - `created_at`, `updated_at`: timestamps.
 
@@ -1016,6 +1023,7 @@ Columns:
 - `id`: primary key.
 - `platform`: `x`, `instagram`, or `other`.
 - `creator_name`: display name.
+- `display_name`: optional operator-facing display name.
 - `creator_username`: platform username or handle label.
 - `profile_url`: optional profile URL.
 - `niche`: optional niche label.
@@ -1024,6 +1032,7 @@ Columns:
 - `assigned_team_id`: nullable placeholder for future team records.
 - `assigned_chatter_id`: nullable foreign key to `users.id`.
 - `notes`: safe operator notes.
+- `status`: `active`, `disabled`, or `archived`.
 - `is_active`: active/disabled flag.
 - `created_at`, `updated_at`: timestamps.
 
@@ -1031,10 +1040,12 @@ Indexes and constraints:
 
 - `ck_creator_watches_platform`.
 - `ck_creator_watches_priority`.
+- `ck_creator_watches_status`.
 - `ix_creator_watches_platform`.
 - `ix_creator_watches_creator_username`.
 - `ix_creator_watches_niche`.
 - `ix_creator_watches_priority`.
+- `ix_creator_watches_status`.
 - `ix_creator_watches_assigned_model_id`.
 - `ix_creator_watches_assigned_team_id`.
 - `ix_creator_watches_assigned_chatter_id`.
@@ -1051,8 +1062,11 @@ Columns:
 - `platform`: `x`, `instagram`, or `other`.
 - `account_id`: nullable foreign key to `accounts.id`.
 - `post_reference`: safe manual reference such as URL, slug, or internal label.
-- `post_type`: safe type label such as post, reel, thread, or story.
+- `post_type`: `image`, `video`, `text`, `thread`, `story`, `reel`, or `other`.
 - `status`: `recent`, `attention_needed`, `assigned`, or `archived`.
+- `attention_level`: `monitor`, `engage`, or `urgent`.
+- `assigned_chatter_id`: nullable foreign key to `users.id`.
+- `assigned_team_id`: nullable placeholder for future team records.
 - `notes`: safe operator notes.
 - `created_at`, `updated_at`: timestamps.
 
@@ -1060,10 +1074,15 @@ Indexes and constraints:
 
 - `ck_post_watches_platform`.
 - `ck_post_watches_status`.
+- `ck_post_watches_post_type`.
+- `ck_post_watches_attention_level`.
 - `ix_post_watches_model_brand_id`.
 - `ix_post_watches_account_id`.
 - `ix_post_watches_platform`.
 - `ix_post_watches_status`.
+- `ix_post_watches_attention_level`.
+- `ix_post_watches_assigned_chatter_id`.
+- `ix_post_watches_assigned_team_id`.
 - `ix_post_watches_created_at`.
 
 ### comment_strategies
@@ -1074,12 +1093,15 @@ Columns:
 
 - `id`: primary key.
 - `opportunity_id`: nullable foreign key to `opportunities.id`, cascade delete.
-- `angle`: `curiosity`, `question`, `agreement`, `story`, `authority`, `contrarian`, or `educational`.
+- `angle`: `curiosity`, `question`, `agreement`, `relatable`, `story`, `authority`, `contrarian`, `soft_cta`, `humor`, `educational`, or `supportive`.
 - `tone`: short human-readable tone label.
+- `sample_comment`: human-editable draft comment. Never posted automatically.
 - `curiosity_score`: 0-100.
 - `engagement_score`: 0-100.
 - `risk_score`: 0-100.
 - `reasoning`: safe explanation for the suggestion.
+- `why_it_might_work`: safe explanation of expected value.
+- `suggested_use_case`: safe operator guidance.
 - `created_at`, `updated_at`: timestamps.
 
 Indexes and constraints:
@@ -1386,7 +1408,7 @@ Indexes and constraints:
 - Automation simulation runs are history records and should not be deleted during normal operations.
 - Recommendations should move through status instead of hard deletion.
 - Intelligence signals, patterns, insights, runs, opportunities, and opportunity results should move through status instead of hard deletion.
-- Creator watch records use `is_active` for disabled/archived active-view filtering.
+- Creator watch records use `status` plus `is_active` for disabled/archived active-view filtering.
 - Post watch records use `status` for recent, attention-needed, assigned, and archived states.
 - Comment strategies are derived guidance and can be deleted with the parent opportunity.
 - Learning events, playbook runs, outcome memory, and confidence records should not be hard deleted during normal operations.

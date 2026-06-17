@@ -25,6 +25,7 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Sprint 15: Agency Learning Engine and Playbook Memory with learning events, outcome memory, seeded recovery playbooks, playbook runs, confidence records, feedback loops, automation learning, opportunity learning, and executive memory briefing.
 - Sprint 16: Team Rollout and Human Experience Layer with role-specific homes, personalized dashboards, Daily Experience, Help Center, Team QA readiness, notification digest mode, human-friendly terminology, and low-risk scheduled automation execution.
 - Sprint 17: Team Activation and Opportunity Command Center with Creator Watch, Own Post Watch, opportunity queue summaries, suggested human-only comment strategies, Chatter Workspace, Manager Opportunity View, Help Copilot, activation scoring, and opportunity notification routing.
+- Sprint 18: Real Opportunity Intake and Team Assignment Activation with guided Creator Watch intake, guided Opportunity intake, guided Own Post Watch intake, creator/post-to-opportunity conversion, assignment workflows, result recording, Comment Strategy V2, Help Copilot upgrades, activation QA, and digestable opportunity events.
 
 ## Roadmap
 
@@ -56,9 +57,9 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Playbook Memory: reusable recovery and operating playbooks with run history, confidence, success/failure counts, and operator feedback.
 - Outcome Memory: aggregated pattern memory that tracks what worked, what failed, and how often recurring issue categories succeed or fail.
 - Confidence Engine: records why confidence changed for playbooks, recommendations, automations, opportunities, signals, and patterns.
-- Opportunities: manual, human-approved opportunity records, Creator Watch, Own Post Watch, queue summaries, comment strategy prompts, and opportunity results for future funnel intelligence without scraping or automatic posting.
+- Opportunities: manual, human-approved opportunity records, Creator Watch, Own Post Watch, guided intake flows, queue summaries, comment strategy prompts, assignment workflows, and opportunity results for future funnel intelligence without scraping or automatic posting.
 - Help Copilot: role-aware deterministic guidance that explains common workflows and points users to the next Agency OS screen.
-- Team Activation: friendly readiness scoring for onboarding, availability, first task completion, first opportunity review, and Help Center usage.
+- Team Activation: friendly readiness scoring and QA flags for onboarding, pending approval, role/timezone/availability setup, assigned work, chatter model assignment, opportunity assignment, first task completion, first opportunity review, and Help Center usage.
 - System Status: service heartbeats for API, bot, db, redis, and Railway deployment state.
 - Settings: administrative utilities including audit log access, Bot Status, and Notification Targets.
 

@@ -1,6 +1,6 @@
 # Event Architecture
 
-Agency OS should become event-driven over time. Audit logs remain the operator-facing safety record. Sprint 8 added `event_logs` as the first lightweight durable event feed for reports, notifications, automations, self-healing, and future AI operations. Sprint 9 adds notification routing events, durable automation simulation events, recommendations, and heartbeat state changes. Sprint 11 adds operations activation events for task ownership, incident timelines, localization, availability, smart notification routing, daily digest delivery, and duplicate polling protection. Sprint 12 adds deterministic intelligence events for signals, patterns, trends, workload, executive insights, intelligence runs, recommendations, and manual opportunities. Sprint 15 adds learning events, outcome memory, playbook runs, confidence changes, and feedback events. Sprint 16 adds team rollout, notification digest, and scheduled automation execution events. Sprint 17 adds creator watch, own post watch, comment strategy, Help Copilot, activation, and opportunity routing events.
+Agency OS should become event-driven over time. Audit logs remain the operator-facing safety record. Sprint 8 added `event_logs` as the first lightweight durable event feed for reports, notifications, automations, self-healing, and future AI operations. Sprint 9 adds notification routing events, durable automation simulation events, recommendations, and heartbeat state changes. Sprint 11 adds operations activation events for task ownership, incident timelines, localization, availability, smart notification routing, daily digest delivery, and duplicate polling protection. Sprint 12 adds deterministic intelligence events for signals, patterns, trends, workload, executive insights, intelligence runs, recommendations, and manual opportunities. Sprint 15 adds learning events, outcome memory, playbook runs, confidence changes, and feedback events. Sprint 16 adds team rollout, notification digest, and scheduled automation execution events. Sprint 17 adds creator watch, own post watch, comment strategy, Help Copilot, activation, and opportunity routing events. Sprint 18 adds guided intake, assignment, result-recording, and strategy-regeneration events.
 
 ## Principle
 
@@ -264,6 +264,28 @@ Opportunity events are manual-only. They must not imply automatic scraping, post
 ## Sprint 17 Opportunity Activation Notes
 
 Creator Watch and Own Post Watch are internal tracking records. Safe metadata can include platform, priority, niche, model/brand ID, assigned chatter ID, status, and count summaries. It must not include scraped content, platform credentials, passwords, tokens, raw session data, or private messages.
+
+## Sprint 18 Opportunity Workflow Events
+
+Sprint 18 emits and audits:
+
+- `creator.created`
+- `creator.updated`
+- `creator.assigned`
+- `creator.priority_changed`
+- `creator.disabled`
+- `creator.archived`
+- `opportunity.created`
+- `opportunity.assigned`
+- `opportunity.status_changed`
+- `opportunity.strategy_generated`
+- `opportunity.result_recorded`
+- `opportunity.completed`
+- `post_watch.created`
+- `post_watch.assigned`
+- `post_watch.status_changed`
+
+These events describe internal workflow state only. They must never imply external posting, commenting, liking, following, scraping, credential use, platform evasion, or automatic social-platform actions.
 
 Comment strategy events are guidance-only. They can include strategy counts, score ranges, and `posting: manual_only`, but must not imply that Agency OS posted, commented, liked, followed, or messaged anyone.
 

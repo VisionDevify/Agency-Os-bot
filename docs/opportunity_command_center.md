@@ -22,14 +22,18 @@ Opportunities -> Command Center shows:
 - Top opportunities by score.
 - High-priority opportunities.
 - Recent results.
+- Add Opportunity guided intake.
 
 Managers also have Opportunities -> Manager View with:
 
 - Team opportunities.
 - Unassigned opportunities.
+- Overdue opportunities.
+- Completed today.
 - High-priority opportunities.
 - Top performing angles.
 - Most active chatters.
+- Distribution by model and niche.
 
 Chatters use Chatter Workspace for:
 
@@ -48,13 +52,16 @@ Strategies are deterministic prompts for human review only:
 
 - curiosity.
 - question.
-- agreement.
+- relatable.
 - story.
 - authority.
 - contrarian.
+- soft CTA.
+- humor.
 - educational.
+- supportive.
 
-They include curiosity, engagement, and risk scores so staff can decide carefully. Agency OS does not post them automatically.
+They include a sample comment draft, why it might work, suggested use case, curiosity score, engagement score, and risk score so staff can decide carefully. Agency OS does not post them automatically.
 
 ## Results
 
@@ -65,4 +72,4 @@ Opportunity results support:
 - `failed`.
 - `rejected`.
 
-These results feed Learning Events, Outcome Memory, and opportunity confidence adjustments.
+Results now capture safe reason/notes plus optional clicks and conversions. Posted results complete the opportunity; skipped, rejected, and failed results feed Learning Events, Outcome Memory, and opportunity confidence adjustments without automating any platform action.

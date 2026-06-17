@@ -101,16 +101,25 @@ from app.services.intelligence import run_full_intelligence_scan, run_intelligen
 from app.services.learning import create_playbook_run, get_playbook, record_feedback, seed_default_playbooks
 from app.services.opportunities import (
     assign_creator_watch,
+    assign_post_watch,
     assign_opportunity,
+    create_opportunity_from_creator,
+    create_opportunity_from_post,
+    create_task_from_opportunity,
     create_default_creator_watch,
     create_default_opportunity,
     create_default_post_watch,
     get_creator_watch,
     get_opportunity,
+    get_post_watch,
     record_opportunity_result,
+    regenerate_comment_strategies,
     run_opportunity_scoring,
     score_opportunity,
     set_creator_watch_active,
+    update_creator_watch,
+    update_opportunity_status,
+    update_post_watch_status,
 )
 from app.services.permissions import PermissionPrincipal, require_permission
 from app.services.team_operations import set_availability
@@ -201,7 +210,12 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         return ("manage_reports", "view_dashboard")
     if page.startswith("playbook:"):
         return ("manage_reports", "view_dashboard")
-    if page in {"opportunities:creators:add", "opportunities:posts:add", "opportunities:manager"}:
+    if (
+        page.startswith("opportunities:creators:add")
+        or page.startswith("opportunities:posts:add")
+        or page.startswith("opportunities:add")
+        or page in {"opportunities:manager"}
+    ):
         return ("manage_reports", "manage_tasks", "manage_chatter_team")
     if page.startswith("creator:") or page.startswith("post:"):
         return ("manage_reports", "manage_tasks", "manage_chatter_team")
@@ -411,18 +425,6 @@ def _perform_admin_action(
         }:
             run_intelligence_analysis(session, actor=actor, run_type=run_type)
             return "intelligence:runs"
-    if page == "opportunities:creators:add":
-        try:
-            creator = create_default_creator_watch(session, actor=actor)
-            return f"creator:{creator.id}"
-        except PermissionError:
-            return "opportunities:creators"
-    if page == "opportunities:posts:add":
-        try:
-            post = create_default_post_watch(session, actor=actor)
-            return f"post:{post.id}"
-        except PermissionError:
-            return "opportunities:posts"
     if len(parts) >= 3 and parts[0] == "creator" and parts[1].isdigit():
         creator = get_creator_watch(session, int(parts[1]))
         if creator is None:
@@ -432,17 +434,55 @@ def _perform_admin_action(
             if action == "assign_me":
                 assign_creator_watch(session, creator, actor=actor, chatter=actor)
                 return f"creator:{creator.id}"
+            if action == "assign_model" and len(parts) >= 4 and parts[3].isdigit():
+                model = get_model_brand(session, int(parts[3]))
+                if model is not None:
+                    assign_creator_watch(session, creator, actor=actor, model_brand=model)
+                return f"creator:{creator.id}"
+            if action == "assign_chatter" and len(parts) >= 4 and parts[3].isdigit():
+                chatter = get_user_by_id(session, int(parts[3]))
+                if chatter is not None:
+                    assign_creator_watch(session, creator, actor=actor, chatter=chatter)
+                return f"creator:{creator.id}"
+            if action == "priority" and len(parts) >= 4:
+                update_creator_watch(session, creator, actor=actor, priority=parts[3])
+                return f"creator:{creator.id}"
+            if action == "opportunity":
+                opportunity = create_opportunity_from_creator(session, creator, actor=actor)
+                return f"opportunity:{opportunity.id}"
             if action == "disable":
-                set_creator_watch_active(session, creator, actor=actor, is_active=False, action="creator_watch.disabled")
+                set_creator_watch_active(session, creator, actor=actor, is_active=False, action="creator.disabled")
                 return f"creator:{creator.id}"
             if action == "archive":
-                set_creator_watch_active(session, creator, actor=actor, is_active=False, action="creator_watch.archived")
+                set_creator_watch_active(session, creator, actor=actor, is_active=False, action="creator.archived")
                 return f"creator:{creator.id}"
         except PermissionError:
             return f"creator:{creator.id}"
+    if len(parts) >= 3 and parts[0] == "post" and parts[1].isdigit():
+        post = get_post_watch(session, int(parts[1]))
+        if post is None:
+            return "opportunities:posts"
+        action = parts[2]
+        try:
+            if action == "opportunity":
+                opportunity = create_opportunity_from_post(session, post, actor=actor)
+                return f"opportunity:{opportunity.id}"
+            if action == "assign_chatter" and len(parts) >= 4 and parts[3].isdigit():
+                chatter = get_user_by_id(session, int(parts[3]))
+                if chatter is not None:
+                    assign_post_watch(session, post, actor=actor, chatter=chatter)
+                return f"post:{post.id}"
+            if action == "status" and len(parts) >= 4:
+                update_post_watch_status(session, post, actor=actor, status=parts[3])
+                return f"post:{post.id}"
+            if action == "record_result":
+                opportunity = create_opportunity_from_post(session, post, actor=actor)
+                record_opportunity_result(session, opportunity, actor=actor, status="posted", notes="Own post result recorded from Telegram.")
+                return f"opportunity:{opportunity.id}"
+        except PermissionError:
+            return f"post:{post.id}"
     if page == "opportunities:add":
-        opportunity = create_default_opportunity(session, actor=actor)
-        return f"opportunity:{opportunity.id}"
+        return None
     if page == "opportunities:score":
         run_opportunity_scoring(session, actor=actor)
         return "opportunities:list"
@@ -457,7 +497,26 @@ def _perform_admin_action(
         if action == "assign_me":
             assign_opportunity(session, opportunity, actor, actor=actor)
             return f"opportunity:{opportunity.id}"
-        if action in {"mark_posted", "record_result"}:
+        if action == "assign" and len(parts) >= 4 and parts[3].isdigit():
+            assignee = get_user_by_id(session, int(parts[3]))
+            if assignee is not None:
+                assign_opportunity(session, opportunity, assignee, actor=actor)
+            return f"opportunity:{opportunity.id}"
+        if action == "status" and len(parts) >= 4:
+            update_opportunity_status(session, opportunity, actor=actor, status=parts[3])
+            return f"opportunity:{opportunity.id}"
+        if action == "strategies" and len(parts) >= 4 and parts[3] == "regenerate":
+            regenerate_comment_strategies(session, opportunity, actor=actor)
+            return f"opportunity:{opportunity.id}:strategies"
+        if action == "create_task":
+            try:
+                task = create_task_from_opportunity(session, opportunity, actor=actor)
+                return f"task:{task.id}"
+            except PermissionError:
+                return f"opportunity:{opportunity.id}"
+        if action == "record_result":
+            return None
+        if action == "mark_posted":
             record_opportunity_result(
                 session,
                 opportunity,
@@ -466,6 +525,8 @@ def _perform_admin_action(
                 notes="Manual result recorded from Telegram.",
             )
             return f"opportunity:{opportunity.id}"
+        if action == "result" and len(parts) >= 4:
+            return None
         if action == "reject":
             record_opportunity_result(
                 session,

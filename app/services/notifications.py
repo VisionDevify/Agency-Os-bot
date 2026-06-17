@@ -36,8 +36,13 @@ NOTIFICATION_ROUTING_RULES: dict[str, tuple[str, ...]] = {
     "automation.simulated": ("automation_logs",),
     "intelligence.signal.critical": ("owner", "incidents", "operations"),
     "creator_watch.created": ("operations",),
+    "creator.created": ("operations",),
+    "creator.assigned": ("operations",),
     "opportunity.assigned": ("operations",),
     "opportunity.high_priority": ("owner", "operations"),
+    "opportunity.created": ("operations",),
+    "opportunity.result_recorded": ("operations",),
+    "post_watch.created": ("operations",),
     "opportunity.digest": ("operations",),
 }
 

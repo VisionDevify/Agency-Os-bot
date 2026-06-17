@@ -1,6 +1,6 @@
 # Opportunity Intelligence Foundation
 
-Sprint 12 created the database and Telegram foundation for future funnel intelligence. Sprint 17 turns it into an everyday Opportunity Command Center for chatters and managers.
+Sprint 12 created the database and Telegram foundation for future funnel intelligence. Sprint 17 turned it into an everyday Opportunity Command Center for chatters and managers. Sprint 18 adds guided intake and assignment workflows.
 
 It does not scrape X, Instagram, Reddit, OnlyFans, or any other platform. It does not automate posting, commenting, messaging, liking, following, or bypassing platform controls. Everything is manual and human-approved.
 
@@ -18,15 +18,18 @@ It does not scrape X, Instagram, Reddit, OnlyFans, or any other platform. It doe
 
 - optional source
 - platform
+- source type and source reference ID
 - title
 - optional URL
 - optional niche
 - optional Model/Brand
 - deterministic score
+- priority
 - status: `discovered`, `reviewing`, `approved`, `assigned`, `completed`, `rejected`, `archived`
 - reason
 - suggested angle
 - optional assigned user
+- optional due, assigned, and completed timestamps
 
 ### OpportunityResult
 
@@ -34,17 +37,18 @@ It does not scrape X, Instagram, Reddit, OnlyFans, or any other platform. It doe
 - optional user who manually posted or recorded the outcome
 - status: `not_posted`, `posted`, `skipped`, `failed`, `rejected`
 - optional clicks and conversions
+- safe reason
 - safe notes
 
 ### CreatorWatch
 
 - platform: `x`, `instagram`, or `other`
-- creator name and username
+- creator name, display name, and username
 - optional profile URL
 - niche
 - priority
 - optional assigned model, team placeholder, and chatter
-- active flag
+- status and active flag
 
 ### PostWatch
 
@@ -54,6 +58,8 @@ It does not scrape X, Instagram, Reddit, OnlyFans, or any other platform. It doe
 - post reference
 - post type
 - status: `recent`, `attention_needed`, `assigned`, or `archived`
+- attention level
+- optional assigned chatter/team placeholder
 - safe notes
 
 ### CommentStrategy
@@ -61,10 +67,13 @@ It does not scrape X, Instagram, Reddit, OnlyFans, or any other platform. It doe
 - optional opportunity
 - angle
 - tone
+- sample comment draft
 - curiosity score
 - engagement score
 - risk score
 - safe reasoning
+- why it might work
+- suggested use case
 
 ## Telegram Flows
 
@@ -72,11 +81,15 @@ It does not scrape X, Instagram, Reddit, OnlyFans, or any other platform. It doe
 - Opportunities -> Creator Watchlist.
 - Opportunities -> Own Post Watch.
 - Opportunities -> View Opportunities.
-- Opportunities -> Add Opportunity Manually.
-- Opportunity Detail -> Score Opportunity.
-- Opportunity Detail -> Assign to Me.
+- Opportunities -> Add Opportunity guided flow.
+- Creator Watchlist -> Add Creator guided flow.
+- Own Post Watch -> Add Own Post guided flow.
+- Opportunity Detail -> Assign Chatter.
+- Opportunity Detail -> Change Status.
 - Opportunity Detail -> Suggested Strategies.
-- Opportunity Detail -> Mark Posted.
+- Opportunity Detail -> Regenerate Strategies.
+- Opportunity Detail -> Record Result.
+- Opportunity Detail -> Create Task.
 - Opportunities -> Opportunity Results.
 - Chatter Home -> Chatter Workspace.
 - Manager Home -> Manager Opportunity View.

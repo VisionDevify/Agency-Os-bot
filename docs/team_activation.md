@@ -6,7 +6,7 @@ It is a friendly rollout signal, not a punishment score.
 
 ## Activation Score
 
-Sprint 17 calculates a simple score from:
+Sprint 18 calculates a simple score and QA flags from:
 
 - onboarding complete.
 - availability set.
@@ -14,8 +14,12 @@ Sprint 17 calculates a simple score from:
 - first task completed.
 - first opportunity reviewed.
 - Help Center viewed.
+- timezone confirmed.
+- pending approval status.
+- missing assigned work.
+- chatter model/opportunity assignment gaps.
 
-Managers can open Team Activation to see who needs onboarding help.
+Managers can open Team Activation QA to see who needs onboarding help, role assignment, timezone setup, availability setup, assigned work, or chatter-specific assignment.
 
 ## Chatter Workspace
 
@@ -40,14 +44,20 @@ Managers see:
 - opportunity results.
 - top performing angles.
 - most active chatters.
+- overdue opportunities.
+- completed today.
+- distribution by model.
+- distribution by niche.
 
 ## Notification Improvements
 
-Sprint 17 adds routing keys for:
+Sprint 18 adds routing keys for:
 
 - creator watch alerts.
 - opportunity assignment alerts.
 - high-priority opportunity alerts.
+- own post alerts.
+- result recorded alerts.
 - opportunity digests.
 
 Routing still uses existing notification targets, delivery attempts, availability rules, and digest mode. Low-priority notifications should be bundled where possible.

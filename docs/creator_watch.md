@@ -24,16 +24,31 @@ It does not scrape profiles, post comments, follow accounts, bypass platform rul
 Opportunities -> Creator Watchlist supports:
 
 - View Watchlist.
-- Add Creator placeholder.
+- Guided Add Creator flow:
+  - choose platform;
+  - enter username;
+  - enter display name;
+  - enter niche;
+  - choose priority;
+  - optionally assign model/brand;
+  - optionally assign chatter/team member;
+  - add optional notes;
+  - create the watch record.
+- Creator detail with platform, username, display name, niche, priority, model, chatter/team, status, timestamps, and notes.
+- Edit Priority.
+- Edit Niche.
+- Assign Model.
 - Assign Chatter.
-- Disable Creator.
-- Archive Creator.
+- Disable.
+- Archive.
+- Create Opportunity From Creator.
+- Explain This Screen through Help Copilot.
 
-Edit and team assignment are intentionally lightweight in Sprint 17. Rich forms can be added later.
+Team assignment is now active enough for managers to move creators into the daily chatter workflow.
 
 ## Safety
 
 - Only users with opportunity management permissions can create or modify watch records.
 - Chatters can view opportunity workspace pages through their role-specific home.
-- Every create, assignment, disable, and archive action is audited and emits a safe event.
+- Every create, update, assignment, disable, archive, and opportunity-conversion action is audited and emits a safe event.
 - No external platform data is collected automatically.

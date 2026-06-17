@@ -169,9 +169,9 @@ def test_comment_strategy_scoring_is_human_review_only() -> None:
             user=owner,
         )
 
-        assert len(strategies) == 3
+        assert len(strategies) == 10
         assert all(0 <= item.risk_score <= 100 for item in strategies)
-        assert session.query(CommentStrategy).count() == 3
+        assert session.query(CommentStrategy).count() == 10
         assert "not automated comments" in screen.text
         assert "post automatically" not in screen.text.lower()
 

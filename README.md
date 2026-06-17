@@ -70,7 +70,7 @@ pytest
 - Automation Builder and Simulation Engine: no-code rules, built-in templates, trigger/condition/action registries, durable simulations, approvals, run/step records, rollback planning, and automation health metrics.
 - Agency Learning Engine and Playbook Memory: learning events, outcome memory, seeded recovery playbooks, playbook runs, confidence records, recommendation/playbook feedback, automation learning, opportunity learning, and executive memory briefing.
 - Team Rollout and Human Experience Layer: role-specific homes, personalized dashboards, Daily Experience, Help Center, Team QA readiness checklist, notification digest mode, and safe scheduled automation execution for low-risk rules.
-- Team Activation and Opportunity Command Center: creator watchlist, own post watch, opportunity queue, suggested human-only comment strategies, chatter workspace, manager opportunity view, Help Copilot, activation scoring, and opportunity notification routing keys.
+- Team Activation and Opportunity Command Center: guided Creator Watch intake, guided Opportunity intake, Own Post Watch intake, opportunity assignment, result recording, suggested human-only comment strategies, chatter workspace, manager opportunity view, Help Copilot, activation QA, and opportunity notification routing keys.
 
 ## Railway Deployment
 
@@ -148,3 +148,6 @@ Production smoke testing checklist:
 - `docs/opportunity_command_center.md`
 - `docs/help_copilot.md`
 - `docs/team_activation.md`
+- `docs/opportunity_workflows.md`
+- `docs/chatter_workflows.md`
+- `docs/manager_activation.md`
