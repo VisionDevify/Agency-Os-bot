@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.models.account import Account
 from app.models.audit import AuditLog
 from app.models.model_brand import ModelBrand
+from app.models.proxy import Proxy
 from app.models.task import TASK_PRIORITIES, TASK_STATUSES, Task
 from app.models.user import User
 from app.services.auth import USER_STATUS_ACTIVE, audit_action, user_has_permission
@@ -37,7 +38,10 @@ def _task_payload(task: Task, extra: dict | None = None) -> dict:
         "priority": task.priority,
         "model_brand_id": task.model_brand_id,
         "account_id": task.account_id,
+        "proxy_id": task.proxy_id,
+        "owner_user_id": task.owner_user_id,
         "assigned_to_user_id": task.assigned_to_user_id,
+        "escalation_level": task.escalation_level,
     }
     payload.update(extra or {})
     return payload
@@ -47,6 +51,8 @@ def _base_task_query():
     return select(Task).options(
         selectinload(Task.model_brand),
         selectinload(Task.account),
+        selectinload(Task.proxy),
+        selectinload(Task.owner),
         selectinload(Task.assigned_to),
         selectinload(Task.created_by),
     )
@@ -79,6 +85,8 @@ def create_task(
     priority: str = "normal",
     model_brand: ModelBrand | None = None,
     account: Account | None = None,
+    proxy: Proxy | None = None,
+    owner_user: User | None = None,
     assigned_to: User | None = None,
     due_at: datetime | None = None,
 ) -> Task:
@@ -97,6 +105,8 @@ def create_task(
         priority=priority,
         model_brand_id=model_brand.id if model_brand else None,
         account_id=account.id if account else None,
+        proxy_id=proxy.id if proxy else None,
+        owner_user_id=owner_user.id if owner_user else actor.id,
         assigned_to_user_id=assigned_to.id if assigned_to else None,
         created_by_user_id=actor.id,
         due_at=due_at,
@@ -139,6 +149,7 @@ def assign_task(session: Session, task: Task, assignee: User, *, actor: User) ->
     _require_manage_tasks(session, actor)
     if assignee.status != USER_STATUS_ACTIVE or not assignee.is_active:
         raise PermissionError("Only active users can be assigned tasks")
+    previous_assignee_id = task.assigned_to_user_id
     task.assigned_to_user_id = assignee.id
     session.flush()
     emit_event(
@@ -147,8 +158,23 @@ def assign_task(session: Session, task: Task, assignee: User, *, actor: User) ->
         event_name="task.assigned",
         resource_type="task",
         resource_id=str(task.id),
-        payload=_task_payload(task, {"assigned_to_user_id": assignee.id}),
+        payload=_task_payload(
+            task,
+            {"assigned_to_user_id": assignee.id, "previous_assignee_id": previous_assignee_id},
+        ),
     )
+    if previous_assignee_id is not None and previous_assignee_id != assignee.id:
+        emit_event(
+            session,
+            actor=actor,
+            event_name="task.reassigned",
+            resource_type="task",
+            resource_id=str(task.id),
+            payload=_task_payload(
+                task,
+                {"assigned_to_user_id": assignee.id, "previous_assignee_id": previous_assignee_id},
+            ),
+        )
     return task
 
 
@@ -164,6 +190,8 @@ def update_task_status(
     if status not in TASK_STATUSES:
         raise ValueError(f"Invalid task status: {status}")
     task.status = status
+    if status == "in_progress" and task.started_at is None:
+        task.started_at = _now()
     if status == "complete":
         task.completed_at = _now()
     session.flush()
@@ -182,7 +210,8 @@ def start_task(session: Session, task: Task, *, actor: User) -> Task:
     return update_task_status(session, task, actor=actor, status="in_progress", event_name="task.started")
 
 
-def block_task(session: Session, task: Task, *, actor: User) -> Task:
+def block_task(session: Session, task: Task, *, actor: User, reason: str | None = None) -> Task:
+    task.blocked_reason = reason or "Blocked from Telegram operations workflow."
     return update_task_status(session, task, actor=actor, status="blocked", event_name="task.blocked")
 
 
@@ -192,6 +221,22 @@ def complete_task(session: Session, task: Task, *, actor: User) -> Task:
 
 def archive_task(session: Session, task: Task, *, actor: User) -> Task:
     return update_task_status(session, task, actor=actor, status="archived", event_name="task.archived")
+
+
+def escalate_task(session: Session, task: Task, *, actor: User) -> Task:
+    _require_manage_tasks(session, actor)
+    task.escalation_level += 1
+    task.last_escalated_at = _now()
+    session.flush()
+    emit_event(
+        session,
+        actor=actor,
+        event_name="task.escalated",
+        resource_type="task",
+        resource_id=str(task.id),
+        payload=_task_payload(task),
+    )
+    return task
 
 
 def my_tasks(session: Session, user: User) -> list[Task]:
@@ -246,6 +291,16 @@ def overdue_tasks(session: Session, *, now: datetime | None = None) -> list[Task
 def record_overdue_tasks(session: Session, *, actor: User | None = None, now: datetime | None = None) -> int:
     tasks = overdue_tasks(session, now=now)
     for task in tasks:
+        payload = _task_payload(task, {"due_at": task.due_at.isoformat() if task.due_at else None})
+        emit_event(
+            session,
+            actor=actor,
+            event_name="task.overdue_detected",
+            resource_type="task",
+            resource_id=str(task.id),
+            status="overdue",
+            payload=payload,
+        )
         emit_event(
             session,
             actor=actor,
@@ -253,7 +308,7 @@ def record_overdue_tasks(session: Session, *, actor: User | None = None, now: da
             resource_type="task",
             resource_id=str(task.id),
             status="overdue",
-            payload=_task_payload(task, {"due_at": task.due_at.isoformat() if task.due_at else None}),
+            payload=payload,
         )
     return len(tasks)
 

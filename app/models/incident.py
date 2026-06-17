@@ -34,8 +34,10 @@ class Incident(TimestampMixin, Base):
         Index("ix_incidents_model_brand_id", "model_brand_id"),
         Index("ix_incidents_account_id", "account_id"),
         Index("ix_incidents_proxy_id", "proxy_id"),
+        Index("ix_incidents_owner_user_id", "owner_user_id"),
         Index("ix_incidents_assigned_to_user_id", "assigned_to_user_id"),
         Index("ix_incidents_created_by_user_id", "created_by_user_id"),
+        Index("ix_incidents_escalation_level", "escalation_level"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -59,18 +61,25 @@ class Incident(TimestampMixin, Base):
         ForeignKey("proxies.id", ondelete="SET NULL"),
         nullable=True,
     )
+    owner_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     assigned_to_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     resolved_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     resolution_notes: Mapped[str | None] = mapped_column(Text(), nullable=True)
     escalation_level: Mapped[int] = mapped_column(default=0, nullable=False)
     escalation_history: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    last_escalated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     metadata_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
     model_brand: Mapped["ModelBrand | None"] = relationship("ModelBrand", lazy="selectin")
     account: Mapped["Account | None"] = relationship("Account", lazy="selectin")
     proxy: Mapped["Proxy | None"] = relationship("Proxy", lazy="selectin")
+    owner: Mapped["User | None"] = relationship(
+        "User",
+        foreign_keys=[owner_user_id],
+        lazy="selectin",
+    )
     assigned_to: Mapped["User | None"] = relationship(
         "User",
         foreign_keys=[assigned_to_user_id],
@@ -86,3 +95,31 @@ class Incident(TimestampMixin, Base):
         foreign_keys=[resolved_by_user_id],
         lazy="selectin",
     )
+    timeline_entries: Mapped[list["IncidentTimeline"]] = relationship(
+        back_populates="incident",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+
+
+class IncidentTimeline(TimestampMixin, Base):
+    __tablename__ = "incident_timeline"
+    __table_args__ = (
+        Index("ix_incident_timeline_incident_id", "incident_id"),
+        Index("ix_incident_timeline_actor_user_id", "actor_user_id"),
+        Index("ix_incident_timeline_event_type", "event_type"),
+        Index("ix_incident_timeline_created_at", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    incident_id: Mapped[int] = mapped_column(
+        ForeignKey("incidents.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    event_type: Mapped[str] = mapped_column(String(120), nullable=False)
+    message: Mapped[str] = mapped_column(Text(), nullable=False)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+
+    incident: Mapped[Incident] = relationship(back_populates="timeline_entries")
+    actor: Mapped["User | None"] = relationship("User", foreign_keys=[actor_user_id], lazy="selectin")

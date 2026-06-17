@@ -25,6 +25,7 @@ from app.services.incidents import count_incidents
 from app.services.model_health import HEALTH_CRITICAL, HEALTH_HEALTHY, HEALTH_WARNING, calculate_model_health
 from app.services.recommendations import list_recommendations
 from app.services.tasks import completed_today_by_user, completed_today_count, count_tasks, overdue_tasks, record_overdue_tasks
+from app.services.team_operations import create_digest_delivery_attempts, delivery_history
 
 
 def _now() -> datetime:
@@ -522,6 +523,56 @@ def request_briefing_send(session: Session, *, actor: User | None, target: str) 
         resource_id=target,
         details={"target": target, "delivery": "placeholder"},
     )
+
+
+def generate_daily_digest(session: Session, *, actor: User | None) -> dict:
+    digest = generate_daily_briefing(session, actor=actor)
+    emit_event(
+        session,
+        actor=actor,
+        event_name="digest.generated",
+        resource_type="daily_digest",
+        resource_id=str(digest.get("briefing_id", "pending")),
+        payload={
+            "agency_health_score": digest["agency_health_score"],
+            "critical_incidents": digest["critical_incidents"],
+            "overdue_tasks": digest["overdue_tasks"],
+        },
+    )
+    return digest
+
+
+def preview_daily_digest(session: Session, *, actor: User | None) -> dict | None:
+    digest = view_latest_daily_briefing(session, actor=actor)
+    audit_action(
+        session,
+        actor=actor,
+        action="digest.previewed",
+        resource_type="daily_digest",
+        resource_id=str(digest.get("briefing_id")) if digest else None,
+        details={"status": "found" if digest else "empty"},
+    )
+    return digest
+
+
+def request_digest_send(session: Session, *, actor: User | None, purpose: str) -> int:
+    _require_reports(session, actor)
+    attempts = create_digest_delivery_attempts(session, actor=actor, purpose=purpose)
+    event_name = "digest.sent" if attempts else "digest.failed"
+    emit_event(
+        session,
+        actor=actor,
+        event_name=event_name,
+        resource_type="daily_digest",
+        resource_id=purpose,
+        status="success" if attempts else "failed",
+        payload={"purpose": purpose, "attempts": len(attempts)},
+    )
+    return len(attempts)
+
+
+def daily_digest_delivery_history(session: Session, *, limit: int = 10):
+    return delivery_history(session, limit=limit)
 
 
 def calculate_accountability_score(

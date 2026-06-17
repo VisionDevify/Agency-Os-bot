@@ -19,11 +19,12 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Sprint 8: Executive intelligence and Railway production readiness with database-backed daily briefings, accountability snapshots, EventLog, Notification Targets, Executive Dashboard V2, operations reporting, and Railway deployment documentation/config.
 - Sprint 9: Production activation preparation, notification routing V1, automation simulation run records, deterministic recommendations, system heartbeats, Bot Status, and Executive Command Center upgrades.
 - Sprint 10: Production launch approval boundaries, Railway trial-credit blocker documentation, notification delivery attempt persistence, production status upgrades, and production smoke-test documentation.
+- Sprint 11: Agency operations activation layer with task ownership/escalation, incident timelines, shift/availability and localization onboarding, smart notification routing, Daily Digest delivery, Manager Command View, and duplicate bot polling protection.
 
 ## Roadmap
 
-- Sprint 11: Telegram group/channel activation after owner approval, Railway production project creation, and production smoke-test execution.
-- Sprint 12: Self-healing playbooks, repair approval gates, and richer repair event tracking.
+- Sprint 12: Team rollout hardening, richer task/incident creation forms, notification group activation, and operational QA with real agency users.
+- Sprint 13: Self-healing playbooks, repair approval gates, and richer repair event tracking.
 - Sprint 12: AI Operations Brain for summaries, anomaly explanations, and recommended next actions.
 
 ## Core Modules
@@ -36,10 +37,12 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Audit Logs: append-only safety trail for important actions and denied attempts.
 - Accounts: Model/Brand-attached account inventory for Instagram, X, OnlyFans, Email, and Other, including auth-state tracking, credential references, short-lived auth sessions, and hashed verification-code submissions.
 - Proxies: encrypted Proxy Vault with account assignment, session suffix rotation, rollback, health scoring, location verification, simulation, and repair workflows.
-- Tasks: real work queue with status, priority, assignment, due dates, completion, model/account attachment, and audit/event history.
-- Incidents: real escalation and resolution records with severity, source, assignment, proxy/account/model attachment, escalation history, and audit/event history.
+- Tasks: real work queue with owner/assignee fields, status, priority, assignment, due dates, blocked reasons, escalation, model/account/proxy attachment, and audit/event history.
+- Incidents: real escalation and resolution records with owner/assignee fields, severity, source, proxy/account/model attachment, timeline entries, escalation history, and audit/event history.
 - Reports: database-backed daily briefing, accountability snapshots, executive command center, operations dashboard, chatter dashboard placeholder, VA dashboard placeholder, and event-backed report view/generation tracking.
+- Daily Digest: operator-approved generated digest and delivery-attempt flow for HQ and Operations.
 - Notifications: encrypted Telegram notification targets, purpose-based routing rules, masked chat IDs, testing-only safe sends, and durable delivery-attempt records.
+- Availability: user language, country, timezone, time format, shift state, and quiet-hours foundation for smart routing.
 - Automations: placeholder resource model plus durable simulation runs for preview/approve workflows.
 - Recommendations: deterministic operational recommendations generated from database state.
 - System Status: service heartbeats for API, bot, db, redis, and Railway deployment state.
@@ -150,16 +153,30 @@ Important actions should use stable event-style names, such as:
 - `proxy.repair.failed`
 - `task.created`
 - `task.assigned`
+- `task.reassigned`
 - `task.started`
 - `task.blocked`
 - `task.completed`
 - `task.archived`
 - `task.overdue`
+- `task.escalated`
+- `task.overdue_detected`
 - `incident.created`
 - `incident.assigned`
+- `incident.investigating`
 - `incident.escalated`
 - `incident.resolved`
 - `incident.archived`
+- `digest.generated`
+- `digest.previewed`
+- `digest.send_requested`
+- `digest.sent`
+- `digest.failed`
+- `user.language_updated`
+- `user.country_updated`
+- `user.timezone_updated`
+- `user.time_format_updated`
+- `availability.updated`
 - `briefing.generated`
 - `briefing.viewed`
 - `briefing.send_requested`
@@ -197,6 +214,20 @@ Telegram is the operator console, so navigation should be calm and predictable:
 - Dashboard refreshes should happen in place.
 - Avoid sending new messages for menu movement.
 - Denied, pending, and disabled states should show short human-readable messages.
+- Pending users can complete localization onboarding but cannot open operational screens until approved.
+
+## Agency Operations Activation
+
+Sprint 11 turns the production bot into a usable day-to-day operations console.
+
+- Task ownership now separates creator, owner, assignee, attachments, blocked reason, escalation level, and due/completion timestamps.
+- Incident ownership now records owner, assignee, status movement, escalation level, resolution, and durable `incident_timeline` entries for every status change.
+- User onboarding captures language, country, timezone, and 12h/24h preference before approval.
+- User availability captures on-shift/off-shift/away/vacation/unavailable states plus quiet-hours fields for future scheduling.
+- Smart notification routing considers event purpose, severity, assignee availability, quiet hours, and escalation level before creating delivery attempts.
+- Daily Digest builds on Daily Briefing and creates safe delivery attempts for HQ or Operations.
+- Manager Command View shows people on shift, open/overdue work, incidents, critical items, recommendations, and notification failures.
+- Bot startup uses a Redis polling lock so local development cannot accidentally fight production polling.
 
 ## Future Modules
 

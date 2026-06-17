@@ -1,6 +1,6 @@
 # Event Architecture
 
-Agency OS should become event-driven over time. Audit logs remain the operator-facing safety record. Sprint 8 added `event_logs` as the first lightweight durable event feed for reports, notifications, automations, self-healing, and future AI operations. Sprint 9 adds notification routing events, durable automation simulation events, recommendations, and heartbeat state changes.
+Agency OS should become event-driven over time. Audit logs remain the operator-facing safety record. Sprint 8 added `event_logs` as the first lightweight durable event feed for reports, notifications, automations, self-healing, and future AI operations. Sprint 9 adds notification routing events, durable automation simulation events, recommendations, and heartbeat state changes. Sprint 11 adds operations activation events for task ownership, incident timelines, localization, availability, smart notification routing, daily digest delivery, and duplicate polling protection.
 
 ## Principle
 
@@ -74,16 +74,30 @@ This avoids over-engineering while preserving a clean upgrade path.
 - `proxy.repair.failed`: self-healing repair workflow failed and requires attention.
 - `task.created`: task opened.
 - `task.assigned`: task assigned or reassigned to a user.
+- `task.reassigned`: task moved from one assignee to another.
 - `task.started`: task moved to in-progress.
 - `task.blocked`: task marked blocked.
 - `task.completed`: task completed.
+- `task.escalated`: task escalation level increased.
 - `task.archived`: task archived without deletion.
 - `task.overdue`: task crossed its due date while still active.
+- `task.overdue_detected`: overdue detection pass found an active overdue task.
 - `incident.created`: incident opened.
 - `incident.assigned`: incident assigned or reassigned.
+- `incident.investigating`: incident moved into investigation.
 - `incident.escalated`: incident escalated to the next path step.
 - `incident.resolved`: incident resolved with notes/history retained.
 - `incident.archived`: incident archived without deletion.
+- `digest.generated`: Daily Digest generated from current operational metrics.
+- `digest.previewed`: Daily Digest preview opened.
+- `digest.send_requested`: operator requested digest delivery attempts.
+- `digest.sent`: digest delivery attempts were created for active targets.
+- `digest.failed`: digest delivery was requested but no active target existed.
+- `user.language_updated`: user language preference changed.
+- `user.country_updated`: user country preference changed.
+- `user.timezone_updated`: user timezone preference changed.
+- `user.time_format_updated`: user 12h/24h preference changed.
+- `availability.updated`: user shift/availability status changed.
 - `briefing.generated`: daily company briefing generated.
 - `briefing.viewed`: latest daily briefing viewed.
 - `briefing.send_requested`: operator requested a send placeholder.
@@ -154,9 +168,15 @@ Simulation mode should produce reviewable summaries before automatic repair is a
 
 ## Operations Event Notes
 
-Tasks and incidents now emit operational events through the audit-backed event helper. Safe task metadata can include task ID, status, priority, model/brand ID, account ID, assigned user ID, and due/completion state. Safe incident metadata can include incident ID, status, severity, source type, model/brand ID, account ID, proxy ID, assigned user ID, escalation level, and safe resolution state.
+Tasks and incidents now emit operational events through the audit-backed event helper. Safe task metadata can include task ID, status, priority, model/brand ID, account ID, proxy ID, owner user ID, assigned user ID, escalation level, blocked reason category, and due/completion state. Safe incident metadata can include incident ID, status, severity, source type, model/brand ID, account ID, proxy ID, owner user ID, assigned user ID, escalation level, and safe resolution state.
+
+Incident timeline entries are stored in `incident_timeline` so operational history remains visible even when audit logs are filtered. Timeline metadata follows the same no-secret rule as EventLog.
 
 Daily briefing and accountability events are report-generation events. They should include only aggregate counts, not secrets or sensitive message content. Future notification routing can consume these events to send summaries to the owner or operations group after explicit operator approval.
+
+Daily Digest events build on Daily Briefing. `digest.sent` means durable delivery attempts were created; it does not guarantee Telegram delivery until the corresponding `notification.delivery_succeeded` event exists.
+
+Localization and availability events are operational preferences. They can include language, country, timezone, time format, and availability status, but should not include private schedule notes beyond safe shift/quiet-hour fields.
 
 ## Executive Intelligence Event Notes
 
@@ -166,7 +186,7 @@ Notification Target events should include only type and purpose. Telegram chat I
 
 ## Sprint 9 Event Notes
 
-Notification routing stays purpose-based for now. Routing events can include event type, purpose, and target count, but not raw chat IDs. Delivery attempt history is still a future table.
+Notification routing stays purpose-based for now. Routing events can include event type, purpose, and target count, but not raw chat IDs. Delivery attempt history is persisted in `notification_delivery_attempts`.
 
 Automation simulation events are first-class safety records. They should include automation type, target scope, would-trigger count, would-succeed count, would-fail count, and risk level. They should not imply any live action was executed.
 

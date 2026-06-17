@@ -1,6 +1,6 @@
 # Database Schema
 
-This document describes the current schema as of Sprint 10 and the planned direction. PostgreSQL is the production database, SQLAlchemy owns the models, and Alembic owns migrations.
+This document describes the current schema as of Sprint 11 and the planned direction. PostgreSQL is the production database, SQLAlchemy owns the models, and Alembic owns migrations.
 
 ## Current Tables
 
@@ -17,6 +17,10 @@ Columns:
 - `is_owner`: owner bootstrap flag.
 - `is_active`: active/blocking flag.
 - `status`: one of `pending`, `active`, `disabled`, or `denied`.
+- `language`: user language preference for onboarding and future localization.
+- `country`: optional country preference.
+- `timezone`: IANA timezone used for display and routing.
+- `time_format`: `12h` or `24h`.
 - `last_seen`: latest Telegram interaction timestamp.
 - `created_at`, `updated_at`: timestamps.
 
@@ -25,12 +29,39 @@ Indexes and constraints:
 - Unique constraint on `telegram_id`.
 - `ix_users_telegram_id`.
 - `ix_users_status`.
+- `ix_users_language`.
+- `ix_users_country`.
+- `ix_users_timezone`.
 - `ck_users_status` check constraint.
+- `ck_users_time_format`.
 
 Notes:
 
 - `status` is the source of truth for access behavior.
+- Pending users can update localization fields before approval, but cannot access operational screens.
 - The legacy `role_id` column from the initial migration is not mapped by the current model and is not used. Removing it is deferred until an approved cleanup migration.
+
+### user_availability
+
+Stores shift and quiet-hours state for smart notification routing.
+
+Columns:
+
+- `id`: primary key.
+- `user_id`: unique foreign key to `users.id`, cascade delete.
+- `status`: one of `on_shift`, `off_shift`, `away`, `vacation`, or `unavailable`.
+- `timezone`: IANA timezone used for local shift/quiet-hour interpretation.
+- `shift_start_local`, `shift_end_local`: optional local shift window.
+- `quiet_hours_start_local`, `quiet_hours_end_local`: optional local quiet-hours window.
+- `created_at`, `updated_at`: timestamps.
+
+Indexes and constraints:
+
+- Unique constraint on `user_id`.
+- `ck_user_availability_status`.
+- `ix_user_availability_user_id`.
+- `ix_user_availability_status`.
+- `ix_user_availability_timezone`.
 
 ### roles
 
@@ -335,10 +366,16 @@ Columns:
 - `priority`: one of `low`, `normal`, `high`, or `urgent`.
 - `model_brand_id`: nullable foreign key to `model_brands.id`, set null on model deletion.
 - `account_id`: nullable foreign key to `accounts.id`, set null on account deletion.
+- `proxy_id`: nullable foreign key to `proxies.id`, set null on proxy deletion.
+- `owner_user_id`: nullable foreign key to `users.id`, set null on user deletion.
 - `assigned_to_user_id`: nullable foreign key to `users.id`, set null on user deletion.
 - `created_by_user_id`: nullable foreign key to `users.id`, set null on user deletion.
 - `due_at`: optional due timestamp.
+- `started_at`: nullable start timestamp.
 - `completed_at`: nullable completion timestamp.
+- `blocked_reason`: optional safe blocker note.
+- `escalation_level`: numeric escalation step.
+- `last_escalated_at`: nullable latest escalation timestamp.
 - `created_at`, `updated_at`: timestamps.
 
 Indexes and constraints:
@@ -349,9 +386,12 @@ Indexes and constraints:
 - `ix_tasks_priority`.
 - `ix_tasks_model_brand_id`.
 - `ix_tasks_account_id`.
+- `ix_tasks_proxy_id`.
+- `ix_tasks_owner_user_id`.
 - `ix_tasks_assigned_to_user_id`.
 - `ix_tasks_created_by_user_id`.
 - `ix_tasks_due_at`.
+- `ix_tasks_escalation_level`.
 
 ### incidents
 
@@ -371,12 +411,14 @@ Columns:
 - `model_brand_id`: nullable foreign key to `model_brands.id`, set null on model deletion.
 - `account_id`: nullable foreign key to `accounts.id`, set null on account deletion.
 - `proxy_id`: nullable foreign key to `proxies.id`, set null on proxy deletion.
+- `owner_user_id`: nullable foreign key to `users.id`, set null on user deletion.
 - `assigned_to_user_id`: nullable foreign key to `users.id`, set null on user deletion.
 - `created_by_user_id`: nullable foreign key to `users.id`, set null on user deletion.
 - `resolved_by_user_id`: nullable foreign key to `users.id`, set null on user deletion.
 - `resolution_notes`: optional safe resolution note.
 - `escalation_level`: numeric escalation step.
 - `escalation_history`: JSON list of safe escalation history entries.
+- `last_escalated_at`: nullable latest escalation timestamp.
 - `resolved_at`: nullable resolution timestamp.
 - `metadata_json`: safe non-secret metadata.
 - `created_at`, `updated_at`: timestamps.
@@ -393,8 +435,31 @@ Indexes and constraints:
 - `ix_incidents_model_brand_id`.
 - `ix_incidents_account_id`.
 - `ix_incidents_proxy_id`.
+- `ix_incidents_owner_user_id`.
 - `ix_incidents_assigned_to_user_id`.
 - `ix_incidents_created_by_user_id`.
+- `ix_incidents_escalation_level`.
+
+### incident_timeline
+
+Durable per-incident timeline entries for operational status movement and escalation context.
+
+Columns:
+
+- `id`: primary key.
+- `incident_id`: foreign key to `incidents.id`, cascade delete.
+- `actor_user_id`: nullable foreign key to `users.id`, set null on user deletion.
+- `event_type`: stable dotted event type such as `incident.investigating`.
+- `message`: safe human-readable timeline message.
+- `metadata_json`: safe non-secret metadata.
+- `created_at`, `updated_at`: timestamps.
+
+Indexes and constraints:
+
+- `ix_incident_timeline_incident_id`.
+- `ix_incident_timeline_actor_user_id`.
+- `ix_incident_timeline_event_type`.
+- `ix_incident_timeline_created_at`.
 
 ### reports, automations
 
@@ -606,6 +671,7 @@ Indexes and constraints:
 ## Relationships
 
 - A user can have many roles through `user_roles`.
+- A user can have one availability record through `user_availability.user_id`.
 - A role can have many users through `user_roles`.
 - A role can have many permissions through `role_permissions`.
 - A permission can belong to many roles through `role_permissions`.
@@ -614,8 +680,9 @@ Indexes and constraints:
 - A model/brand can have many accounts through `accounts.model_brand_id`.
 - A proxy can have many accounts through `accounts.assigned_proxy_id`.
 - A proxy can have many rotation history rows through `proxy_rotation_history.proxy_id`.
-- A task can attach to a model/brand, account, assigned user, and creator.
-- An incident can attach to a model/brand, account, proxy, assigned user, creator, and resolver.
+- A task can attach to a model/brand, account, proxy, owner user, assigned user, and creator.
+- An incident can attach to a model/brand, account, proxy, owner user, assigned user, creator, and resolver.
+- An incident can have many timeline entries through `incident_timeline.incident_id`.
 - An account can have many auth sessions through `account_auth_sessions.account_id`.
 - An auth session can have many hashed verification-code submissions through `account_verification_codes.auth_session_id`.
 - An incident can point to a source resource through `source_type` and `source_id`.

@@ -167,12 +167,13 @@ def tasks_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Create Task", callback_data=callback_for("tasks:create"))],
             [
                 InlineKeyboardButton(text="My Tasks", callback_data=callback_for("tasks:my")),
-                InlineKeyboardButton(text="Assigned Tasks", callback_data=callback_for("tasks:assigned")),
+                InlineKeyboardButton(text="Team Tasks", callback_data=callback_for("tasks:team")),
             ],
             [
                 InlineKeyboardButton(text="Overdue Tasks", callback_data=callback_for("tasks:overdue")),
                 InlineKeyboardButton(text="Blocked Tasks", callback_data=callback_for("tasks:blocked")),
             ],
+            [InlineKeyboardButton(text="Escalated Tasks", callback_data=callback_for("tasks:escalated"))],
             *page_controls(back_to="menu"),
         ]
     )
@@ -195,7 +196,10 @@ def task_detail_menu(task_id: int) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="Complete Task", callback_data=f"nav:task:{task_id}:complete"),
                 InlineKeyboardButton(text="Archive Task", callback_data=f"nav:task:{task_id}:archive"),
             ],
-            [InlineKeyboardButton(text="Reassign Task", callback_data=f"nav:task:{task_id}:assign")],
+            [
+                InlineKeyboardButton(text="Reassign Task", callback_data=f"nav:task:{task_id}:assign"),
+                InlineKeyboardButton(text="Escalate Task", callback_data=f"nav:task:{task_id}:escalate"),
+            ],
             *page_controls(back_to="tasks:list"),
         ]
     )
@@ -210,7 +214,7 @@ def task_user_choice_menu(task_id: int, user_buttons: list[tuple[str, str]]) -> 
 def incidents_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="View Incidents", callback_data=callback_for("incidents:list"))],
+            [InlineKeyboardButton(text="Open Incidents", callback_data=callback_for("incidents:list"))],
             [InlineKeyboardButton(text="Create Incident", callback_data=callback_for("incidents:create"))],
             [
                 InlineKeyboardButton(text="My Incidents", callback_data=callback_for("incidents:my")),
@@ -232,10 +236,14 @@ def incident_detail_menu(incident_id: int) -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="Assign Incident", callback_data=f"nav:incident:{incident_id}:assign")],
             [
+                InlineKeyboardButton(text="Investigate", callback_data=f"nav:incident:{incident_id}:investigate"),
                 InlineKeyboardButton(text="Escalate Incident", callback_data=f"nav:incident:{incident_id}:escalate"),
                 InlineKeyboardButton(text="Resolve Incident", callback_data=f"nav:incident:{incident_id}:resolve"),
             ],
-            [InlineKeyboardButton(text="Archive Incident", callback_data=f"nav:incident:{incident_id}:archive")],
+            [
+                InlineKeyboardButton(text="View Timeline", callback_data=f"nav:incident:{incident_id}:timeline"),
+                InlineKeyboardButton(text="Archive Incident", callback_data=f"nav:incident:{incident_id}:archive"),
+            ],
             *page_controls(back_to="incidents:list"),
         ]
     )
@@ -251,8 +259,10 @@ def reports_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="Daily Briefing", callback_data=callback_for("reports:daily"))],
+            [InlineKeyboardButton(text="Daily Digest", callback_data=callback_for("reports:digest"))],
             [InlineKeyboardButton(text="Team Accountability", callback_data=callback_for("reports:accountability"))],
             [InlineKeyboardButton(text="Executive Dashboard", callback_data=callback_for("reports:executive"))],
+            [InlineKeyboardButton(text="Manager Command View", callback_data=callback_for("reports:manager"))],
             [InlineKeyboardButton(text="Operations Dashboard", callback_data=callback_for("reports:operations"))],
             [
                 InlineKeyboardButton(text="Chatter Dashboard", callback_data=callback_for("reports:chatter")),
@@ -277,6 +287,22 @@ def briefing_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="Send to Owner", callback_data=callback_for("reports:daily:send_owner")),
                 InlineKeyboardButton(text="Send to Operations Group", callback_data=callback_for("reports:daily:send_ops")),
             ],
+            *page_controls(back_to="reports"),
+        ]
+    )
+
+
+def daily_digest_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Generate Digest", callback_data=callback_for("reports:digest:generate"))],
+            [InlineKeyboardButton(text="Preview Digest", callback_data=callback_for("reports:digest:preview"))],
+            [
+                InlineKeyboardButton(text="Send to HQ", callback_data=callback_for("reports:digest:send_hq")),
+                InlineKeyboardButton(text="Send to Operations", callback_data=callback_for("reports:digest:send_ops")),
+            ],
+            [InlineKeyboardButton(text="Schedule Digest", callback_data=callback_for("reports:digest:schedule"))],
+            [InlineKeyboardButton(text="Delivery History", callback_data=callback_for("reports:digest:history"))],
             *page_controls(back_to="reports"),
         ]
     )
@@ -331,6 +357,23 @@ def operations_dashboard_menu() -> InlineKeyboardMarkup:
             ],
             [InlineKeyboardButton(text="View Accounts Needing Attention", callback_data=callback_for("accounts:attention"))],
             [InlineKeyboardButton(text="View Proxies Needing Attention", callback_data=callback_for("proxies:dashboard"))],
+            *page_controls(back_to="reports"),
+        ]
+    )
+
+
+def manager_command_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Assign Task", callback_data=callback_for("tasks:create")),
+                InlineKeyboardButton(text="View Overdue", callback_data=callback_for("tasks:overdue")),
+            ],
+            [
+                InlineKeyboardButton(text="View Incidents", callback_data=callback_for("incidents:list")),
+                InlineKeyboardButton(text="Team Availability", callback_data=callback_for("availability:team")),
+            ],
+            [InlineKeyboardButton(text="Generate Daily Digest", callback_data=callback_for("reports:digest:generate"))],
             *page_controls(back_to="reports"),
         ]
     )
@@ -565,6 +608,9 @@ def settings_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="Bot Status", callback_data=callback_for("bot_status"))],
+            [InlineKeyboardButton(text="Production Status", callback_data=callback_for("production_status"))],
+            [InlineKeyboardButton(text="My Availability", callback_data=callback_for("availability"))],
+            [InlineKeyboardButton(text="Team Availability", callback_data=callback_for("availability:team"))],
             [InlineKeyboardButton(text="View Audit Logs", callback_data=callback_for("audit_logs"))],
             [InlineKeyboardButton(text="Notification Targets", callback_data=callback_for("notification_targets"))],
             [
@@ -620,5 +666,76 @@ def bot_status_menu() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="Refresh", callback_data=callback_for("bot_status"))],
             *page_controls(back_to="settings"),
+        ]
+    )
+
+
+def availability_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="On Shift", callback_data=callback_for("availability:set:on_shift")),
+                InlineKeyboardButton(text="Off Shift", callback_data=callback_for("availability:set:off_shift")),
+            ],
+            [
+                InlineKeyboardButton(text="Away", callback_data=callback_for("availability:set:away")),
+                InlineKeyboardButton(text="Vacation", callback_data=callback_for("availability:set:vacation")),
+            ],
+            [InlineKeyboardButton(text="Unavailable", callback_data=callback_for("availability:set:unavailable"))],
+            *page_controls(back_to="settings"),
+        ]
+    )
+
+
+def onboarding_language_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="English", callback_data=callback_for("onboarding:language:English"))],
+            [InlineKeyboardButton(text="Spanish", callback_data=callback_for("onboarding:language:Spanish"))],
+            [InlineKeyboardButton(text="Portuguese", callback_data=callback_for("onboarding:language:Portuguese"))],
+            [InlineKeyboardButton(text="Tagalog / Filipino", callback_data=callback_for("onboarding:language:Tagalog / Filipino"))],
+            [InlineKeyboardButton(text="Serbian", callback_data=callback_for("onboarding:language:Serbian"))],
+        ]
+    )
+
+
+def onboarding_country_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="United States", callback_data=callback_for("onboarding:country:United States"))],
+            [InlineKeyboardButton(text="Philippines", callback_data=callback_for("onboarding:country:Philippines"))],
+            [InlineKeyboardButton(text="Serbia", callback_data=callback_for("onboarding:country:Serbia"))],
+            [InlineKeyboardButton(text="Colombia", callback_data=callback_for("onboarding:country:Colombia"))],
+            [InlineKeyboardButton(text="Brazil", callback_data=callback_for("onboarding:country:Brazil"))],
+            [InlineKeyboardButton(text="United Kingdom", callback_data=callback_for("onboarding:country:United Kingdom"))],
+        ]
+    )
+
+
+def onboarding_timezone_menu(timezones: tuple[str, ...]) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=value, callback_data=callback_for(f"onboarding:timezone:{value}"))] for value in timezones]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def onboarding_time_format_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="12h", callback_data=callback_for("onboarding:time_format:12h"))],
+            [InlineKeyboardButton(text="24h", callback_data=callback_for("onboarding:time_format:24h"))],
+        ]
+    )
+
+
+def onboarding_pending_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Language", callback_data=callback_for("onboarding:reset:language")),
+                InlineKeyboardButton(text="Country", callback_data=callback_for("onboarding:reset:country")),
+            ],
+            [
+                InlineKeyboardButton(text="Timezone", callback_data=callback_for("onboarding:reset:timezone")),
+                InlineKeyboardButton(text="Time Format", callback_data=callback_for("onboarding:reset:time_format")),
+            ],
         ]
     )

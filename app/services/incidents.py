@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.models.account import Account
 from app.models.audit import AuditLog
-from app.models.incident import INCIDENT_SEVERITIES, INCIDENT_SOURCE_TYPES, INCIDENT_STATUSES, Incident
+from app.models.incident import INCIDENT_SEVERITIES, INCIDENT_SOURCE_TYPES, INCIDENT_STATUSES, Incident, IncidentTimeline
 from app.models.model_brand import ModelBrand
 from app.models.proxy import Proxy
 from app.models.user import User
@@ -72,6 +72,7 @@ def _incident_payload(incident: Incident, extra: dict | None = None) -> dict:
         "account_id": incident.account_id,
         "proxy_id": incident.proxy_id,
         "assigned_to_user_id": incident.assigned_to_user_id,
+        "owner_user_id": incident.owner_user_id,
         "escalation_level": incident.escalation_level,
     }
     payload.update(extra or {})
@@ -83,10 +84,33 @@ def _base_incident_query():
         selectinload(Incident.model_brand),
         selectinload(Incident.account),
         selectinload(Incident.proxy),
+        selectinload(Incident.owner),
         selectinload(Incident.assigned_to),
         selectinload(Incident.created_by),
         selectinload(Incident.resolved_by),
+        selectinload(Incident.timeline_entries),
     )
+
+
+def add_timeline_entry(
+    session: Session,
+    incident: Incident,
+    *,
+    actor: User | None,
+    event_type: str,
+    message: str,
+    metadata: dict | None = None,
+) -> IncidentTimeline:
+    entry = IncidentTimeline(
+        incident_id=incident.id,
+        actor_user_id=actor.id if actor else None,
+        event_type=event_type,
+        message=message,
+        metadata_json=metadata or {},
+    )
+    session.add(entry)
+    session.flush()
+    return entry
 
 
 def list_incidents(session: Session, *, include_archived: bool = False) -> list[Incident]:
@@ -118,6 +142,7 @@ def create_incident(
     model_brand: ModelBrand | None = None,
     account: Account | None = None,
     proxy: Proxy | None = None,
+    owner_user: User | None = None,
     assigned_to: User | None = None,
 ) -> Incident:
     if actor is not None:
@@ -143,6 +168,7 @@ def create_incident(
         model_brand_id=model_brand.id if model_brand else None,
         account_id=account.id if account else None,
         proxy_id=proxy.id if proxy else None,
+        owner_user_id=owner_user.id if owner_user else (actor.id if actor else None),
         assigned_to_user_id=assigned_to.id if assigned_to else None,
         assigned_user_id=assigned_to.id if assigned_to else None,
         created_by_user_id=actor.id if actor else None,
@@ -158,6 +184,14 @@ def create_incident(
         resource_id=str(incident.id),
         status=incident.status,
         payload=_incident_payload(incident),
+    )
+    add_timeline_entry(
+        session,
+        incident,
+        actor=actor,
+        event_type="incident.created",
+        message=f"Incident created: {incident.title}",
+        metadata=_incident_payload(incident),
     )
     return incident
 
@@ -189,6 +223,14 @@ def assign_incident(session: Session, incident: Incident, assignee: User, *, act
         resource_id=str(incident.id),
         payload=_incident_payload(incident, {"assigned_to_user_id": assignee.id}),
     )
+    add_timeline_entry(
+        session,
+        incident,
+        actor=actor,
+        event_type="incident.assigned",
+        message=f"Assigned to {assignee.display_name or assignee.username or assignee.id}",
+        metadata={"assigned_to_user_id": assignee.id},
+    )
     return incident
 
 
@@ -203,6 +245,7 @@ def escalate_incident(session: Session, incident: Incident, *, actor: User) -> I
     previous_target = escalation_target_for(incident)
     incident.escalation_level += 1
     incident.status = "investigating"
+    incident.last_escalated_at = _now()
     new_target = escalation_target_for(incident)
     history = list(incident.escalation_history or [])
     history.append(
@@ -222,6 +265,37 @@ def escalate_incident(session: Session, incident: Incident, *, actor: User) -> I
         resource_type="incident",
         resource_id=str(incident.id),
         payload=_incident_payload(incident, {"to": new_target}),
+    )
+    add_timeline_entry(
+        session,
+        incident,
+        actor=actor,
+        event_type="incident.escalated",
+        message=f"Escalated from {previous_target} to {new_target}",
+        metadata={"from": previous_target, "to": new_target, "escalation_level": incident.escalation_level},
+    )
+    return incident
+
+
+def investigate_incident(session: Session, incident: Incident, *, actor: User) -> Incident:
+    _require_manage_incidents(session, actor)
+    incident.status = "investigating"
+    session.flush()
+    emit_event(
+        session,
+        actor=actor,
+        event_name="incident.investigating",
+        resource_type="incident",
+        resource_id=str(incident.id),
+        payload=_incident_payload(incident),
+    )
+    add_timeline_entry(
+        session,
+        incident,
+        actor=actor,
+        event_type="incident.investigating",
+        message="Investigation started.",
+        metadata=_incident_payload(incident),
     )
     return incident
 
@@ -247,6 +321,14 @@ def resolve_incident(
         resource_id=str(incident.id),
         payload=_incident_payload(incident),
     )
+    add_timeline_entry(
+        session,
+        incident,
+        actor=actor,
+        event_type="incident.resolved",
+        message=incident.resolution_notes or "Incident resolved.",
+        metadata={"resolved_by_user_id": actor.id},
+    )
     return incident
 
 
@@ -262,7 +344,26 @@ def archive_incident(session: Session, incident: Incident, *, actor: User) -> In
         resource_id=str(incident.id),
         payload=_incident_payload(incident),
     )
+    add_timeline_entry(
+        session,
+        incident,
+        actor=actor,
+        event_type="incident.archived",
+        message="Incident archived.",
+        metadata=_incident_payload(incident),
+    )
     return incident
+
+
+def incident_timeline(session: Session, incident: Incident, *, limit: int = 20) -> list[IncidentTimeline]:
+    return list(
+        session.scalars(
+            select(IncidentTimeline)
+            .where(IncidentTimeline.incident_id == incident.id)
+            .order_by(IncidentTimeline.created_at.desc(), IncidentTimeline.id.desc())
+            .limit(limit)
+        ).all()
+    )
 
 
 def my_incidents(session: Session, user: User) -> list[Incident]:

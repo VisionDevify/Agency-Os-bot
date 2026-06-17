@@ -65,6 +65,7 @@ pytest
 - Bot Status and system heartbeat records for API, bot, db, redis, and Railway deployment state.
 - Lightweight EventLog persistence for report and operational event feeds.
 - Notification delivery attempt records for sent/failed/skipped test deliveries, with safe audit/event output and failure recommendations.
+- Agency operations activation: task ownership/escalation, incident timelines, user availability/localization, Daily Digest delivery, Manager Command View, and duplicate polling guard.
 
 ## Railway Deployment
 
@@ -119,3 +120,6 @@ Production smoke testing checklist:
 - `docs/production_operations.md`
 - `docs/automation_simulation.md`
 - `docs/recommendations_engine.md`
+- `docs/team_operations.md`
+- `docs/onboarding_localization.md`
+- `docs/daily_digest.md`

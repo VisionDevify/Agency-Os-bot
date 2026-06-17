@@ -53,6 +53,7 @@ from app.services.incidents import (
     create_default_incident,
     escalate_incident,
     get_incident,
+    investigate_incident,
     resolve_incident,
 )
 from app.services.tasks import (
@@ -61,6 +62,7 @@ from app.services.tasks import (
     block_task,
     complete_task,
     create_default_task,
+    escalate_task,
     get_task,
     start_task,
 )
@@ -80,6 +82,7 @@ from app.services.automations import (
 )
 from app.services.recommendations import get_recommendation, update_recommendation_status
 from app.services.permissions import PermissionPrincipal, require_permission
+from app.services.team_operations import set_availability
 
 PAGE_PERMISSIONS: dict[str, str] = {
     "dashboard": "view_dashboard",
@@ -94,6 +97,7 @@ PAGE_PERMISSIONS: dict[str, str] = {
     "automations": "manage_automations",
     "settings": "manage_roles",
     "audit_logs": "view_audit_logs",
+    "production_status": "manage_roles",
 }
 
 
@@ -127,6 +131,12 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         return ("upload_content", "manage_tasks", "view_dashboard")
     if page.startswith("reports:"):
         return ("manage_reports",)
+    if page == "availability:team":
+        return ("manage_users", "manage_reports")
+    if page.startswith("availability"):
+        return None
+    if page.startswith("onboarding"):
+        return None
     if page.startswith("recommendation:"):
         return ("manage_reports", "view_dashboard")
     if page.startswith("automations:") or page.startswith("simulation:"):
@@ -151,7 +161,7 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         return ("manage_roles",)
     if page.startswith("notification_targets") or page.startswith("notification_target:"):
         return ("manage_reports", "manage_roles")
-    if page == "bot_status":
+    if page in {"bot_status", "production_status"}:
         return ("view_dashboard", "manage_reports", "manage_roles")
     permission = PAGE_PERMISSIONS.get(page)
     return (permission,) if permission else None
@@ -166,6 +176,12 @@ def _perform_admin_action(
     chat_title: str | None = None,
 ) -> str | None:
     parts = page.split(":")
+    if len(parts) >= 3 and parts[0] == "availability" and parts[1] == "set":
+        try:
+            set_availability(session, actor, actor=actor, status=parts[2])
+        except ValueError:
+            return "availability"
+        return "availability"
     if page == "automations:simulate:proxy_repair":
         run = run_proxy_repair_simulation(session, actor=actor)
         return f"simulation:{run.id}"
@@ -222,6 +238,9 @@ def _perform_admin_action(
         if action == "archive":
             archive_task(session, task, actor=actor)
             return f"task:{task.id}"
+        if action == "escalate":
+            escalate_task(session, task, actor=actor)
+            return f"task:{task.id}"
         if action == "assign" and len(parts) >= 4 and parts[3].isdigit():
             assignee = get_user_by_id(session, int(parts[3]))
             if assignee is not None:
@@ -242,6 +261,9 @@ def _perform_admin_action(
             return f"incident:{incident.id}"
         if action == "escalate":
             escalate_incident(session, incident, actor=actor)
+            return f"incident:{incident.id}"
+        if action == "investigate":
+            investigate_incident(session, incident, actor=actor)
             return f"incident:{incident.id}"
         if action == "resolve":
             resolve_incident(session, incident, actor=actor)
@@ -575,6 +597,9 @@ def screen_for_page(
         or normalized.startswith("notification_targets")
         or normalized.startswith("notification_target:")
         or normalized == "bot_status"
+        or normalized == "production_status"
+        or normalized.startswith("availability")
+        or normalized.startswith("onboarding")
     ):
         return render_page(normalized, session=session, user=user)
     return render_main_menu()

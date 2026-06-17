@@ -12,15 +12,18 @@ from app.bot.menu import (
     account_proxy_choice_menu,
     accounts_menu,
     automations_menu,
+    availability_menu,
     briefing_menu,
     bot_status_menu,
     dashboard_menu,
+    daily_digest_menu,
     executive_dashboard_menu,
     incident_detail_menu,
     incident_list_menu,
     incident_user_choice_menu,
     incidents_menu,
     main_menu,
+    manager_command_menu,
     model_detail_menu,
     model_edit_menu,
     model_list_menu,
@@ -30,6 +33,11 @@ from app.bot.menu import (
     notification_target_detail_menu,
     notification_target_purpose_menu,
     notification_targets_menu,
+    onboarding_country_menu,
+    onboarding_language_menu,
+    onboarding_pending_menu,
+    onboarding_time_format_menu,
+    onboarding_timezone_menu,
     operations_dashboard_menu,
     page_menu,
     platform_filter_menu,
@@ -91,9 +99,11 @@ from app.services.incidents import (
     escalation_target_for,
     get_incident,
     incident_audit_logs,
+    incident_timeline,
     incidents_for_model,
     list_incidents,
     my_incidents,
+    open_incidents,
     severity_label,
 )
 from app.services.operations import (
@@ -101,13 +111,24 @@ from app.services.operations import (
     executive_dashboard,
     generate_accountability_report,
     generate_daily_briefing,
+    generate_daily_digest,
+    daily_digest_delivery_history,
     record_dashboard_view,
     record_report_view,
     operations_dashboard,
+    preview_daily_digest,
     request_briefing_send,
+    request_digest_send,
     va_dashboard,
     view_accountability_report,
     view_latest_daily_briefing,
+)
+from app.services.team_operations import (
+    format_user_datetime,
+    get_or_create_availability,
+    manager_command_metrics,
+    onboarding_next_step,
+    timezone_suggestions_for_country,
 )
 from app.services.notifications import (
     latest_delivery_attempts_for_target,
@@ -788,6 +809,24 @@ def render_incident_assignment_page(session: Session, incident_id: int) -> Scree
     return Screen(text="\n".join(lines), reply_markup=incident_user_choice_menu(incident.id, buttons))
 
 
+def render_incident_timeline_page(session: Session, incident_id: int) -> Screen:
+    incident = get_incident(session, incident_id)
+    if incident is None:
+        return Screen(text="Incident not found.", reply_markup=page_menu(back_to="incidents:list"))
+    entries = incident_timeline(session, incident)
+    lines = ["Incident Timeline", "", f"Incident: {incident.title}", ""]
+    if not entries:
+        lines.append("No timeline entries yet.")
+    for entry in entries[:15]:
+        actor = _identity(entry.actor)
+        when = entry.created_at.isoformat() if entry.created_at else "pending timestamp"
+        lines.append(f"{when}")
+        lines.append(f"{entry.event_type} by {actor}")
+        lines.append(entry.message)
+        lines.append("")
+    return Screen(text="\n".join(lines).strip(), reply_markup=page_menu(back_to=f"incident:{incident.id}"))
+
+
 def render_executive_dashboard_page(session: Session, user: User | None = None) -> Screen:
     record_dashboard_view(session, actor=user, dashboard_name="executive")
     generate_recommendations(session, actor=user)
@@ -873,6 +912,44 @@ def render_operations_dashboard_page(session: Session, user: User | None = None)
     return Screen(text="\n".join(lines), reply_markup=operations_dashboard_menu())
 
 
+def render_manager_command_page(session: Session, user: User | None = None) -> Screen:
+    record_dashboard_view(session, actor=user, dashboard_name="manager_command")
+    metrics = manager_command_metrics(session)
+    lines = [
+        "Manager Command View",
+        "",
+        f"People On Shift: {len(metrics['on_shift'])}",
+        f"People Off Shift: {len(metrics['off_shift'])}",
+        f"Open Tasks: {metrics['open_tasks']}",
+        f"Overdue Tasks: {metrics['overdue_tasks']}",
+        f"Open Incidents: {metrics['open_incidents']}",
+        f"Unresolved Critical Incidents: {metrics['unresolved_critical_incidents']}",
+        f"Owner/Admin Recommendations: {metrics['owner_admin_recommendations']}",
+        f"Notification Delivery Failures: {metrics['notification_delivery_failures']}",
+        "",
+        "On Shift:",
+    ]
+    if metrics["on_shift"]:
+        lines.extend(f"- {_identity(person)}" for person in metrics["on_shift"][:10])
+    else:
+        lines.append("- Nobody marked on shift")
+    lines.extend(["", "Open Tasks by Assignee:"])
+    if metrics["open_tasks_by_assignee"]:
+        for user_id, count in sorted(metrics["open_tasks_by_assignee"].items(), key=lambda item: str(item[0])):
+            assignee = session.get(User, user_id) if user_id is not None else None
+            lines.append(f"- {_identity(assignee)}: {count}")
+    else:
+        lines.append("- None")
+    lines.extend(["", "Open Incidents by Assignee:"])
+    if metrics["open_incidents_by_assignee"]:
+        for user_id, count in sorted(metrics["open_incidents_by_assignee"].items(), key=lambda item: str(item[0])):
+            assignee = session.get(User, user_id) if user_id is not None else None
+            lines.append(f"- {_identity(assignee)}: {count}")
+    else:
+        lines.append("- None")
+    return Screen(text="\n".join(lines), reply_markup=manager_command_menu())
+
+
 def render_chatter_dashboard_page(session: Session, user: User | None = None) -> Screen:
     record_dashboard_view(session, actor=user, dashboard_name="chatter")
     stats = chatter_dashboard(session, user=user)
@@ -954,6 +1031,82 @@ def render_daily_briefing_page(
     lines.extend(["", "Recommended Actions:"])
     lines.extend(f"- {item}" for item in summary["recommended_actions"])
     return Screen(text="\n".join(lines), reply_markup=briefing_menu())
+
+
+def render_daily_digest_page(
+    session: Session,
+    user: User | None = None,
+    *,
+    mode: str = "home",
+    purpose: str | None = None,
+) -> Screen:
+    if mode == "generate":
+        summary = generate_daily_digest(session, actor=user)
+        title = "Daily Digest Generated"
+    elif mode == "preview":
+        summary = preview_daily_digest(session, actor=user)
+        title = "Daily Digest Preview"
+        if summary is None:
+            return Screen(
+                text="Daily Digest\n\nNo digest has been generated yet.",
+                reply_markup=daily_digest_menu(),
+            )
+    elif mode == "send":
+        target_purpose = purpose or "operations"
+        attempts = request_digest_send(session, actor=user, purpose=target_purpose)
+        latest = preview_daily_digest(session, actor=user) or generate_daily_digest(session, actor=user)
+        lines = [
+            "Daily Digest Send Requested",
+            "",
+            f"Purpose: {target_purpose}",
+            f"Delivery Attempts Created: {attempts}",
+            "",
+            latest["summary_text"],
+        ]
+        return Screen(text="\n".join(lines), reply_markup=daily_digest_menu())
+    elif mode == "history":
+        attempts = daily_digest_delivery_history(session)
+        lines = ["Daily Digest Delivery History", ""]
+        if not attempts:
+            lines.append("No delivery attempts yet.")
+        for attempt in attempts:
+            when = attempt.attempted_at.isoformat() if attempt.attempted_at else "unknown time"
+            lines.append(f"{when} | {attempt.event_type} | {attempt.status}")
+        return Screen(text="\n".join(lines), reply_markup=daily_digest_menu())
+    elif mode == "schedule":
+        return Screen(
+            text="Daily Digest Schedule\n\nScheduling is prepared as a placeholder. Use Generate/Preview/Send today.",
+            reply_markup=daily_digest_menu(),
+        )
+    else:
+        summary = preview_daily_digest(session, actor=user)
+        if summary is None:
+            lines = [
+                "Daily Digest",
+                "",
+                "No digest generated yet.",
+                "Use Generate Digest to create today's operational summary.",
+            ]
+            return Screen(text="\n".join(lines), reply_markup=daily_digest_menu())
+        title = "Daily Digest"
+    record_report_view(session, actor=user, report_name="daily_digest")
+    lines = [
+        title,
+        "",
+        f"Summary: {summary['summary_text']}",
+        f"Agency Health Score: {summary['agency_health_score']}",
+        f"Critical Incidents: {summary['critical_incidents']}",
+        f"Overdue Tasks: {summary['overdue_tasks']}",
+        f"Accounts Needing Login/2FA: {summary['accounts_needing_login']}/{summary['accounts_needing_2fa']}",
+        f"Proxies Warning/Critical: {summary['proxies_warning']}/{summary['proxies_critical']}",
+        "",
+        "Top Recommendations:",
+    ]
+    for item in summary["recommended_actions"][:5]:
+        lines.append(f"- {item}")
+    if not summary["recommended_actions"]:
+        lines.append("- No recommendations right now")
+    return Screen(text="\n".join(lines), reply_markup=daily_digest_menu())
 
 
 def render_accountability_page(session: Session, user: User | None = None) -> Screen:
@@ -1102,6 +1255,90 @@ def render_bot_status_page(session: Session) -> Screen:
         seen = heartbeat.last_seen_at.isoformat() if heartbeat.last_seen_at else "not seen yet"
         lines.append(f"- {heartbeat.service_name}: {heartbeat.status} at {seen}")
     return Screen(text="\n".join(lines), reply_markup=bot_status_menu())
+
+
+def render_availability_page(session: Session, user: User) -> Screen:
+    availability = get_or_create_availability(session, user)
+    shift = (
+        f"{availability.shift_start_local} - {availability.shift_end_local}"
+        if availability.shift_start_local and availability.shift_end_local
+        else "Not set"
+    )
+    quiet_hours = (
+        f"{availability.quiet_hours_start_local} - {availability.quiet_hours_end_local}"
+        if availability.quiet_hours_start_local and availability.quiet_hours_end_local
+        else "Not set"
+    )
+    lines = [
+        "My Availability",
+        "",
+        f"Status: {availability.status}",
+        f"Language: {user.language or 'Not set'}",
+        f"Country: {user.country or 'Not set'}",
+        f"Timezone: {user.timezone}",
+        f"Time Format: {user.time_format}",
+        f"Shift: {shift}",
+        f"Quiet Hours: {quiet_hours}",
+        f"Last Seen: {format_user_datetime(user, user.last_seen)}",
+    ]
+    return Screen(text="\n".join(lines), reply_markup=availability_menu())
+
+
+def render_team_availability_page(session: Session) -> Screen:
+    users = session.scalars(
+        select(User)
+        .options(selectinload(User.availability), selectinload(User.roles))
+        .order_by(User.status, User.display_name, User.id)
+        .limit(30)
+    ).all()
+    lines = ["Team Availability", ""]
+    if not users:
+        lines.append("No users yet.")
+    for user in users:
+        availability = user.availability
+        status = availability.status if availability else "off_shift"
+        timezone = (availability.timezone if availability else user.timezone) or "UTC"
+        roles = ", ".join(role.name for role in user.roles) or "No roles"
+        lines.append(f"{_identity(user)}")
+        lines.append(f"   Status: {status} | Timezone: {timezone} | Roles: {roles}")
+        lines.append(f"   Last Seen: {format_user_datetime(user, user.last_seen)}")
+    return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="settings"))
+
+
+def render_onboarding_page(session: Session, user: User, *, step: str | None = None) -> Screen:
+    current_step = step or onboarding_next_step(user)
+    if current_step == "language":
+        return Screen(
+            text="Welcome to Agency OS.\n\nStep 1: Select your language.",
+            reply_markup=onboarding_language_menu(),
+        )
+    if current_step == "country":
+        return Screen(
+            text=f"Language: {user.language or 'Not set'}\n\nStep 2: Select your country.",
+            reply_markup=onboarding_country_menu(),
+        )
+    if current_step == "timezone":
+        timezones = timezone_suggestions_for_country(user.country)
+        return Screen(
+            text=f"Country: {user.country or 'Not set'}\n\nStep 3: Confirm your timezone.",
+            reply_markup=onboarding_timezone_menu(timezones),
+        )
+    if current_step == "time_format":
+        return Screen(
+            text=f"Timezone: {user.timezone}\n\nStep 4: Select your time format.",
+            reply_markup=onboarding_time_format_menu(),
+        )
+    return Screen(
+        text=(
+            "Access pending approval.\n\n"
+            f"Language: {user.language or 'Not set'}\n"
+            f"Country: {user.country or 'Not set'}\n"
+            f"Timezone: {user.timezone}\n"
+            f"Time Format: {user.time_format}\n\n"
+            "Your profile is saved. An admin can approve access."
+        ),
+        reply_markup=onboarding_pending_menu(),
+    )
 
 
 def render_notification_targets_page(session: Session) -> Screen:
@@ -1463,6 +1700,10 @@ def render_user_detail_page(session: Session, user_id: int) -> Screen:
         f"Telegram ID: {_masked_telegram_id(user.telegram_id)}",
         f"Status: {user.status}",
         f"Roles: {role_names}",
+        f"Language: {user.language or 'Not set'}",
+        f"Country: {user.country or 'Not set'}",
+        f"Timezone: {user.timezone}",
+        f"Time Format: {user.time_format}",
         f"Created: {created_at}",
         f"Last Seen: {last_seen}",
         "",
@@ -1571,8 +1812,8 @@ def render_audit_logs_page(session: Session) -> Screen:
 
 def render_access_pending() -> Screen:
     return Screen(
-        text="Access pending approval.",
-        reply_markup=main_menu(),
+        text="Access pending approval.\n\nComplete or update your profile while an admin reviews access.",
+        reply_markup=onboarding_pending_menu(),
     )
 
 
@@ -1728,10 +1969,20 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
             title="Assigned Tasks",
             back_to="tasks",
         )
+    if page == "tasks:team" and session is not None:
+        return render_task_list_page(
+            session,
+            tasks=assigned_tasks(session),
+            title="Team Tasks",
+            back_to="tasks",
+        )
     if page == "tasks:overdue" and session is not None:
         return render_task_list_page(session, tasks=overdue_tasks(session), title="Overdue Tasks", back_to="tasks")
     if page == "tasks:blocked" and session is not None:
         return render_task_list_page(session, tasks=blocked_tasks(session), title="Blocked Tasks", back_to="tasks")
+    if page == "tasks:escalated" and session is not None:
+        escalated = [task for task in list_tasks(session) if task.escalation_level > 0]
+        return render_task_list_page(session, tasks=escalated, title="Escalated Tasks", back_to="tasks")
     if page.startswith("task:") and session is not None:
         parts = page.split(":")
         if len(parts) >= 2 and parts[1].isdigit():
@@ -1743,6 +1994,13 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_incidents_home()
     if page == "incidents:list" and session is not None:
         return render_incident_list_page(session)
+    if page == "incidents:open" and session is not None:
+        return render_incident_list_page(
+            session,
+            incidents=open_incidents(session),
+            title="Open Incidents",
+            back_to="incidents",
+        )
     if page == "incidents:my" and session is not None and user is not None:
         return render_incident_list_page(
             session,
@@ -1763,6 +2021,8 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
             incident_id = int(parts[1])
             if len(parts) >= 3 and parts[2] == "assign":
                 return render_incident_assignment_page(session, incident_id)
+            if len(parts) >= 3 and parts[2] == "timeline":
+                return render_incident_timeline_page(session, incident_id)
             return render_incident_detail_page(session, incident_id)
     if page == "reports":
         return render_reports_home()
@@ -1776,6 +2036,20 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_daily_briefing_page(session, user=user, mode="latest")
     if page == "reports:accountability" and session is not None:
         return render_accountability_page(session, user=user)
+    if page == "reports:digest" and session is not None:
+        return render_daily_digest_page(session, user=user)
+    if page == "reports:digest:generate" and session is not None:
+        return render_daily_digest_page(session, user=user, mode="generate")
+    if page == "reports:digest:preview" and session is not None:
+        return render_daily_digest_page(session, user=user, mode="preview")
+    if page == "reports:digest:send_hq" and session is not None:
+        return render_daily_digest_page(session, user=user, mode="send", purpose="owner")
+    if page == "reports:digest:send_ops" and session is not None:
+        return render_daily_digest_page(session, user=user, mode="send", purpose="operations")
+    if page == "reports:digest:schedule" and session is not None:
+        return render_daily_digest_page(session, user=user, mode="schedule")
+    if page == "reports:digest:history" and session is not None:
+        return render_daily_digest_page(session, user=user, mode="history")
     if page == "reports:executive" and session is not None:
         return render_executive_dashboard_page(session, user=user)
     if page == "reports:executive:recommendations" and session is not None:
@@ -1786,6 +2060,8 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
             return render_recommendation_detail_page(session, int(parts[1]))
     if page == "reports:operations" and session is not None:
         return render_operations_dashboard_page(session, user=user)
+    if page == "reports:manager" and session is not None:
+        return render_manager_command_page(session, user=user)
     if page == "reports:chatter" and session is not None:
         return render_chatter_dashboard_page(session, user=user)
     if page == "reports:va" and session is not None:
@@ -1820,8 +2096,16 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
             return render_simulation_run_detail_page(session, int(parts[1]))
     if page == "audit_logs" and session is not None:
         return render_audit_logs_page(session)
-    if page == "bot_status" and session is not None:
+    if page in {"bot_status", "production_status"} and session is not None:
         return render_bot_status_page(session)
+    if page == "availability" and session is not None and user is not None:
+        return render_availability_page(session, user)
+    if page == "availability:team" and session is not None:
+        return render_team_availability_page(session)
+    if page.startswith("onboarding") and session is not None and user is not None:
+        parts = page.split(":")
+        step = parts[2] if len(parts) >= 3 and parts[1] == "reset" else None
+        return render_onboarding_page(session, user, step=step)
     if page == "notification_targets" and session is not None:
         return render_notification_targets_page(session)
     if page.startswith("notification_target:") and session is not None:

@@ -20,8 +20,16 @@ from app.services.recommendations import upsert_recommendation
 
 NOTIFICATION_ROUTING_RULES: dict[str, tuple[str, ...]] = {
     "briefing.generated": ("owner", "operations"),
+    "digest.generated": ("owner", "operations"),
+    "digest.sent": ("owner", "operations"),
+    "digest.failed": ("owner", "operations"),
     "accountability.generated": ("operations",),
     "incident.created.critical": ("owner", "incidents"),
+    "incident.escalated": ("owner", "incidents"),
+    "incident.resolved": ("operations",),
+    "task.assigned": ("operations",),
+    "task.escalated": ("operations", "owner"),
+    "task.overdue_detected": ("operations",),
     "proxy.repair.failed": ("incidents", "automation_logs"),
     "proxy.repair.succeeded": ("automation_logs",),
     "deployment.event": ("testing", "owner"),

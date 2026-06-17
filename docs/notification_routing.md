@@ -1,6 +1,6 @@
 # Notification Routing
 
-Sprint 9 introduces safe notification routing without spamming real groups or exposing Telegram chat IDs. Sprint 10 adds durable delivery-attempt records for actual send attempts.
+Sprint 9 introduces safe notification routing without spamming real groups or exposing Telegram chat IDs. Sprint 10 adds durable delivery-attempt records for actual send attempts. Sprint 11 adds availability-aware routing and Daily Digest delivery attempts.
 
 ## Goals
 
@@ -26,6 +26,24 @@ Sprint 9 introduces safe notification routing without spamming real groups or ex
 - Proxy Repair Succeeded -> automation logs.
 - Deployment Event -> testing + owner.
 - Automation Simulation -> automation logs.
+- Daily Digest -> owner/HQ + operations, depending on the requested purpose.
+- Task Assigned -> assigned user when available; otherwise operations.
+- Overdue Task -> operations.
+- Escalated Task -> operations + owner.
+- Escalated Incident -> owner + incidents.
+
+## Smart Routing Inputs
+
+Sprint 11 routing considers:
+
+- target purpose
+- event severity
+- assigned user
+- user availability status
+- quiet hours
+- escalation level
+
+If a user is `off_shift`, `away`, `vacation`, `unavailable`, or inside quiet hours, direct user delivery is suppressed for normal work and routed to Operations instead. Critical and escalated events add Owner/HQ and Incidents routes.
 
 ## Telegram UI
 
@@ -39,6 +57,7 @@ Settings -> Notification Targets supports:
 - Test Send metadata update.
 - Send Test Notification to active testing targets only.
 - Recent delivery attempts on target detail.
+- Daily Digest delivery history.
 
 ## Safety Rules
 
@@ -47,6 +66,7 @@ Settings -> Notification Targets supports:
 - Telegram UI shows masked chat IDs only.
 - Test sends are limited to active `testing` targets.
 - Do not send to real operations/incidents channels until the owner approves routing activation.
+- Respect availability and quiet hours for non-critical user-targeted notifications.
 - Audit/event metadata must never contain tokens, raw chat IDs, credentials, proxy passwords, or verification codes.
 
 ## Delivery Attempt Records

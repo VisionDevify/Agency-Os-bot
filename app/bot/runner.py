@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import logging
 from datetime import UTC, datetime
 
@@ -14,6 +15,7 @@ from app.bot.screens import (
     render_denied,
     render_disabled,
     render_main_menu,
+    render_onboarding_page,
 )
 from app.core.config import settings
 from app.core.logging import configure_logging
@@ -47,6 +49,7 @@ from app.services.notifications import (
     mark_delivery_sent,
     mark_delivery_skipped,
 )
+from app.services.team_operations import BotPollingGuard, update_user_localization
 
 logger = logging.getLogger(__name__)
 dp = Dispatcher()
@@ -108,6 +111,31 @@ def _notification_target_id_for_send_test(page: str) -> int | None:
     return None
 
 
+def _apply_onboarding_callback(session, user: User, page: str) -> str | None:
+    parts = page.split(":")
+    if len(parts) < 2 or parts[0] != "onboarding":
+        return None
+    if parts[1] == "reset" and len(parts) >= 3:
+        return parts[2]
+    if len(parts) < 3:
+        return None
+    action = parts[1]
+    value = ":".join(parts[2:])
+    if action == "language":
+        update_user_localization(session, user, actor=user, language=value, require_admin=False)
+        return None
+    if action == "country":
+        update_user_localization(session, user, actor=user, country=value, require_admin=False)
+        return None
+    if action == "timezone":
+        update_user_localization(session, user, actor=user, timezone=value, require_admin=False)
+        return None
+    if action == "time_format":
+        update_user_localization(session, user, actor=user, time_format=value, require_admin=False)
+        return None
+    return None
+
+
 @dp.message(CommandStart())
 async def start(message: Message) -> None:
     if message.from_user is None or SessionLocal is None:
@@ -150,7 +178,7 @@ async def start(message: Message) -> None:
         screen = render_denied()
         await message.answer(screen.text, reply_markup=screen.reply_markup)
     else:
-        screen = render_access_pending()
+        screen = render_onboarding_page(session, user)
         await message.answer(screen.text, reply_markup=screen.reply_markup)
 
 
@@ -284,6 +312,16 @@ async def navigate(callback: CallbackQuery) -> None:
             session.commit()
             return
         if user.status == USER_STATUS_PENDING:
+            if page.startswith("onboarding"):
+                try:
+                    forced_step = _apply_onboarding_callback(session, user, page)
+                    screen = render_onboarding_page(session, user, step=forced_step)
+                    await callback.message.edit_text(screen.text, reply_markup=screen.reply_markup)
+                    await callback.answer()
+                except ValueError:
+                    await callback.answer("Unable to save onboarding preference.", show_alert=True)
+                session.commit()
+                return
             audit_action(
                 session,
                 actor=user,
@@ -350,14 +388,39 @@ async def main() -> None:
     token = settings.telegram_bot_token.get_secret_value()
     if not token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN is not configured")
+    guard = BotPollingGuard(settings.redis_url)
+    if not guard.acquire():
+        logger.error("Another Agency OS bot polling instance appears active; refusing to start duplicate polling")
+        return
+    refresh_task: asyncio.Task | None = None
+
+    main_task = asyncio.current_task()
+
+    async def refresh_guard() -> None:
+        while True:
+            await asyncio.sleep(60)
+            if not guard.refresh():
+                logger.error("Lost Agency OS bot polling lock; stopping process to avoid duplicate polling")
+                if main_task is not None:
+                    main_task.cancel()
+                return
+
     bot = Bot(token=token)
-    logger.info("Starting Telegram bot")
-    if SessionLocal is not None:
-        run_migrations()
-        with SessionLocal() as session:
-            record_heartbeat(session, service_name="bot", status="healthy", metadata={"source": "startup"})
-            session.commit()
-    await dp.start_polling(bot)
+    try:
+        logger.info("Starting Telegram bot")
+        if SessionLocal is not None:
+            run_migrations()
+            with SessionLocal() as session:
+                record_heartbeat(session, service_name="bot", status="healthy", metadata={"source": "startup"})
+                session.commit()
+        refresh_task = asyncio.create_task(refresh_guard())
+        await dp.start_polling(bot)
+    finally:
+        if refresh_task is not None:
+            refresh_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await refresh_task
+        guard.release()
 
 
 if __name__ == "__main__":
