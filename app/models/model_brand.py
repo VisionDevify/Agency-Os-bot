@@ -1,4 +1,4 @@
-from sqlalchemy import CheckConstraint, ForeignKey, Index, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -26,13 +26,22 @@ class ModelBrand(TimestampMixin, Base):
         Index("ix_model_brands_display_name", "display_name"),
         Index("ix_model_brands_stage_name", "stage_name"),
         Index("ix_model_brands_status", "status"),
+        Index("ix_model_brands_country", "country"),
+        Index("ix_model_brands_timezone", "timezone"),
+        Index("ix_model_brands_is_demo", "is_demo"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     display_name: Mapped[str] = mapped_column(String(160), nullable=False)
     stage_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
     status: Mapped[str] = mapped_column(String(24), default="active", nullable=False)
+    country: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    timezone: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    language_preference: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    primary_platform: Mapped[str | None] = mapped_column(String(40), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    internal_notes: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     members: Mapped[list["ModelBrandMember"]] = relationship(
         back_populates="model_brand",
         cascade="all, delete-orphan",

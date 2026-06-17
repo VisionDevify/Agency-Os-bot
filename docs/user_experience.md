@@ -47,3 +47,25 @@ Low-priority updates can be bundled into `notification_digests`.
 
 Critical alerts still bypass digest mode and route through the incident/owner paths.
 
+## Sprint 19 Clarity Pass
+
+Every Telegram screen should answer three questions quickly:
+
+- Where am I?
+- What is this for?
+- What should I do next?
+
+Empty states should be instructional:
+
+- No models yet -> create the first model/brand.
+- No accounts yet -> create a model first, then attach accounts.
+- No opportunities yet -> add a creator, watch an own post, or create one manually.
+
+Button order should put the most common setup or daily action first. Advanced systems such as Proxy Vault, Intelligence internals, and Automation internals stay owner/admin-only unless a role explicitly has permission.
+
+Simplified homes:
+
+- Chatter: My Models, My Opportunities, My Tasks, Availability, Help.
+- VA: My Models, My Accounts, My Tasks, Availability, Help.
+- Manager: Team, Models, Tasks, Incidents, Opportunities, Reports.
+- Owner/Admin: Executive Command Center, Intelligence, Models, Accounts, Proxies, Operations, Reports, Automation, Settings, Setup Agency, First Day Plan.

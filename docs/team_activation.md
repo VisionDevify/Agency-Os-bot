@@ -21,9 +21,17 @@ Sprint 18 calculates a simple score and QA flags from:
 
 Managers can open Team Activation QA to see who needs onboarding help, role assignment, timezone setup, availability setup, assigned work, or chatter-specific assignment.
 
-## Chatter Workspace
+## Chatter Home And Workspace
 
-Chatters see:
+Chatters primarily see:
+
+- My Models.
+- My Opportunities.
+- My Tasks.
+- Availability.
+- Help.
+
+Opportunity workspace details include:
 
 - today's opportunities.
 - assigned opportunities.

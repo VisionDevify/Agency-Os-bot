@@ -319,3 +319,35 @@ Unsafe metadata remains forbidden:
 - bot tokens, passwords, encryption keys, proxy passwords, credential references with secret-bearing context, raw Telegram chat IDs, verification codes, code hashes, platform session data, and raw provider payloads.
 
 Simulation events mean "reviewed as a dry run." They do not mean a proxy was rotated, a task was reassigned, an incident was escalated, or a notification was sent. Live execution must create `automation_runs` and `automation_run_steps` before recording success/failure events.
+
+## Sprint 19 Setup Events
+
+Setup Wizard events are internal operational events. They help reports and audits explain how the agency was initialized.
+
+Core setup event names:
+
+- `setup.started`
+- `setup.completed`
+- `model.created`
+- `model.updated`
+- `account.created`
+- `member.assigned`
+- `creator.created`
+- `opportunity.created`
+
+Setup audits include:
+
+- `setup.model_created`
+- `setup.account_added`
+- `setup.team_assigned`
+- `setup.creator_added`
+- `setup.opportunity_created`
+- `setup.completed`
+- `demo.created`
+- `demo.cleared`
+
+Safe metadata can include model ID, account ID, creator ID, opportunity ID, relationship type, platform, counts, missing setup items, and demo flags.
+
+Unsafe metadata remains forbidden:
+
+- bot tokens, passwords, encryption keys, proxy passwords, platform passwords, verification codes, raw Telegram chat IDs, and private platform content.

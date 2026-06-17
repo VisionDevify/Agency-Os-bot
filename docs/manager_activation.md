@@ -41,6 +41,22 @@ Managers should use existing admin flows to:
 - send users to Help Copilot;
 - mark onboarding checklist items complete.
 
+## Manager Setup / QA
+
+Sprint 19 adds `Manager QA` so setup gaps are visible in one place:
+
+- models without managers;
+- models without chatters;
+- accounts without a model;
+- opportunities without an assignee;
+- tasks without an owner;
+- pending users;
+- users without timezone;
+- users without roles;
+- users not onboarded.
+
+The intent is practical cleanup, not performance judgment.
+
 ## Notification Discipline
 
 Opportunity events are digestable. Low-priority updates should route through digest behavior where configured, while high-priority opportunities and critical issues may route directly to owner/operations targets.

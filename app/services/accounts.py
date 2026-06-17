@@ -118,6 +118,7 @@ def create_account(
     display_name: str | None = None,
     account_url: str | None = None,
     notes: str | None = None,
+    is_demo: bool = False,
 ) -> Account:
     _require_manage_accounts(session, actor)
     if platform not in ACCOUNT_PLATFORMS:
@@ -134,6 +135,7 @@ def create_account(
         status="healthy",
         auth_status="not_connected",
         notes=notes,
+        is_demo=is_demo,
     )
     session.add(account)
     session.flush()

@@ -55,6 +55,10 @@ def _model_payload(model_brand: ModelBrand, extra: dict | None = None) -> dict:
         "display_name": model_brand.display_name,
         "stage_name": model_brand.stage_name,
         "status": model_brand.status,
+        "country": model_brand.country,
+        "timezone": model_brand.timezone,
+        "primary_platform": model_brand.primary_platform,
+        "is_demo": model_brand.is_demo,
     }
     payload.update(extra or {})
     return payload
@@ -103,7 +107,13 @@ def create_model_brand(
     actor: User,
     stage_name: str | None = None,
     notes: str | None = None,
+    country: str | None = None,
+    timezone: str | None = None,
+    language_preference: str | None = None,
+    primary_platform: str | None = None,
+    internal_notes: str | None = None,
     status: str = "active",
+    is_demo: bool = False,
 ) -> ModelBrand:
     _require_manage_accounts(session, actor)
     if status not in MODEL_BRAND_STATUSES:
@@ -113,6 +123,12 @@ def create_model_brand(
         stage_name=stage_name,
         status=status,
         notes=notes,
+        country=country,
+        timezone=timezone,
+        language_preference=language_preference,
+        primary_platform=primary_platform,
+        internal_notes=internal_notes,
+        is_demo=is_demo,
     )
     session.add(model_brand)
     session.flush()
@@ -148,6 +164,11 @@ def update_model_brand(
     stage_name: str | None = None,
     status: str | None = None,
     notes: str | None = None,
+    country: str | None = None,
+    timezone: str | None = None,
+    language_preference: str | None = None,
+    primary_platform: str | None = None,
+    internal_notes: str | None = None,
 ) -> ModelBrand:
     _require_manage_accounts(session, actor)
     if status is not None and status not in MODEL_BRAND_STATUSES:
@@ -160,6 +181,16 @@ def update_model_brand(
         model_brand.status = status
     if notes is not None:
         model_brand.notes = notes
+    if country is not None:
+        model_brand.country = country
+    if timezone is not None:
+        model_brand.timezone = timezone
+    if language_preference is not None:
+        model_brand.language_preference = language_preference
+    if primary_platform is not None:
+        model_brand.primary_platform = primary_platform
+    if internal_notes is not None:
+        model_brand.internal_notes = internal_notes
     session.flush()
     action = "model.disabled" if status == "disabled" else "model.updated"
     emit_event(

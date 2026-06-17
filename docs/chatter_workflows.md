@@ -1,21 +1,21 @@
 # Chatter Workflows
 
-The Chatter Workspace is the daily starting point for chatters.
+The simplified Chatter Home is the daily starting point for chatters.
 
 ## Daily Flow
 
-1. Open `Chatter Workspace`.
+1. Open `My Opportunities`.
 2. Review New, In Progress, Needs Result, and Completed counts.
-3. Open `My Opportunities`.
+3. Open the highest-priority assigned opportunity.
 4. Pick the highest-priority assigned opportunity.
 5. Review suggested strategies.
 6. Perform any platform action manually and only when appropriate.
 7. Record the result in Agency OS.
 8. Check assigned tasks and availability before ending the shift.
 
-## My Opportunities
+## My Opportunities And Workspace
 
-Tabs shown in the workspace:
+Tabs shown in the opportunity workspace:
 
 - New.
 - In Progress.

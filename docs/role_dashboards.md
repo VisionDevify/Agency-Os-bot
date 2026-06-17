@@ -4,6 +4,8 @@ Sprint 16 adds role-specific home screens so each user sees the system through t
 
 ## Owner/Admin Home
 
+- Setup Agency
+- First Day Plan
 - Executive Command Center
 - Intelligence
 - Models
@@ -17,20 +19,20 @@ Sprint 16 adds role-specific home screens so each user sees the system through t
 ## Manager Home
 
 - Team
+- Models
 - Tasks
 - Incidents
-- Models
-- Operations Dashboard
+- Opportunities
 - Reports
-- Team QA
+- Manager QA
+- Help
 
 ## Chatter Home
 
 - My Models
-- My Tasks
 - My Opportunities
+- My Tasks
 - Availability
-- Performance
 - Help
 
 ## VA Home
@@ -39,7 +41,6 @@ Sprint 16 adds role-specific home screens so each user sees the system through t
 - My Accounts
 - My Tasks
 - Availability
-- Uploads placeholder
 - Help
 
 ## Model/Client Home
@@ -52,4 +53,3 @@ Sprint 16 adds role-specific home screens so each user sees the system through t
 ## Visibility Rule
 
 Proxy Vault, Intelligence internals, and Automation internals should stay hidden from chatters and VAs unless a future role explicitly grants that operational need.
-

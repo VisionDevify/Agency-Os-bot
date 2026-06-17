@@ -1394,6 +1394,63 @@ Indexes and constraints:
 - Check constraints on subject type and confidence bounds.
 - Indexes on subject and created time.
 
+### Setup Wizard And UI Clarity Tables
+
+Sprint 19 adds durable setup state and first-day checklist records so the owner can onboard the agency without relying on memory or placeholder screens.
+
+`model_brands` now also stores:
+
+- `country`: optional operating country for the model/brand.
+- `timezone`: optional display timezone.
+- `language_preference`: optional future localization preference.
+- `primary_platform`: optional main platform label.
+- `internal_notes`: owner/admin-only setup notes.
+- `is_demo`: marks owner-created demo seed records.
+
+Indexes were added for `country`, `timezone`, and `is_demo`.
+
+`accounts`, `creator_watches`, `post_watches`, and `opportunities` now include `is_demo` so demo records can be created and cleared without touching production records.
+
+### setup_wizard_states
+
+Tracks an Owner/Admin setup session.
+
+Columns:
+
+- `id`: primary key.
+- `owner_user_id`: FK to `users.id`.
+- `model_brand_id`: nullable FK to the model created through the wizard.
+- `status`: `started`, `in_progress`, `completed`, or `abandoned`.
+- `current_step`: current setup step such as `model`, `accounts`, `team`, `creators`, `opportunities`, or `summary`.
+- `summary_json`: safe summary metadata only.
+- `missing_items_json`: safe list of missing setup items.
+- `completed_at`: nullable completion timestamp.
+- `created_at`, `updated_at`: timestamps.
+
+Indexes and constraints:
+
+- Check constraint on `status`.
+- Indexes on owner, model, and status.
+
+### first_day_checklists
+
+Tracks the owner/manager first-day activation plan.
+
+Columns:
+
+- `id`: primary key.
+- `user_id`: unique FK to `users.id`.
+- Boolean checklist items for first model, accounts, manager, team, creators, opportunities, briefing, activation review, and production status.
+- `completion_score`: 0-100.
+- `metadata_json`: safe metadata only.
+- `created_at`, `updated_at`: timestamps.
+
+Indexes and constraints:
+
+- Unique index on `user_id`.
+- Check constraint on `completion_score`.
+- Index on completion score.
+
 ## Soft Delete Strategy
 
 - Users are not deleted during normal admin flows. Use `disabled` or `denied`.
@@ -1411,6 +1468,7 @@ Indexes and constraints:
 - Creator watch records use `status` plus `is_active` for disabled/archived active-view filtering.
 - Post watch records use `status` for recent, attention-needed, assigned, and archived states.
 - Comment strategies are derived guidance and can be deleted with the parent opportunity.
+- Setup wizard states are kept as operational history. Demo records are intentionally removable only through owner-only demo cleanup.
 - Learning events, playbook runs, outcome memory, and confidence records should not be hard deleted during normal operations.
 - Playbooks should move to `needs_review` or `retired` instead of deletion.
 - System heartbeat rows are updated in place by service name; state changes are still emitted to audit/event logs.

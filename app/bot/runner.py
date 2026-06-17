@@ -18,6 +18,7 @@ from app.bot.screens import (
     render_denied,
     render_disabled,
     render_main_menu,
+    render_model_detail_page,
     render_onboarding_page,
     render_opportunity_detail_page,
     render_post_watch_detail_page,
@@ -35,6 +36,7 @@ from app.services.auth import (
     USER_STATUS_PENDING,
     audit_action,
     get_or_create_telegram_user,
+    get_user_by_id,
     mask_telegram_id,
     setup_owner_if_needed,
 )
@@ -55,6 +57,15 @@ from app.services.opportunities import (
 )
 from app.services.permissions import PermissionPrincipal, RoleName, require_owner
 from app.services.model_brands import get_model_brand
+from app.services.setup_wizard import (
+    add_setup_account,
+    add_setup_creator,
+    add_setup_opportunity,
+    create_setup_model,
+    latest_setup_state,
+    start_setup_wizard,
+    update_setup_model_profile,
+)
 from app.services.heartbeats import record_heartbeat
 from app.services.notifications import (
     create_delivery_attempt,
@@ -75,6 +86,8 @@ PENDING_CREATOR_INTAKES: dict[int, dict[str, int | str | None]] = {}
 PENDING_OPPORTUNITY_INTAKES: dict[int, dict[str, int | str | None]] = {}
 PENDING_POST_INTAKES: dict[int, dict[str, int | str | None]] = {}
 PENDING_RESULT_INTAKES: dict[int, dict[str, int | str | None]] = {}
+PENDING_SETUP_WIZARDS: dict[int, dict[str, int | str | None]] = {}
+PENDING_MODEL_EDITS: dict[int, dict[str, int | str | None]] = {}
 
 
 async def _acquire_polling_guard(
@@ -138,6 +151,13 @@ def _parse_optional_int(text: str) -> int | None:
     return max(0, parsed)
 
 
+def _parse_pipe_parts(text: str, length: int) -> list[str | None]:
+    parts = [part.strip() for part in text.split("|")]
+    while len(parts) < length:
+        parts.append("")
+    return [_clean_optional_text(part) for part in parts[:length]]
+
+
 def _priority_markup(prefix: str) -> object:
     return choice_menu(
         [(priority.title(), f"nav:{prefix}:{priority}") for priority in OPPORTUNITY_PRIORITIES],
@@ -163,6 +183,21 @@ def _set_pending_callback_state(telegram_id: int, page: str, session, user: User
     PENDING_ACCOUNT_CREATES.pop(telegram_id, None)
     PENDING_AUTH_CODES.pop(telegram_id, None)
     parts = page.split(":")
+    if page == "setup:wizard:model":
+        PENDING_SETUP_WIZARDS[telegram_id] = {"step": "model"}
+        return
+    if page.startswith("setup:wizard:accounts:platform:"):
+        PENDING_SETUP_WIZARDS[telegram_id] = {"step": "account", "platform": parts[-1]}
+        return
+    if page == "setup:wizard:creators":
+        PENDING_SETUP_WIZARDS[telegram_id] = {"step": "creator"}
+        return
+    if page == "setup:wizard:opportunities":
+        PENDING_SETUP_WIZARDS[telegram_id] = {"step": "opportunity"}
+        return
+    if len(parts) >= 4 and parts[0] == "model" and parts[1].isdigit() and parts[2] == "edit":
+        PENDING_MODEL_EDITS[telegram_id] = {"model_id": int(parts[1]), "field": parts[3]}
+        return
     if len(parts) >= 6 and parts[:3] == ["accounts", "add", "model"] and parts[3].isdigit() and parts[4] == "platform":
         PENDING_ACCOUNT_CREATES[telegram_id] = {"model_id": int(parts[3]), "platform": parts[5]}
         return
@@ -347,6 +382,174 @@ async def text_input(message: Message) -> None:
         if user.status in {USER_STATUS_DISABLED, USER_STATUS_DENIED, USER_STATUS_PENDING}:
             session.commit()
             return
+
+        pending_model_edit = PENDING_MODEL_EDITS.pop(telegram_id, None)
+        if pending_model_edit is not None:
+            model = get_model_brand(session, int(pending_model_edit["model_id"]))
+            field = str(pending_model_edit["field"])
+            value = _clean_optional_text(message.text)
+            if model is None:
+                await message.answer("Model not found.")
+                session.commit()
+                return
+            if value is None:
+                screen = render_model_detail_page(session, model.id)
+                await message.answer("No change made.")
+                await message.answer(screen.text, reply_markup=screen.reply_markup)
+                session.commit()
+                return
+            allowed_fields = {"display_name", "stage_name", "country", "timezone", "notes", "internal_notes"}
+            if field not in allowed_fields:
+                await message.answer("That model field cannot be edited from Telegram.")
+                session.commit()
+                return
+            try:
+                update_setup_model_profile(session, model, actor=user, **{field: value})
+            except (PermissionError, ValueError):
+                await message.answer("Unable to update model.")
+                session.commit()
+                return
+            screen = render_model_detail_page(session, model.id)
+            await message.answer("Model updated.")
+            await message.answer(screen.text, reply_markup=screen.reply_markup)
+            session.commit()
+            return
+
+        pending_setup = PENDING_SETUP_WIZARDS.get(telegram_id)
+        if pending_setup is not None:
+            step = str(pending_setup.get("step") or "")
+            state = latest_setup_state(session, user) or start_setup_wizard(session, actor=user)
+            if step == "model":
+                display_name, stage_name, country, timezone, notes = _parse_pipe_parts(message.text, 5)
+                if not display_name:
+                    await message.answer("Please send at least a display name.")
+                    session.commit()
+                    return
+                try:
+                    model = create_setup_model(
+                        session,
+                        actor=user,
+                        state=state,
+                        display_name=display_name,
+                        stage_name=stage_name,
+                        country=country,
+                        timezone=timezone,
+                        notes=notes,
+                    )
+                except (PermissionError, ValueError):
+                    await message.answer("Unable to create model.")
+                    session.commit()
+                    return
+                PENDING_SETUP_WIZARDS.pop(telegram_id, None)
+                screen = render_model_detail_page(session, model.id)
+                await message.answer("First model created.")
+                await message.answer(screen.text, reply_markup=screen.reply_markup)
+                session.commit()
+                return
+            if step == "account":
+                model = state.model_brand
+                if model is None:
+                    await message.answer("Create a model first, then add accounts.")
+                    PENDING_SETUP_WIZARDS.pop(telegram_id, None)
+                    session.commit()
+                    return
+                username, display_name, account_url, notes = _parse_pipe_parts(message.text, 4)
+                if not username:
+                    await message.answer("Please send at least an account username.")
+                    session.commit()
+                    return
+                try:
+                    account = add_setup_account(
+                        session,
+                        actor=user,
+                        state=state,
+                        model=model,
+                        platform=str(pending_setup.get("platform") or "other"),
+                        username=username.lstrip("@"),
+                        display_name=display_name,
+                        account_url=account_url,
+                        notes=notes,
+                    )
+                except (PermissionError, ValueError):
+                    await message.answer("Unable to add account.")
+                    session.commit()
+                    return
+                PENDING_SETUP_WIZARDS.pop(telegram_id, None)
+                screen = render_account_detail_page(session, account.id)
+                await message.answer("Account added.")
+                await message.answer(screen.text, reply_markup=screen.reply_markup)
+                session.commit()
+                return
+            if step == "creator":
+                model = state.model_brand
+                if model is None:
+                    await message.answer("Create a model first, then add creators.")
+                    PENDING_SETUP_WIZARDS.pop(telegram_id, None)
+                    session.commit()
+                    return
+                platform, username, display_name, niche, priority = _parse_pipe_parts(message.text, 5)
+                if not platform or not username or not display_name:
+                    await message.answer("Please send platform, username, and display name.")
+                    session.commit()
+                    return
+                try:
+                    creator = add_setup_creator(
+                        session,
+                        actor=user,
+                        state=state,
+                        model=model,
+                        platform=platform.lower(),
+                        username=username.lstrip("@"),
+                        display_name=display_name,
+                        niche=niche,
+                        priority=(priority or "normal").lower(),
+                    )
+                except (PermissionError, ValueError):
+                    await message.answer("Unable to add creator.")
+                    session.commit()
+                    return
+                PENDING_SETUP_WIZARDS.pop(telegram_id, None)
+                screen = render_creator_watch_detail_page(session, creator.id)
+                await message.answer("Creator starter added.")
+                await message.answer(screen.text, reply_markup=screen.reply_markup)
+                session.commit()
+                return
+            if step == "opportunity":
+                model = state.model_brand
+                if model is None:
+                    await message.answer("Create a model first, then add opportunities.")
+                    PENDING_SETUP_WIZARDS.pop(telegram_id, None)
+                    session.commit()
+                    return
+                title, platform, niche, assigned_user_id = _parse_pipe_parts(message.text, 4)
+                if not title:
+                    await message.answer("Please send at least an opportunity title.")
+                    session.commit()
+                    return
+                assigned_id = int(assigned_user_id) if assigned_user_id and assigned_user_id.isdigit() else None
+                if assigned_id is not None and get_user_by_id(session, assigned_id) is None:
+                    assigned_id = None
+                try:
+                    opportunity = add_setup_opportunity(
+                        session,
+                        actor=user,
+                        state=state,
+                        model=model,
+                        title=title,
+                        platform=(platform or "x").lower(),
+                        niche=niche,
+                        assigned_to_user_id=assigned_id,
+                    )
+                except (PermissionError, ValueError):
+                    await message.answer("Unable to create opportunity.")
+                    session.commit()
+                    return
+                PENDING_SETUP_WIZARDS.pop(telegram_id, None)
+                screen = render_opportunity_detail_page(session, opportunity.id)
+                await message.answer("Starter opportunity created.")
+                await message.answer(screen.text, reply_markup=screen.reply_markup)
+                session.commit()
+                return
 
         pending_account = PENDING_ACCOUNT_CREATES.pop(telegram_id, None)
         if pending_account is not None:

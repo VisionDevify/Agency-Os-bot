@@ -64,7 +64,9 @@ def test_role_specific_home_screens_hide_irrelevant_systems() -> None:
         assign_role_to_user(session, client, RoleName.MODEL_CLIENT, actor=owner)
 
         assert "Automation" in {label for label, _ in role_home_items(owner)}
-        assert "Operations Dashboard" in {label for label, _ in role_home_items(manager)}
+        manager_labels = {label for label, _ in role_home_items(manager)}
+        assert {"Team", "Models", "Tasks", "Incidents", "Opportunities", "Reports"} <= manager_labels
+        assert "Operations Dashboard" not in manager_labels
         chatter_labels = {label for label, _ in role_home_items(chatter)}
         va_labels = {label for label, _ in role_home_items(va)}
         client_labels = {label for label, _ in role_home_items(client)}
@@ -73,7 +75,8 @@ def test_role_specific_home_screens_hide_irrelevant_systems() -> None:
         assert {"My Models", "My Tasks", "My Opportunities", "Help"} <= chatter_labels
         assert "Proxies" not in chatter_labels
         assert "Automation" not in chatter_labels
-        assert {"My Accounts", "Uploads", "Help"} <= va_labels
+        assert {"My Models", "My Accounts", "My Tasks", "Availability", "Help"} <= va_labels
+        assert "Uploads" not in va_labels
         assert {"My Dashboard", "My Accounts", "My Reports", "My Team"} <= client_labels
 
         screen = render_main_menu(session, chatter)

@@ -113,6 +113,8 @@ def role_home_items(user: User | None) -> list[tuple[str, str]]:
     role = primary_role(user)
     if role in {"Owner", "Admin"}:
         return [
+            ("Setup Agency", "setup:wizard"),
+            ("First Day Plan", "first_day_plan"),
             ("Executive Command Center", "reports:executive"),
             ("Intelligence", "intelligence"),
             ("Opportunities", "opportunities"),
@@ -128,24 +130,20 @@ def role_home_items(user: User | None) -> list[tuple[str, str]]:
     if role in {"Manager", "Chatter Manager"}:
         return [
             ("Team", "availability:team"),
+            ("Models", "models"),
             ("Tasks", "tasks"),
             ("Incidents", "incidents"),
-            ("Models", "models"),
             ("Opportunities", "opportunities:manager"),
-            ("Operations Dashboard", "reports:operations"),
             ("Reports", "reports"),
-            ("Team Activation", "team_activation"),
-            ("Team QA", "team_qa"),
+            ("Manager QA", "manager_qa"),
             ("Help", "help"),
         ]
     if role in {"Senior Chatter", "Chatter"}:
         return [
-            ("Chatter Workspace", "chatter_workspace"),
             ("My Models", "my_models"),
-            ("My Tasks", "tasks:my"),
             ("My Opportunities", "my_opportunities"),
+            ("My Tasks", "tasks:my"),
             ("Availability", "availability"),
-            ("Performance", "performance"),
             ("Help", "help"),
         ]
     if role == "VA":
@@ -154,7 +152,6 @@ def role_home_items(user: User | None) -> list[tuple[str, str]]:
             ("My Accounts", "my_accounts"),
             ("My Tasks", "tasks:my"),
             ("Availability", "availability"),
-            ("Uploads", "uploads"),
             ("Help", "help"),
         ]
     if role == "Model/Client":

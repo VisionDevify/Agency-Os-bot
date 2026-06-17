@@ -124,6 +124,14 @@ from app.services.opportunities import (
 from app.services.permissions import PermissionPrincipal, require_permission
 from app.services.team_operations import set_availability
 from app.services.team_experience import update_onboarding_checklist
+from app.services.setup_wizard import (
+    assign_setup_team_member,
+    clear_demo_data,
+    complete_setup_wizard,
+    create_demo_seed,
+    latest_setup_state,
+    start_setup_wizard,
+)
 
 PAGE_PERMISSIONS: dict[str, str] = {
     "dashboard": "view_dashboard",
@@ -142,6 +150,8 @@ PAGE_PERMISSIONS: dict[str, str] = {
     "daily_experience": "view_dashboard",
     "performance": "view_dashboard",
     "team_qa": "manage_users",
+    "manager_qa": "manage_users",
+    "first_day_plan": "view_dashboard",
 }
 
 
@@ -183,6 +193,10 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         return None
     if page == "help" or page.startswith("help:") or page == "help_copilot" or page.startswith("help_copilot:"):
         return None
+    if page == "structure":
+        return None
+    if page.startswith("setup:") or page.startswith("demo"):
+        return ("manage_accounts", "manage_users")
     if page in {
         "daily_experience",
         "performance",
@@ -200,6 +214,8 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         return ("view_chatter_dashboard", "manage_tasks", "manage_reports", "view_dashboard")
     if page.startswith("team_qa"):
         return ("manage_users",)
+    if page == "manager_qa":
+        return ("manage_users", "manage_reports")
     if page == "team_activation":
         return ("manage_users", "manage_reports")
     if page.startswith("notification_digest"):
@@ -265,6 +281,37 @@ def _perform_admin_action(
     chat_title: str | None = None,
 ) -> str | None:
     parts = page.split(":")
+    if page == "setup:wizard:start":
+        start_setup_wizard(session, actor=actor)
+        return "setup:wizard"
+    if page == "setup:wizard:finish":
+        state = latest_setup_state(session, actor)
+        if state is not None:
+            complete_setup_wizard(session, state, actor=actor)
+        return "setup:wizard:summary"
+    if len(parts) >= 6 and parts[:4] == ["setup", "wizard", "team", "assign"]:
+        relationship_type = parts[4]
+        if not parts[5].isdigit():
+            return "setup:wizard:team"
+        target = get_user_by_id(session, int(parts[5]))
+        state = latest_setup_state(session, actor)
+        model = state.model_brand if state is not None else None
+        if target is not None and model is not None:
+            assign_setup_team_member(
+                session,
+                actor=actor,
+                model=model,
+                target_user=target,
+                relationship_type=relationship_type,
+                state=state,
+            )
+        return "setup:wizard:team"
+    if page == "demo:create":
+        create_demo_seed(session, actor=actor)
+        return "demo"
+    if page == "demo:clear":
+        clear_demo_data(session, actor=actor)
+        return "demo"
     if len(parts) >= 3 and parts[0] == "availability" and parts[1] == "set":
         try:
             set_availability(session, actor, actor=actor, status=parts[2])
@@ -928,10 +975,13 @@ def screen_for_page(
         or normalized == "production_status"
         or normalized.startswith("availability")
         or normalized.startswith("onboarding")
+        or normalized.startswith("setup:")
+        or normalized.startswith("demo")
         or normalized in {
             "daily_experience",
             "performance",
             "help",
+            "structure",
             "my_models",
             "my_accounts",
             "my_opportunities",
@@ -941,7 +991,9 @@ def screen_for_page(
             "my_reports",
             "my_team",
             "team_qa",
+            "manager_qa",
             "team_activation",
+            "first_day_plan",
             "help_copilot",
             "notification_digest",
         }

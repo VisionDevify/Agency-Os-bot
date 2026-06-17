@@ -151,3 +151,25 @@ Production smoke testing checklist:
 - `docs/opportunity_workflows.md`
 - `docs/chatter_workflows.md`
 - `docs/manager_activation.md`
+- `docs/setup_wizard.md`
+- `docs/first_day_plan.md`
+- `docs/ui_structure.md`
+
+## First Agency Setup
+
+Owners and admins should start in Telegram with:
+
+```text
+Owner Home -> Setup Agency
+```
+
+The setup wizard guides the first useful production setup:
+
+- create a Model/Brand
+- add Instagram, X, OnlyFans, Email, or Other accounts
+- assign manager/chatter/VA team members
+- add starter creators to watch
+- create starter opportunities
+- review missing setup items before finishing
+
+If no model exists yet, account and own-post screens intentionally explain that the model comes first. Demo Seed Mode is owner-only and creates records marked as demo data so the UI can be tested without mixing sample records with real operations.

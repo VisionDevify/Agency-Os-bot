@@ -8,6 +8,7 @@ from app.models.mixins import TimestampMixin
 
 NOTIFICATION_DIGEST_STATUSES = ("open", "sent", "archived")
 NOTIFICATION_DIGEST_PRIORITIES = ("low", "normal", "critical")
+SETUP_WIZARD_STATUSES = ("started", "in_progress", "completed", "abandoned")
 
 
 class TeamOnboardingChecklist(TimestampMixin, Base):
@@ -67,3 +68,59 @@ class NotificationDigest(TimestampMixin, Base):
 
     user: Mapped["User | None"] = relationship("User", lazy="selectin")
 
+
+class SetupWizardState(TimestampMixin, Base):
+    __tablename__ = "setup_wizard_states"
+    __table_args__ = (
+        CheckConstraint(
+            "status in ('started', 'in_progress', 'completed', 'abandoned')",
+            name="ck_setup_wizard_states_status",
+        ),
+        Index("ix_setup_wizard_states_owner_user_id", "owner_user_id"),
+        Index("ix_setup_wizard_states_model_brand_id", "model_brand_id"),
+        Index("ix_setup_wizard_states_status", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    model_brand_id: Mapped[int | None] = mapped_column(
+        ForeignKey("model_brands.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    status: Mapped[str] = mapped_column(String(40), default="started", nullable=False)
+    current_step: Mapped[str] = mapped_column(String(80), default="model", nullable=False)
+    summary_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    missing_items_json: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    owner: Mapped["User"] = relationship("User", lazy="selectin")
+    model_brand: Mapped["ModelBrand | None"] = relationship("ModelBrand", lazy="selectin")
+
+
+class FirstDayChecklist(TimestampMixin, Base):
+    __tablename__ = "first_day_checklists"
+    __table_args__ = (
+        CheckConstraint(
+            "completion_score >= 0 and completion_score <= 100",
+            name="ck_first_day_checklists_completion_score",
+        ),
+        Index("ix_first_day_checklists_user_id", "user_id", unique=True),
+        Index("ix_first_day_checklists_completion_score", "completion_score"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    created_first_model: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    added_accounts: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    assigned_manager: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    assigned_team: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    added_creators: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_opportunities: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    assigned_opportunities: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    generated_briefing: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    reviewed_activation: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    checked_production: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    completion_score: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+
+    user: Mapped["User"] = relationship("User", lazy="selectin")

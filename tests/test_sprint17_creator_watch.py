@@ -205,7 +205,10 @@ def test_chatter_workspace_help_copilot_and_activation_score() -> None:
             user=chatter,
         )
 
-        assert "Chatter Workspace" in {label for label, _ in role_home_items(chatter)}
+        assert {"My Models", "My Opportunities", "My Tasks", "Availability", "Help"} <= {
+            label for label, _ in role_home_items(chatter)
+        }
+        assert "Chatter Workspace" not in {label for label, _ in role_home_items(chatter)}
         assert workspace["assigned_opportunities"][0].id == opportunity.id
         assert answer["next_action"] == "my_opportunities"
         assert score["score"] >= 80

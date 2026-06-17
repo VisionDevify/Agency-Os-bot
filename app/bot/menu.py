@@ -107,9 +107,99 @@ def performance_menu() -> InlineKeyboardMarkup:
 
 def help_center_menu(topic_buttons: list[tuple[str, str]] | None = None) -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in (topic_buttons or [])]
+    rows.append([InlineKeyboardButton(text="How Agency OS Is Organized", callback_data=callback_for("structure"))])
     rows.append([InlineKeyboardButton(text="Help Copilot", callback_data=callback_for("help_copilot"))])
     rows.extend(page_controls(back_to="menu"))
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def structure_map_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Setup Agency", callback_data=callback_for("setup:wizard"))],
+            [InlineKeyboardButton(text="First Day Plan", callback_data=callback_for("first_day_plan"))],
+            *page_controls(back_to="help"),
+        ]
+    )
+
+
+def setup_wizard_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Start Setup Wizard", callback_data=callback_for("setup:wizard:start"))],
+            [InlineKeyboardButton(text="Create First Model", callback_data=callback_for("setup:wizard:model"))],
+            [InlineKeyboardButton(text="Add Accounts", callback_data=callback_for("setup:wizard:accounts"))],
+            [InlineKeyboardButton(text="Assign Team", callback_data=callback_for("setup:wizard:team"))],
+            [InlineKeyboardButton(text="Add Creators", callback_data=callback_for("setup:wizard:creators"))],
+            [InlineKeyboardButton(text="Create Opportunities", callback_data=callback_for("setup:wizard:opportunities"))],
+            [InlineKeyboardButton(text="Review Setup Summary", callback_data=callback_for("setup:wizard:summary"))],
+            [
+                InlineKeyboardButton(text="Demo Seed Mode", callback_data=callback_for("demo")),
+                InlineKeyboardButton(text="Structure Map", callback_data=callback_for("structure")),
+            ],
+            *page_controls(back_to="menu"),
+        ]
+    )
+
+
+def setup_finish_menu(model_id: int | None = None) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(text="Finish Setup", callback_data=callback_for("setup:wizard:finish"))],
+        [
+            InlineKeyboardButton(text="Add More Accounts", callback_data=callback_for("setup:wizard:accounts")),
+            InlineKeyboardButton(text="Add Team", callback_data=callback_for("setup:wizard:team")),
+        ],
+        [
+            InlineKeyboardButton(text="Add Creators", callback_data=callback_for("setup:wizard:creators")),
+            InlineKeyboardButton(text="Create Opportunities", callback_data=callback_for("setup:wizard:opportunities")),
+        ],
+    ]
+    if model_id is not None:
+        rows.append([InlineKeyboardButton(text="Go To Model Dashboard", callback_data=callback_for(f"model:{model_id}"))])
+    rows.extend(page_controls(back_to="setup:wizard"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def first_day_plan_menu(items: list[dict]) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(text=("Done: " if item["done"] else "Do: ") + item["label"], callback_data=callback_for(item["page"]))]
+        for item in items
+    ]
+    rows.extend(page_controls(back_to="menu"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def manager_setup_qa_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Assign Manager", callback_data=callback_for("models:list")),
+                InlineKeyboardButton(text="Assign Chatter", callback_data=callback_for("models:list")),
+            ],
+            [
+                InlineKeyboardButton(text="Assign Opportunity", callback_data=callback_for("opportunities:manager")),
+                InlineKeyboardButton(text="Approve User", callback_data=callback_for("users:pending")),
+            ],
+            [
+                InlineKeyboardButton(text="Send Help Prompt", callback_data=callback_for("help_copilot:where_start")),
+                InlineKeyboardButton(text="Mark Onboarded", callback_data=callback_for("team_qa")),
+            ],
+            *page_controls(back_to="menu"),
+        ]
+    )
+
+
+def demo_seed_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Create Demo Model", callback_data=callback_for("demo:create"))],
+            [InlineKeyboardButton(text="Create Demo Accounts", callback_data=callback_for("demo:create"))],
+            [InlineKeyboardButton(text="Create Demo Creator", callback_data=callback_for("demo:create"))],
+            [InlineKeyboardButton(text="Create Demo Opportunity", callback_data=callback_for("demo:create"))],
+            [InlineKeyboardButton(text="Clear Demo Data", callback_data=callback_for("demo:clear"))],
+            *page_controls(back_to="setup:wizard"),
+        ]
+    )
 
 
 def notification_digest_mode_menu() -> InlineKeyboardMarkup:
@@ -711,7 +801,13 @@ def chatter_workspace_menu() -> InlineKeyboardMarkup:
 def help_copilot_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [InlineKeyboardButton(text="Where do I start?", callback_data=callback_for("help_copilot:where_start"))],
+            [InlineKeyboardButton(text="How do I create the first model?", callback_data=callback_for("help_copilot:create_first_model"))],
+            [InlineKeyboardButton(text="How do I edit a model?", callback_data=callback_for("help_copilot:edit_model"))],
+            [InlineKeyboardButton(text="How do I add accounts?", callback_data=callback_for("help_copilot:add_accounts"))],
+            [InlineKeyboardButton(text="How do I assign a chatter?", callback_data=callback_for("help_copilot:assign_chatter"))],
             [InlineKeyboardButton(text="How do I add a creator?", callback_data=callback_for("help_copilot:add_creator"))],
+            [InlineKeyboardButton(text="How do I create an opportunity?", callback_data=callback_for("help_copilot:create_opportunity"))],
             [InlineKeyboardButton(text="How do I assign an opportunity?", callback_data=callback_for("help_copilot:assign_opportunity"))],
             [InlineKeyboardButton(text="Where are my opportunities?", callback_data=callback_for("help_copilot:my_opportunities"))],
             [InlineKeyboardButton(text="Why can't I access this?", callback_data=callback_for("help_copilot:access"))],
@@ -918,6 +1014,7 @@ def models_menu() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="View Models", callback_data=callback_for("models:list"))],
             [InlineKeyboardButton(text="Create Model", callback_data=callback_for("models:create"))],
+            [InlineKeyboardButton(text="Create First Model", callback_data=callback_for("setup:wizard:model"))],
             [InlineKeyboardButton(text="Search Model", callback_data=callback_for("models:search"))],
             [InlineKeyboardButton(text="Model Dashboard", callback_data=callback_for("models:dashboard"))],
             *page_controls(back_to="menu"),
@@ -939,13 +1036,18 @@ def model_detail_menu(model_id: int) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="Manage Team", callback_data=f"nav:model:{model_id}:team"),
             ],
             [
-                InlineKeyboardButton(text="View Accounts", callback_data=f"nav:model:{model_id}:accounts"),
+                InlineKeyboardButton(text="Manage Accounts", callback_data=f"nav:model:{model_id}:accounts"),
+                InlineKeyboardButton(text="Manage Creators", callback_data=f"nav:model:{model_id}:creators"),
+            ],
+            [
+                InlineKeyboardButton(text="Manage Opportunities", callback_data=f"nav:model:{model_id}:opportunities"),
                 InlineKeyboardButton(text="View Tasks", callback_data=f"nav:model:{model_id}:tasks"),
             ],
             [
                 InlineKeyboardButton(text="View Incidents", callback_data=f"nav:model:{model_id}:incidents"),
                 InlineKeyboardButton(text="Audit History", callback_data=f"nav:model:{model_id}:audit"),
             ],
+            [InlineKeyboardButton(text="Ask Help Copilot", callback_data=callback_for("help_copilot:edit_model"))],
             *page_controls(back_to="models:list"),
         ]
     )
@@ -954,12 +1056,28 @@ def model_detail_menu(model_id: int) -> InlineKeyboardMarkup:
 def model_edit_menu(model_id: int, status: str) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = [
         [
+            InlineKeyboardButton(text="Edit Name", callback_data=f"nav:model:{model_id}:edit:display_name"),
+            InlineKeyboardButton(text="Edit Stage Name", callback_data=f"nav:model:{model_id}:edit:stage_name"),
+        ],
+        [
+            InlineKeyboardButton(text="Edit Country", callback_data=f"nav:model:{model_id}:edit:country"),
+            InlineKeyboardButton(text="Edit Timezone", callback_data=f"nav:model:{model_id}:edit:timezone"),
+        ],
+        [
+            InlineKeyboardButton(text="Edit Notes", callback_data=f"nav:model:{model_id}:edit:notes"),
+            InlineKeyboardButton(text="Internal Notes", callback_data=f"nav:model:{model_id}:edit:internal_notes"),
+        ],
+        [
             InlineKeyboardButton(text="Set Active", callback_data=f"nav:model:{model_id}:status:active"),
             InlineKeyboardButton(text="Set Warning", callback_data=f"nav:model:{model_id}:status:warning"),
         ],
         [
             InlineKeyboardButton(text="Disable", callback_data=f"nav:model:{model_id}:status:disabled"),
             InlineKeyboardButton(text="Archive", callback_data=f"nav:model:{model_id}:archive"),
+        ],
+        [
+            InlineKeyboardButton(text="Manage Team", callback_data=f"nav:model:{model_id}:team"),
+            InlineKeyboardButton(text="Manage Accounts", callback_data=f"nav:model:{model_id}:accounts"),
         ],
     ]
     if status == "archived":
@@ -1070,6 +1188,7 @@ def permission_choice_menu(role_id: int, action: str, permission_keys: list[str]
 def settings_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [InlineKeyboardButton(text="Setup Wizard", callback_data=callback_for("setup:wizard"))],
             [InlineKeyboardButton(text="Bot Status", callback_data=callback_for("bot_status"))],
             [InlineKeyboardButton(text="Production Status", callback_data=callback_for("production_status"))],
             [InlineKeyboardButton(text="My Availability", callback_data=callback_for("availability"))],

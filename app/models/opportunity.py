@@ -88,6 +88,7 @@ class Opportunity(TimestampMixin, Base):
         Index("ix_opportunities_score", "score"),
         Index("ix_opportunities_niche", "niche"),
         Index("ix_opportunities_due_at", "due_at"),
+        Index("ix_opportunities_is_demo", "is_demo"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -108,6 +109,7 @@ class Opportunity(TimestampMixin, Base):
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     source: Mapped[OpportunitySource | None] = relationship(back_populates="opportunities", lazy="selectin")
     model_brand: Mapped["ModelBrand | None"] = relationship("ModelBrand", lazy="selectin")
     assigned_to: Mapped["User | None"] = relationship("User", foreign_keys=[assigned_to_user_id], lazy="selectin")
@@ -161,6 +163,7 @@ class CreatorWatch(TimestampMixin, Base):
         Index("ix_creator_watches_assigned_team_id", "assigned_team_id"),
         Index("ix_creator_watches_assigned_chatter_id", "assigned_chatter_id"),
         Index("ix_creator_watches_is_active", "is_active"),
+        Index("ix_creator_watches_is_demo", "is_demo"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -183,6 +186,7 @@ class CreatorWatch(TimestampMixin, Base):
     notes: Mapped[str | None] = mapped_column(Text(), nullable=True)
     status: Mapped[str] = mapped_column(String(40), default="active", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     assigned_model: Mapped["ModelBrand | None"] = relationship("ModelBrand", lazy="selectin")
     assigned_chatter: Mapped["User | None"] = relationship("User", foreign_keys=[assigned_chatter_id], lazy="selectin")
@@ -215,6 +219,7 @@ class PostWatch(TimestampMixin, Base):
         Index("ix_post_watches_assigned_chatter_id", "assigned_chatter_id"),
         Index("ix_post_watches_assigned_team_id", "assigned_team_id"),
         Index("ix_post_watches_created_at", "created_at"),
+        Index("ix_post_watches_is_demo", "is_demo"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -231,6 +236,7 @@ class PostWatch(TimestampMixin, Base):
     )
     assigned_team_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     model_brand: Mapped["ModelBrand"] = relationship("ModelBrand", lazy="selectin")
     account: Mapped["Account | None"] = relationship("Account", lazy="selectin")

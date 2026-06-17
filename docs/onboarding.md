@@ -34,3 +34,14 @@ Pending users cannot access operational screens.
 
 After the user is approved, managers should confirm role, timezone, availability, Help Center viewing, and onboarding completion in Team QA.
 
+## First Agency Setup
+
+New agencies should create production structure before inviting a larger team:
+
+1. Owner opens `Setup Agency`.
+2. Owner creates the first model/brand.
+3. Owner adds accounts.
+4. Owner or manager assigns team members.
+5. Owner adds starter creators and opportunities.
+
+This prevents staff from landing in empty screens with no model, accounts, or work assignments.

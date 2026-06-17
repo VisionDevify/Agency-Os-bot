@@ -595,3 +595,34 @@ Built-in templates:
 Execution records are split into `automation_runs` and `automation_run_steps` so operators can see what ran, what succeeded, what failed, which entities were affected, and whether rollback is available. Rollback V1 documents supported undo paths for proxy session rollback, task assignment rollback, incident assignment rollback, recommendation status rollback, and notification target disable rollback.
 
 Agency OS still does not automate IG/X/OnlyFans posting, commenting, liking, following, scraping, credential handling, or security bypassing. Automation actions are limited to internal infrastructure, operations, reports, intelligence, notifications, and system records.
+
+## Setup Wizard And UI Clarity
+
+Sprint 19 makes the first production setup path obvious for a non-technical owner.
+
+Owner/Admin entry points:
+
+- Owner Home -> Setup Agency.
+- Settings -> Setup Wizard.
+- Models empty state -> Create First Model.
+
+Setup Wizard flow:
+
+- Create Model/Brand with display name, stage name, country, timezone, and notes.
+- Add accounts for Instagram, X, OnlyFans, Email, or Other.
+- Assign manager, chatter manager, senior chatter, chatter, and VA team members.
+- Add starter Creator Watch records.
+- Create starter opportunities with comment strategies.
+- Review setup summary and missing items.
+
+Model/Brand editing now covers display name, stage name, country, timezone, status, notes, internal notes, team, accounts, creators, and opportunities.
+
+Telegram UX principles for Sprint 19:
+
+- Empty states explain the next step.
+- Advanced systems stay hidden from roles that do not need them.
+- Help Copilot gives short role-aware setup answers.
+- The structure map explains Agency -> Models/Brands -> Accounts/Team -> Tasks/Incidents/Opportunities -> Reports/Intelligence/Automations.
+- Demo Seed Mode is owner-only and marks demo records so sample data can be cleared safely.
+
+The setup layer still respects the core safety boundary: no platform automation, no scraping, no evasion, no real platform passwords, and no secrets in logs, audits, events, or Telegram UI.

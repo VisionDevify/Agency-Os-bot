@@ -206,6 +206,7 @@ def create_manual_opportunity(
     assigned_to_user_id: int | None = None,
     source_type: str | None = "manual",
     source_reference_id: int | None = None,
+    is_demo: bool = False,
     reason: str | None = None,
     suggested_angle: str | None = None,
     source: OpportunitySource | None = None,
@@ -241,6 +242,7 @@ def create_manual_opportunity(
         assigned_to_user_id=assigned_to_user_id,
         assigned_at=_now() if assigned_to_user_id else None,
         due_at=due_at,
+        is_demo=is_demo,
     )
     if assigned_to_user_id is not None:
         opportunity.status = "assigned"
@@ -352,6 +354,7 @@ def create_creator_watch(
     assigned_team_id: int | None = None,
     assigned_chatter_id: int | None = None,
     notes: str | None = None,
+    is_demo: bool = False,
 ) -> CreatorWatch:
     _require_opportunity_manage(session, actor)
     if platform not in CREATOR_WATCH_PLATFORMS:
@@ -372,6 +375,7 @@ def create_creator_watch(
         notes=notes,
         status="active",
         is_active=True,
+        is_demo=is_demo,
     )
     session.add(creator)
     session.flush()
@@ -640,6 +644,7 @@ def create_post_watch(
     assigned_chatter_id: int | None = None,
     assigned_team_id: int | None = None,
     notes: str | None = None,
+    is_demo: bool = False,
 ) -> PostWatch:
     _require_opportunity_manage(session, actor)
     if platform not in POST_WATCH_PLATFORMS:
@@ -665,6 +670,7 @@ def create_post_watch(
         assigned_chatter_id=assigned_chatter_id,
         assigned_team_id=assigned_team_id,
         notes=notes,
+        is_demo=is_demo,
     )
     session.add(post)
     session.flush()
@@ -1331,9 +1337,37 @@ def help_copilot_answer(
 ) -> dict:
     role_names = {role.name for role in user.roles} if user is not None else set()
     question_text = question.lower()
-    if "add" in question_text and "creator" in question_text:
+    if "where" in question_text and "start" in question_text:
+        if {"Owner", "Admin"} & role_names:
+            answer = "Start with Owner Home -> Setup Agency. Create the first model, add accounts, assign team, then add creators and opportunities."
+            next_action = "setup:wizard"
+        elif "Manager" in role_names:
+            answer = "Start with Manager Home -> Manager QA. It shows models, users, opportunities, and tasks that need setup."
+            next_action = "manager_qa"
+        elif "VA" in role_names:
+            answer = "Start with My Accounts and My Tasks. Availability tells the team whether you are ready for work."
+            next_action = "my_accounts"
+        else:
+            answer = "Start from your home screen. It shows the work areas your role can use today."
+            next_action = "menu"
+    elif "first model" in question_text or ("create" in question_text and "model" in question_text):
+        answer = "Open Setup Agency -> Create Model/Brand. Send: display name | stage name | country | timezone | notes. You can edit it later from Model Detail."
+        next_action = "setup:wizard:model"
+    elif "edit" in question_text and "model" in question_text:
+        answer = "Open Models -> View Models -> choose the model -> Edit Model. Use Edit Name, Edit Stage Name, Edit Country, Edit Timezone, or Edit Notes."
+        next_action = "models:view"
+    elif "add" in question_text and "account" in question_text:
+        answer = "Create a model first, then open Setup Agency -> Add Accounts or Models -> Model Detail -> Manage Accounts. Accounts attach to a model or brand."
+        next_action = "setup:wizard:accounts"
+    elif "assign" in question_text and ("chatter" in question_text or "team" in question_text):
+        answer = "Open Setup Agency -> Assign Team or the model detail screen -> Manage Team. Pick Chatter, Senior Chatter, Chatter Manager, VA, or Manager."
+        next_action = "setup:wizard:team"
+    elif "add" in question_text and "creator" in question_text:
         answer = "Open Opportunities -> Creator Watchlist -> Add Creator, then follow the guided steps for platform, username, niche, priority, and assignment."
         next_action = "opportunities:creators:add"
+    elif "create" in question_text and "opportun" in question_text:
+        answer = "Open Opportunities -> Command Center -> Add Opportunity. Choose a source, add the title/reference, assign a chatter if ready, then generate strategies."
+        next_action = "opportunities:add"
     elif "assign" in question_text and "opportun" in question_text:
         answer = "Open Opportunity Detail, tap Assign Chatter, choose the teammate, and Agency OS will make it visible in their workspace."
         next_action = "opportunities:command"

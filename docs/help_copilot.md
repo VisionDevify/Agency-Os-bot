@@ -20,6 +20,27 @@ The first version is deterministic and safe:
 
 It does not call an external AI provider yet and does not expose secrets or raw internal diagnostics.
 
+## Sprint 19 Setup Answers
+
+Help Copilot now answers the first setup questions directly:
+
+- Where do I start?
+- How do I create the first model?
+- How do I edit a model?
+- How do I add accounts?
+- How do I assign a chatter?
+- How do I add a creator?
+- How do I create an opportunity?
+- Why can't I access this?
+
+Answers are short and point to exact Telegram paths such as `Owner Home -> Setup Agency`, `Models -> View Models -> Edit Model`, and `Opportunities -> Command Center -> Add Opportunity`.
+
+Role context matters:
+
+- Owners/Admins are pointed toward Setup Agency and Manager QA.
+- Managers are pointed toward Manager QA and assignment screens.
+- Chatters and VAs are pointed toward their simplified home screens, tasks, accounts, opportunities, availability, and help.
+
 ## Example Answers
 
 For a Chatter asking how to complete an opportunity:

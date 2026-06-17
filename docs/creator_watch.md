@@ -18,6 +18,7 @@ It does not scrape profiles, post comments, follow accounts, bypass platform rul
 - optional assigned chatter.
 - notes.
 - active flag.
+- demo flag for owner-created training records.
 
 ## Telegram Flow
 
@@ -52,3 +53,4 @@ Team assignment is now active enough for managers to move creators into the dail
 - Chatters can view opportunity workspace pages through their role-specific home.
 - Every create, update, assignment, disable, archive, and opportunity-conversion action is audited and emits a safe event.
 - No external platform data is collected automatically.
+- Demo creator records are marked and can be cleared through owner-only Demo Seed Mode.

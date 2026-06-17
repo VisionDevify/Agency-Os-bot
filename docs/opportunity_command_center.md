@@ -73,3 +73,7 @@ Opportunity results support:
 - `rejected`.
 
 Results now capture safe reason/notes plus optional clicks and conversions. Posted results complete the opportunity; skipped, rejected, and failed results feed Learning Events, Outcome Memory, and opportunity confidence adjustments without automating any platform action.
+
+## Setup Dependency
+
+Opportunities become useful after at least one Model/Brand exists. If the system has no models yet, the UI should guide Owner/Admin users to `Setup Agency -> Create Model/Brand` before Own Post Watch or account-attached opportunities.

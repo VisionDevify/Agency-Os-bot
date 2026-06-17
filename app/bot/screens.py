@@ -29,7 +29,9 @@ from app.bot.menu import (
     dashboard_menu,
     daily_experience_menu,
     daily_digest_menu,
+    demo_seed_menu,
     executive_dashboard_menu,
+    first_day_plan_menu,
     help_center_menu,
     help_copilot_menu,
     incident_detail_menu,
@@ -43,6 +45,7 @@ from app.bot.menu import (
     learning_playbooks_menu,
     main_menu,
     manager_command_menu,
+    manager_setup_qa_menu,
     model_detail_menu,
     model_edit_menu,
     model_list_menu,
@@ -84,6 +87,8 @@ from app.bot.menu import (
     settings_menu,
     simulation_run_detail_menu,
     simulation_runs_menu,
+    setup_finish_menu,
+    setup_wizard_menu,
     task_detail_menu,
     task_list_menu,
     task_user_choice_menu,
@@ -93,6 +98,7 @@ from app.bot.menu import (
     tasks_menu,
     user_detail_menu,
     users_menu,
+    structure_map_menu,
 )
 from app.models.account import ACCOUNT_PLATFORMS, Account
 from app.models.audit import AuditLog
@@ -273,6 +279,12 @@ from app.services.opportunities import (
     opportunity_results,
     team_activation_qa,
     team_activation_summary,
+)
+from app.services.setup_wizard import (
+    first_day_plan,
+    latest_setup_state,
+    manager_setup_qa,
+    summarize_setup_state,
 )
 
 
@@ -506,12 +518,299 @@ def render_help_topic_page(topic: str, user: User | None = None) -> Screen:
     )
 
 
+def render_structure_map_page() -> Screen:
+    lines = [
+        "How Agency OS Is Organized",
+        "",
+        "Agency",
+        "↓",
+        "Models / Brands",
+        "↓",
+        "Accounts + Team",
+        "↓",
+        "Tasks + Incidents + Opportunities",
+        "↓",
+        "Reports + Intelligence + Automations",
+        "",
+        "Start with one model/brand. Everything else attaches to that.",
+    ]
+    return Screen("\n".join(lines), structure_map_menu())
+
+
+def render_setup_wizard_page(session: Session, user: User | None = None) -> Screen:
+    state = latest_setup_state(session, user) if user is not None else None
+    summary = summarize_setup_state(session, state)
+    model = summary["model"]
+    lines = [
+        "Agency Setup Wizard",
+        "",
+        "Use this to make Agency OS usable for the team without guessing where to start.",
+        "",
+        "Steps:",
+        "1. Create Model/Brand",
+        "2. Add Accounts",
+        "3. Assign Team",
+        "4. Add Creator Watchlist Starters",
+        "5. Create Starter Opportunities",
+        "6. Review Setup Summary",
+        "",
+        f"Current Model: {model.display_name if model else 'None yet'}",
+        f"Accounts Added: {summary['accounts']}",
+        f"Team Assigned: {summary['team']}",
+        f"Creators Added: {summary['creators']}",
+        f"Opportunities Created: {summary['opportunities']}",
+    ]
+    if summary["missing"]:
+        lines.extend(["", "Still Missing:", *[f"- {item.title()}" for item in summary["missing"]]])
+    else:
+        lines.extend(["", "Setup has the basics. Review and finish when ready."])
+    return Screen("\n".join(lines), setup_wizard_menu())
+
+
+def render_setup_model_prompt_page() -> Screen:
+    lines = [
+        "Create First Model",
+        "",
+        "Send the model/brand details in this format:",
+        "",
+        "Display Name | Stage Name | Country | Timezone | Notes",
+        "",
+        "Example:",
+        "Fortuna Solstice | Fortuna | United States | America/New_York | Launch profile",
+        "",
+        "You can type skip for optional notes.",
+    ]
+    return Screen("\n".join(lines), page_menu(back_to="setup:wizard"))
+
+
+def render_setup_accounts_page(session: Session, user: User | None = None) -> Screen:
+    state = latest_setup_state(session, user) if user is not None else None
+    summary = summarize_setup_state(session, state)
+    model = summary["model"]
+    if model is None:
+        return Screen(
+            "Add Accounts\n\nNo model exists yet. Create your first model/brand before adding IG/X/OF accounts.",
+            choice_menu([("Create First Model", "nav:setup:wizard:model")], back_to="setup:wizard"),
+        )
+    choices = [
+        ("Instagram", "nav:setup:wizard:accounts:platform:instagram"),
+        ("X", "nav:setup:wizard:accounts:platform:x"),
+        ("OnlyFans", "nav:setup:wizard:accounts:platform:onlyfans"),
+        ("Email", "nav:setup:wizard:accounts:platform:email"),
+        ("Other", "nav:setup:wizard:accounts:platform:other"),
+    ]
+    return Screen(
+        "\n".join(
+            [
+                "Add Accounts",
+                "",
+                f"Model: {model.display_name}",
+                "Choose a platform, then send username/display/reference details.",
+                "Credential values stay out of Telegram.",
+            ]
+        ),
+        choice_menu(choices, back_to="setup:wizard"),
+    )
+
+
+def render_setup_account_input_page(session: Session, user: User | None, platform: str) -> Screen:
+    state = latest_setup_state(session, user) if user is not None else None
+    summary = summarize_setup_state(session, state)
+    model = summary["model"]
+    if model is None:
+        return render_setup_accounts_page(session, user)
+    return Screen(
+        "\n".join(
+            [
+                "Add Account",
+                "",
+                f"Model: {model.display_name}",
+                f"Platform: {platform_label(platform)}",
+                "",
+                "Send:",
+                "username | display name | URL/reference | notes",
+                "",
+                "Never send passwords or 2FA codes here.",
+            ]
+        ),
+        page_menu(back_to="setup:wizard:accounts"),
+    )
+
+
+def render_setup_team_page(session: Session, user: User | None = None, relationship_type: str | None = None) -> Screen:
+    state = latest_setup_state(session, user) if user is not None else None
+    summary = summarize_setup_state(session, state)
+    model = summary["model"]
+    if model is None:
+        return Screen(
+            "Assign Team\n\nCreate a model/brand first, then assign managers, chatters, and VAs.",
+            choice_menu([("Create First Model", "nav:setup:wizard:model")], back_to="setup:wizard"),
+        )
+    if relationship_type is None:
+        choices = [
+            ("Assign Manager", "nav:setup:wizard:team:assign:manager"),
+            ("Assign Chatter Manager", "nav:setup:wizard:team:assign:chatter_manager"),
+            ("Assign Senior Chatter", "nav:setup:wizard:team:assign:senior_chatter"),
+            ("Assign Chatter", "nav:setup:wizard:team:assign:chatter"),
+            ("Assign VA", "nav:setup:wizard:team:assign:va"),
+            ("Skip For Later", "nav:setup:wizard:creators"),
+        ]
+        return Screen(
+            f"Assign Team\n\nModel: {model.display_name}\nChoose the role you want to assign.",
+            choice_menu(choices, back_to="setup:wizard"),
+        )
+    users = active_users_for_assignment(session)
+    choices = [
+        (_identity(user)[:40], f"nav:setup:wizard:team:assign:{relationship_type}:{user.id}")
+        for user in users
+    ]
+    if not choices:
+        return Screen(
+            "Assign Team\n\nNo active users available yet. Approve users first, then come back.",
+            choice_menu([("Pending Users", "nav:users:pending")], back_to="setup:wizard:team"),
+        )
+    label = RELATIONSHIP_LABELS.get(relationship_type, relationship_type)
+    return Screen(
+        f"Assign {label}\n\nModel: {model.display_name}\nPick a team member.",
+        choice_menu(choices, back_to="setup:wizard:team"),
+    )
+
+
+def render_setup_creators_page(session: Session, user: User | None = None) -> Screen:
+    state = latest_setup_state(session, user) if user is not None else None
+    summary = summarize_setup_state(session, state)
+    model = summary["model"]
+    if model is None:
+        return Screen(
+            "Add Creator Starters\n\nCreate a model/brand first, then add creators worth watching.",
+            choice_menu([("Create First Model", "nav:setup:wizard:model")], back_to="setup:wizard"),
+        )
+    return Screen(
+        "\n".join(
+            [
+                "Add Creator Starters",
+                "",
+                f"Model: {model.display_name}",
+                "Send one creator in this format:",
+                "",
+                "platform | username | display name | niche | priority",
+                "",
+                "Example: x | creatorname | Creator Name | fitness | high",
+            ]
+        ),
+        choice_menu([("Use Full Creator Flow", "nav:opportunities:creators:add")], back_to="setup:wizard"),
+    )
+
+
+def render_setup_opportunities_page(session: Session, user: User | None = None) -> Screen:
+    state = latest_setup_state(session, user) if user is not None else None
+    summary = summarize_setup_state(session, state)
+    model = summary["model"]
+    if model is None:
+        return Screen(
+            "Create Starter Opportunities\n\nCreate a model/brand first, then create manual opportunities.",
+            choice_menu([("Create First Model", "nav:setup:wizard:model")], back_to="setup:wizard"),
+        )
+    return Screen(
+        "\n".join(
+            [
+                "Create Starter Opportunities",
+                "",
+                f"Model: {model.display_name}",
+                "Send one opportunity in this format:",
+                "",
+                "title | platform | niche | assigned user id",
+                "",
+                "Use skip for assigned user id if you want to assign later.",
+            ]
+        ),
+        choice_menu([("Use Full Opportunity Flow", "nav:opportunities:add")], back_to="setup:wizard"),
+    )
+
+
+def render_setup_summary_page(session: Session, user: User | None = None) -> Screen:
+    state = latest_setup_state(session, user) if user is not None else None
+    summary = summarize_setup_state(session, state)
+    model = summary["model"]
+    lines = [
+        "Setup Summary",
+        "",
+        f"Model Created: {model.display_name if model else 'No'}",
+        f"Accounts Added: {summary['accounts']}",
+        f"Team Assigned: {summary['team']}",
+        f"Creators Added: {summary['creators']}",
+        f"Opportunities Created: {summary['opportunities']}",
+        "",
+        "Missing Items:",
+    ]
+    lines.extend(f"- {item.title()}" for item in summary["missing"]) if summary["missing"] else lines.append("- None")
+    return Screen("\n".join(lines), setup_finish_menu(model.id if model else None))
+
+
+def render_first_day_plan_page(session: Session, user: User) -> Screen:
+    plan = first_day_plan(session, user)
+    lines = [
+        "First Day Plan",
+        "",
+        f"Progress: {plan['completion_score']}%",
+        "",
+        "Use this checklist to activate the agency cleanly.",
+        "",
+    ]
+    for item in plan["items"]:
+        marker = "Done" if item["done"] else "Next"
+        lines.append(f"{marker}: {item['label']}")
+    return Screen("\n".join(lines), first_day_plan_menu(plan["items"]))
+
+
+def render_manager_setup_qa_page(session: Session) -> Screen:
+    qa = manager_setup_qa(session)
+    lines = [
+        "Manager Setup / QA",
+        "",
+        "This shows what still needs a human owner. Use it to clean up setup gaps.",
+        "",
+        f"Models Without Manager: {len(qa['models_without_manager'])}",
+        f"Models Without Chatters: {len(qa['models_without_chatters'])}",
+        f"Accounts Without Model: {len(qa['accounts_without_model'])}",
+        f"Opportunities Without Assignee: {len(qa['opportunities_without_assignee'])}",
+        f"Tasks Without Owner: {len(qa['tasks_without_owner'])}",
+        f"Users Pending Approval: {len(qa['users_pending'])}",
+        f"Users Without Timezone: {len(qa['users_without_timezone'])}",
+        f"Users Without Role: {len(qa['users_without_role'])}",
+        f"Users Not Onboarded: {len(qa['users_not_onboarded'])}",
+    ]
+    return Screen("\n".join(lines), manager_setup_qa_menu())
+
+
+def render_demo_seed_page() -> Screen:
+    return Screen(
+        "\n".join(
+            [
+                "Demo Seed Mode",
+                "",
+                "Owner-only test data for learning the UI.",
+                "Demo records are marked and can be cleared without touching real records.",
+                "",
+                "Only create demo data when you intentionally want sample screens.",
+            ]
+        ),
+        demo_seed_menu(),
+    )
+
+
 def render_models_home() -> Screen:
-    return Screen(text="Models\nCommand center.", reply_markup=models_menu())
+    return Screen(
+        text="Models / Brands\n\nEverything in Agency OS starts with a model or brand.",
+        reply_markup=models_menu(),
+    )
 
 
 def render_accounts_home() -> Screen:
-    return Screen(text="Accounts\nSecure account management.", reply_markup=accounts_menu())
+    return Screen(
+        text="Accounts\n\nCreate a model first, then attach Instagram, X, OnlyFans, Email, or Other accounts.",
+        reply_markup=accounts_menu(),
+    )
 
 
 def render_proxies_home() -> Screen:
@@ -566,7 +865,7 @@ def render_opportunities_home(session: Session | None = None) -> Screen:
     ]
     buttons: list[tuple[str, str]] = []
     if not opportunities:
-        lines.append("No opportunities yet.")
+        lines.append("No opportunities yet. Add a creator, watch one of your own posts, or create a manual opportunity.")
     for opportunity in opportunities:
         lines.append(f"{opportunity.id}. {opportunity.title}")
         lines.append(f"   Platform: {opportunity.platform} | Score: {opportunity.score} | Status: {opportunity.status}")
@@ -1100,7 +1399,7 @@ def render_account_list_page(
     lines = [title, ""]
     buttons: list[tuple[str, str]] = []
     if not current_accounts:
-        lines.append("No accounts yet.")
+        lines.append("No accounts yet. Create a model first, then attach IG/X/OF/Email accounts.")
     for account in current_accounts[:15]:
         health = account_health(account)
         model_name = account.model_brand.display_name if account.model_brand else "Unassigned"
@@ -1116,7 +1415,8 @@ def render_account_model_choice_page(session: Session) -> Screen:
     lines = ["Choose Model/Brand", ""]
     buttons: list[tuple[str, str]] = []
     if not models:
-        lines.append("Create a Model/Brand first.")
+        lines.append("No models yet. Start by creating your first model/brand.")
+        buttons.append(("Create First Model", "nav:setup:wizard:model"))
     for model_brand in models:
         buttons.append((model_brand.display_name, f"nav:accounts:add:model:{model_brand.id}"))
     return Screen(text="\n".join(lines), reply_markup=account_model_choice_menu(buttons))
@@ -1156,7 +1456,8 @@ def render_accounts_by_model_page(session: Session) -> Screen:
     lines = ["Accounts by Model", ""]
     buttons: list[tuple[str, str]] = []
     if not models:
-        lines.append("No models yet.")
+        lines.append("No models yet. Start by creating your first model/brand.")
+        buttons.append(("Create First Model", "nav:setup:wizard:model"))
     for model_brand in models:
         count = len(accounts_for_model(session, model_brand.id))
         lines.append(f"{model_brand.display_name}: {count}")
@@ -2657,6 +2958,12 @@ def render_chatter_workspace_page(session: Session, user: User) -> Screen:
 
 def render_help_copilot_page(session: Session, user: User | None = None, *, question: str | None = None) -> Screen:
     prompts = {
+        "where_start": "Where do I start?",
+        "create_first_model": "How do I create the first model?",
+        "edit_model": "How do I edit a model?",
+        "add_accounts": "How do I add accounts?",
+        "assign_chatter": "How do I assign a chatter?",
+        "create_opportunity": "How do I create an opportunity?",
         "add_creator": "How do I add a creator?",
         "assign_opportunity": "How do I assign an opportunity?",
         "my_opportunities": "Where do I see my opportunities?",
@@ -2688,6 +2995,8 @@ def render_help_copilot_page(session: Session, user: User | None = None, *, ques
             "Help Copilot",
             "",
             "Ask simple workflow questions like:",
+            "- Where do I start?",
+            "- How do I create the first model?",
             "- What does this mean?",
             "- How do I complete an opportunity?",
             "- Where do I go?",
@@ -2980,7 +3289,7 @@ def render_model_list_page(session: Session) -> Screen:
     lines = ["Models", ""]
     buttons: list[tuple[str, str]] = []
     if not models:
-        lines.append("No models yet.")
+        lines.append("No models yet. Start by creating your first model/brand to unlock accounts, creators, and opportunities.")
     for model_brand in models[:10]:
         accounts = accounts_for_model(session, model_brand.id)
         health = calculate_model_health(
@@ -3063,6 +3372,9 @@ def render_model_detail_page(session: Session, model_id: int) -> Screen:
         "",
         f"Name: {model_brand.display_name}",
         f"Stage Name: {model_brand.stage_name or 'Not set'}",
+        f"Country: {model_brand.country or 'Not set'}",
+        f"Timezone: {model_brand.timezone or 'Not set'}",
+        f"Primary Platform: {model_brand.primary_platform or 'Not set'}",
         f"Status: {model_brand.status}",
         f"Health: {health.label} {health.score}/100",
         f"Managers Assigned: {_member_names(managers)}",
@@ -3076,6 +3388,7 @@ def render_model_detail_page(session: Session, model_id: int) -> Screen:
         f"Accounts Needing Attention: {attention_count}",
         f"Open Tasks: {open_task_count}",
         f"Open Incidents: {open_incident_count}",
+        f"Notes: {model_brand.notes or 'None'}",
     ]
     return Screen(text="\n".join(lines), reply_markup=model_detail_menu(model_brand.id))
 
@@ -3091,11 +3404,42 @@ def render_model_edit_page(session: Session, model_id: int) -> Screen:
                 "",
                 f"Name: {model_brand.display_name}",
                 f"Stage Name: {model_brand.stage_name or 'Not set'}",
+                f"Country: {model_brand.country or 'Not set'}",
+                f"Timezone: {model_brand.timezone or 'Not set'}",
                 f"Status: {model_brand.status}",
+                f"Notes: {model_brand.notes or 'None'}",
+                "",
+                "Choose a field to edit. Changes are saved, audited, and reflected across dashboards.",
             ]
         ),
         reply_markup=model_edit_menu(model_brand.id, model_brand.status),
     )
+
+
+def render_model_field_edit_page(session: Session, model_id: int, field: str) -> Screen:
+    model_brand = session.get(ModelBrand, model_id)
+    if model_brand is None:
+        return Screen(text="Model not found.", reply_markup=page_menu(back_to="models:list"))
+    labels = {
+        "display_name": "Name",
+        "stage_name": "Stage Name",
+        "country": "Country",
+        "timezone": "Timezone",
+        "notes": "Notes",
+        "internal_notes": "Internal Notes",
+    }
+    current = getattr(model_brand, field, None)
+    label = labels.get(field, field.replace("_", " ").title())
+    lines = [
+        f"Edit {label}",
+        "",
+        f"Model: {model_brand.display_name}",
+        f"Current: {current or 'Not set'}",
+        "",
+        "Send the new value in chat.",
+        "Type skip to leave it unchanged.",
+    ]
+    return Screen("\n".join(lines), page_menu(back_to=f"model:{model_id}:edit"))
 
 
 def render_model_team_page(session: Session, model_id: int) -> Screen:
@@ -3205,6 +3549,44 @@ def render_model_placeholder_page(session: Session, model_id: int, title: str) -
         text=f"{title}\n\nModel: {model_brand.display_name}\nCount: 0",
         reply_markup=page_menu(back_to=f"model:{model_id}"),
     )
+
+
+def render_model_creators_page(session: Session, model_id: int) -> Screen:
+    model_brand = session.get(ModelBrand, model_id)
+    if model_brand is None:
+        return Screen(text="Model not found.", reply_markup=page_menu(back_to="models:list"))
+    creators = [creator for creator in list_creator_watches(session, active_only=False, limit=100) if creator.assigned_model_id == model_id]
+    lines = ["Model Creators", "", f"Model: {model_brand.display_name}", ""]
+    buttons: list[tuple[str, str]] = []
+    if not creators:
+        lines.append("No creators assigned yet. Add a creator from the setup wizard or Creator Watchlist.")
+        buttons.append(("Add Creator Starter", "nav:setup:wizard:creators"))
+    for creator in creators[:15]:
+        lines.append(f"{creator.id}. {creator.display_name or creator.creator_name} (@{creator.creator_username})")
+        lines.append(f"   Platform: {creator.platform} | Niche: {creator.niche or 'Not set'} | Priority: {creator.priority}")
+        buttons.append((f"{creator.id}. {creator.display_name or creator.creator_name}", f"nav:creator:{creator.id}"))
+    return Screen("\n".join(lines), account_list_menu(buttons, back_to=f"model:{model_id}"))
+
+
+def render_model_opportunities_page(session: Session, model_id: int) -> Screen:
+    model_brand = session.get(ModelBrand, model_id)
+    if model_brand is None:
+        return Screen(text="Model not found.", reply_markup=page_menu(back_to="models:list"))
+    opportunities = [
+        opportunity
+        for opportunity in list_opportunities(session, include_archived=True, limit=100)
+        if opportunity.model_brand_id == model_id
+    ]
+    lines = ["Model Opportunities", "", f"Model: {model_brand.display_name}", ""]
+    buttons: list[tuple[str, str]] = []
+    if not opportunities:
+        lines.append("No opportunities yet. Create a starter opportunity from setup or add one manually.")
+        buttons.append(("Create Starter Opportunity", "nav:setup:wizard:opportunities"))
+    for opportunity in opportunities[:15]:
+        lines.append(f"{opportunity.id}. {opportunity.title}")
+        lines.append(f"   Status: {opportunity.status} | Priority: {opportunity.priority} | Score: {opportunity.score}")
+        buttons.append((f"{opportunity.id}. {opportunity.title[:34]}", f"nav:opportunity:{opportunity.id}"))
+    return Screen("\n".join(lines), account_list_menu(buttons, back_to=f"model:{model_id}"))
 
 
 def render_users_page(session: Session, status_filter: str | None = None) -> Screen:
@@ -3593,6 +3975,34 @@ def render_scheduled_automations_page(session: Session, user: User | None = None
 
 
 def render_page(page: str, session: Session | None = None, user: User | None = None) -> Screen:
+    if page == "structure":
+        return render_structure_map_page()
+    if page == "setup:wizard" and session is not None:
+        return render_setup_wizard_page(session, user)
+    if page == "setup:wizard:model":
+        return render_setup_model_prompt_page()
+    if page == "setup:wizard:accounts" and session is not None:
+        return render_setup_accounts_page(session, user)
+    if page.startswith("setup:wizard:accounts:platform:") and session is not None:
+        return render_setup_account_input_page(session, user, page.split(":")[-1])
+    if page == "setup:wizard:team" and session is not None:
+        return render_setup_team_page(session, user)
+    if page.startswith("setup:wizard:team:assign:") and session is not None:
+        parts = page.split(":")
+        if len(parts) >= 5:
+            return render_setup_team_page(session, user, parts[4])
+    if page == "setup:wizard:creators" and session is not None:
+        return render_setup_creators_page(session, user)
+    if page == "setup:wizard:opportunities" and session is not None:
+        return render_setup_opportunities_page(session, user)
+    if page in {"setup:wizard:summary", "setup:wizard:finish"} and session is not None:
+        return render_setup_summary_page(session, user)
+    if page == "first_day_plan" and session is not None and user is not None:
+        return render_first_day_plan_page(session, user)
+    if page == "manager_qa" and session is not None:
+        return render_manager_setup_qa_page(session)
+    if page.startswith("demo"):
+        return render_demo_seed_page()
     if page == "daily_experience" and session is not None and user is not None:
         return render_daily_experience_page(session, user)
     if page == "performance" and session is not None and user is not None:
@@ -3731,6 +4141,8 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
             if len(parts) == 2:
                 return render_model_detail_page(session, model_id)
             if parts[2] == "edit":
+                if len(parts) >= 4:
+                    return render_model_field_edit_page(session, model_id, parts[3])
                 return render_model_edit_page(session, model_id)
             if parts[2] == "team":
                 if len(parts) >= 5 and parts[3] == "assign":
@@ -3749,6 +4161,10 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
                     title=title,
                     back_to=f"model:{model_id}",
                 )
+            if parts[2] == "creators":
+                return render_model_creators_page(session, model_id)
+            if parts[2] == "opportunities":
+                return render_model_opportunities_page(session, model_id)
             if parts[2] == "tasks":
                 model_brand = session.get(ModelBrand, model_id)
                 title = f"Tasks for {model_brand.display_name}" if model_brand else "Tasks"

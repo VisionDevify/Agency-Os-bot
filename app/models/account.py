@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, String, Text, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -49,6 +49,7 @@ class Account(TimestampMixin, Base):
         Index("ix_accounts_status", "status"),
         Index("ix_accounts_auth_status", "auth_status"),
         Index("ix_accounts_username", "username"),
+        Index("ix_accounts_is_demo", "is_demo"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -70,6 +71,7 @@ class Account(TimestampMixin, Base):
         nullable=True,
     )
     notes: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    is_demo: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     model_brand: Mapped["ModelBrand | None"] = relationship("ModelBrand", lazy="selectin")
     assigned_proxy: Mapped["Proxy | None"] = relationship(
