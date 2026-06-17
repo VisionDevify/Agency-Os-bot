@@ -355,6 +355,14 @@ def recommendation_detail_menu(recommendation_id: int) -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Jump to Related Entity", callback_data=f"nav:recommendation:{recommendation_id}:jump")],
             [InlineKeyboardButton(text="Why am I seeing this?", callback_data=f"nav:recommendation:{recommendation_id}:why")],
             [
+                InlineKeyboardButton(text="Useful", callback_data=f"nav:recommendation:{recommendation_id}:feedback:useful"),
+                InlineKeyboardButton(text="Not Useful", callback_data=f"nav:recommendation:{recommendation_id}:feedback:not_useful"),
+            ],
+            [
+                InlineKeyboardButton(text="Wrong", callback_data=f"nav:recommendation:{recommendation_id}:feedback:wrong"),
+                InlineKeyboardButton(text="Needs Review", callback_data=f"nav:recommendation:{recommendation_id}:feedback:needs_review"),
+            ],
+            [
                 InlineKeyboardButton(
                     text="Create Draft Automation",
                     callback_data=f"nav:recommendation:{recommendation_id}:create_automation",
@@ -382,6 +390,7 @@ def intelligence_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="Recommendations", callback_data=callback_for("reports:executive:recommendations")),
                 InlineKeyboardButton(text="Opportunities", callback_data=callback_for("opportunities")),
             ],
+            [InlineKeyboardButton(text="Learning Center", callback_data=callback_for("intelligence:learning"))],
             [InlineKeyboardButton(text="Production Status", callback_data=callback_for("production_status"))],
             *page_controls(back_to="menu"),
         ]
@@ -417,8 +426,53 @@ def intelligence_briefing_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="View Trends", callback_data=callback_for("intelligence:trends")),
                 InlineKeyboardButton(text="View Workload", callback_data=callback_for("reports:workload")),
             ],
+            [InlineKeyboardButton(text="Executive Memory Briefing", callback_data=callback_for("intelligence:learning:briefing"))],
             [InlineKeyboardButton(text="Send to HQ", callback_data=callback_for("reports:intelligence:send_hq"))],
             *page_controls(back_to="reports"),
+        ]
+    )
+
+
+def learning_center_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Playbooks", callback_data=callback_for("intelligence:learning:playbooks"))],
+            [InlineKeyboardButton(text="Recommended Playbooks", callback_data=callback_for("intelligence:learning:recommended"))],
+            [
+                InlineKeyboardButton(text="Outcome Memory", callback_data=callback_for("intelligence:learning:outcome_memory")),
+                InlineKeyboardButton(text="Confidence Changes", callback_data=callback_for("intelligence:learning:confidence")),
+            ],
+            [
+                InlineKeyboardButton(text="Automation Learning", callback_data=callback_for("intelligence:learning:automation")),
+                InlineKeyboardButton(text="Opportunity Learning", callback_data=callback_for("intelligence:learning:opportunity")),
+            ],
+            [InlineKeyboardButton(text="Executive Memory Briefing", callback_data=callback_for("intelligence:learning:briefing"))],
+            *page_controls(back_to="intelligence"),
+        ]
+    )
+
+
+def learning_playbooks_menu(playbook_buttons: list[tuple[str, str]], *, back_to: str = "intelligence:learning") -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in playbook_buttons]
+    rows.append([InlineKeyboardButton(text="Recommended Playbooks", callback_data=callback_for("intelligence:learning:recommended"))])
+    rows.extend(page_controls(back_to=back_to))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def playbook_detail_menu(playbook_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Suggest Playbook", callback_data=f"nav:playbook:{playbook_id}:suggest")],
+            [InlineKeyboardButton(text="Playbook History", callback_data=f"nav:playbook:{playbook_id}:history")],
+            [
+                InlineKeyboardButton(text="Useful", callback_data=f"nav:playbook:{playbook_id}:feedback:useful"),
+                InlineKeyboardButton(text="Not Useful", callback_data=f"nav:playbook:{playbook_id}:feedback:not_useful"),
+            ],
+            [
+                InlineKeyboardButton(text="Wrong", callback_data=f"nav:playbook:{playbook_id}:feedback:wrong"),
+                InlineKeyboardButton(text="Needs Review", callback_data=f"nav:playbook:{playbook_id}:feedback:needs_review"),
+            ],
+            *page_controls(back_to="intelligence:learning:playbooks"),
         ]
     )
 

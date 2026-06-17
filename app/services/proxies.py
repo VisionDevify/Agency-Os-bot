@@ -482,6 +482,16 @@ def rotate_session(
         status=event_status,
         payload=_safe_proxy_payload(proxy, {"rotation_history_id": history.id}),
     )
+    from app.services.learning import capture_proxy_outcome
+
+    capture_proxy_outcome(
+        session,
+        proxy,
+        actor=actor,
+        event_type=event_name,
+        succeeded=success,
+        details={"rotation_history_id": history.id},
+    )
     return history
 
 
@@ -645,6 +655,17 @@ def repair_proxy(
             resource_id=str(proxy.id),
             payload={"closed_incidents": closed},
         )
+        from app.services.learning import capture_proxy_outcome
+
+        capture_proxy_outcome(
+            session,
+            proxy,
+            actor=actor,
+            event_type="proxy.repair.succeeded",
+            succeeded=True,
+            summary="Proxy repair succeeded through session rotation.",
+            details={"closed_incidents": closed},
+        )
         return ProxyRepairResult(True, True, False, "Proxy repaired by rotating the session.")
 
     incident = create_proxy_incident(
@@ -663,6 +684,17 @@ def repair_proxy(
         resource_id=str(proxy.id),
         status="failed",
         payload={"incident_id": incident.id},
+    )
+    from app.services.learning import capture_proxy_outcome
+
+    capture_proxy_outcome(
+        session,
+        proxy,
+        actor=actor,
+        event_type="proxy.repair.failed",
+        succeeded=False,
+        summary="Proxy repair failed and created an incident.",
+        details={"incident_id": incident.id},
     )
     return ProxyRepairResult(True, False, True, "Proxy repair failed and an incident was created.")
 

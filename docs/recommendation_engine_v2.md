@@ -41,6 +41,17 @@ Recommendations still move through:
 
 Status changes audit and emit safe events.
 
+## Learning Feedback
+
+Sprint 15 adds recommendation feedback:
+
+- Useful.
+- Not Useful.
+- Wrong.
+- Needs Review.
+
+Feedback creates a learning event, updates outcome memory, creates a confidence record, and audits a safe summary. One click only nudges confidence lightly; repeated evidence should matter more than a single reaction.
+
 ## Safety
 
 Recommendation metadata must not include tokens, credentials, verification codes, proxy passwords, raw chat IDs, or platform session data. Recommendations should explain and guide. They should not execute risky actions directly.

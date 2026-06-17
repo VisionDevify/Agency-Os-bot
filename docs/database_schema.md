@@ -1,6 +1,6 @@
 # Database Schema
 
-This document describes the current schema as of Sprint 14 and the planned direction. PostgreSQL is the production database, SQLAlchemy owns the models, and Alembic owns migrations.
+This document describes the current schema as of Sprint 15 and the planned direction. PostgreSQL is the production database, SQLAlchemy owns the models, and Alembic owns migrations.
 
 ## Current Tables
 
@@ -1109,7 +1109,132 @@ Opportunity status:
 - `rejected`: rejected by an operator.
 - `archived`: hidden from default active views.
 
-Soft-delete strategy:
+Learning and playbook status:
+
+- Learning event outcomes are immutable once recorded and use `success`, `failure`, `partial`, `ignored`, or `unknown`.
+- Playbooks use `draft`, `active`, `needs_review`, or `retired`.
+- Playbook runs use append-style status history: `suggested`, `approved`, `running`, `succeeded`, `failed`, `skipped`, or `rolled_back`.
+- Outcome memory rows update aggregate counters in place.
+- Confidence records are append-only explanations.
+
+## Learning and Memory Tables
+
+### learning_events
+
+Stores meaningful outcomes that Agency OS can learn from.
+
+Columns:
+
+- `id`: primary key.
+- `event_type`: stable dotted learning event name.
+- `source_type`: `task`, `incident`, `proxy`, `account`, `automation`, `recommendation`, `opportunity`, `notification`, or `system`.
+- `source_id`: optional source record ID stored as text for cross-module flexibility.
+- `entity_type`, `entity_id`: optional affected entity reference.
+- `outcome`: `success`, `failure`, `partial`, `ignored`, or `unknown`.
+- `severity`: `info`, `warning`, or `critical`.
+- `summary`: concise safe operator summary.
+- `details_json`: safe metadata only.
+- `confidence_score`: optional 0-100 confidence score.
+- `created_by_user_id`: nullable FK to `users.id`.
+- `created_at`: timestamp.
+
+Indexes and constraints:
+
+- Check constraints on `source_type`, `outcome`, `severity`, and confidence bounds.
+- Indexes on event type, source, entity, outcome, severity, creator, and creation time.
+
+### playbooks
+
+Reusable operating and recovery memory.
+
+Columns:
+
+- `id`: primary key.
+- `name`: unique playbook name.
+- `category`: `proxy`, `account`, `task`, `incident`, `automation`, `notification`, `opportunity`, or `system`.
+- `trigger_summary`: human-readable trigger.
+- `diagnosis_steps_json`, `resolution_steps_json`, `verification_steps_json`: ordered safe step lists.
+- `rollback_steps_json`: nullable rollback/limitation steps.
+- `risk_level`: `low`, `medium`, `high`, or `critical`.
+- `confidence_score`: 0-100 current confidence.
+- `success_count`, `failure_count`: aggregate run outcomes.
+- `last_used_at`: nullable timestamp.
+- `status`: `draft`, `active`, `needs_review`, or `retired`.
+- `created_by_user_id`: nullable FK to `users.id`.
+- `created_at`, `updated_at`: timestamps.
+
+Indexes and constraints:
+
+- Unique constraint on `name`.
+- Check constraints on category, risk, status, confidence, and non-negative counts.
+- Indexes on category, risk, status, confidence, and creator.
+
+### playbook_runs
+
+Tracks every time a playbook is suggested, approved, run, skipped, failed, succeeded, or rolled back.
+
+Columns:
+
+- `id`: primary key.
+- `playbook_id`: FK to `playbooks.id`, cascade delete.
+- `source_type`, `source_id`: optional source context.
+- `status`: `suggested`, `approved`, `running`, `succeeded`, `failed`, `skipped`, or `rolled_back`.
+- `started_by_user_id`, `approved_by_user_id`: nullable FKs to `users.id`.
+- `confidence_before`, `confidence_after`: nullable 0-100 scores.
+- `result_summary`: nullable safe summary.
+- `safe_metadata_json`: safe metadata only.
+- `created_at`, `finished_at`: timestamps.
+
+Indexes and constraints:
+
+- Check constraints on status and confidence bounds.
+- Indexes on playbook, source, status, starter, approver, created time, and finished time.
+
+### outcome_memory
+
+Aggregates learning events into durable memory keys and success/failure rates.
+
+Columns:
+
+- `id`: primary key.
+- `memory_key`: unique deterministic key such as `proxy_failure:proxy:12`.
+- `memory_type`: `proxy_failure`, `account_issue`, `incident_pattern`, `automation_result`, `recommendation_result`, `opportunity_result`, `notification_failure`, `task_overdue`, or `system_health`.
+- `entity_type`, `entity_id`: optional related entity.
+- `occurrences`, `success_count`, `failure_count`, `partial_count`, `ignored_count`: aggregate counters.
+- `success_rate`: integer 0-100.
+- `last_outcome`: latest outcome.
+- `last_seen_at`: latest learning event timestamp.
+- `summary`: deterministic operator-readable summary.
+- `metadata_json`: safe metadata only.
+- `created_at`, `updated_at`: timestamps.
+
+Indexes and constraints:
+
+- Unique constraint on `memory_key`.
+- Check constraints on memory type, last outcome, counters, and success-rate bounds.
+- Indexes on memory type, entity, last outcome, success rate, and last seen time.
+
+### confidence_records
+
+Explains why confidence changed over time.
+
+Columns:
+
+- `id`: primary key.
+- `subject_type`: `recommendation`, `playbook`, `automation`, `proxy`, `opportunity`, `intelligence_signal`, or `issue_pattern`.
+- `subject_id`: subject record ID stored as text.
+- `previous_score`: nullable 0-100 prior score.
+- `new_score`: 0-100 updated score.
+- `reason`: safe explanation.
+- `evidence_json`: safe evidence metadata only.
+- `created_at`: timestamp.
+
+Indexes and constraints:
+
+- Check constraints on subject type and confidence bounds.
+- Indexes on subject and created time.
+
+## Soft Delete Strategy
 
 - Users are not deleted during normal admin flows. Use `disabled` or `denied`.
 - Roles and permissions should not be deleted casually because they affect audit interpretation and historical access context.
@@ -1123,6 +1248,8 @@ Soft-delete strategy:
 - Automation simulation runs are history records and should not be deleted during normal operations.
 - Recommendations should move through status instead of hard deletion.
 - Intelligence signals, patterns, insights, runs, opportunities, and opportunity results should move through status instead of hard deletion.
+- Learning events, playbook runs, outcome memory, and confidence records should not be hard deleted during normal operations.
+- Playbooks should move to `needs_review` or `retired` instead of deletion.
 - System heartbeat rows are updated in place by service name; state changes are still emitted to audit/event logs.
 - Daily briefings, accountability snapshots, event logs, and audit logs are append-style history records.
 - Future business resources should prefer status-based archival before hard deletes.

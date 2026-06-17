@@ -68,6 +68,7 @@ pytest
 - Agency operations activation: task ownership/escalation, incident timelines, user availability/localization, Daily Digest delivery, Manager Command View, and duplicate polling guard.
 - Agency Intelligence Brain V1: deterministic signals, issue patterns, trend snapshots, workload intelligence, executive insights, intelligence runs, Recommendation V2 metadata, and manual opportunity intelligence.
 - Automation Builder and Simulation Engine: no-code rules, built-in templates, trigger/condition/action registries, durable simulations, approvals, run/step records, rollback planning, and automation health metrics.
+- Agency Learning Engine and Playbook Memory: learning events, outcome memory, seeded recovery playbooks, playbook runs, confidence records, recommendation/playbook feedback, automation learning, opportunity learning, and executive memory briefing.
 
 ## Railway Deployment
 
@@ -133,3 +134,7 @@ Production smoke testing checklist:
 - `docs/simulation_engine.md`
 - `docs/approval_workflows.md`
 - `docs/rollback_planning.md`
+- `docs/learning_engine.md`
+- `docs/playbook_memory.md`
+- `docs/confidence_engine.md`
+- `docs/outcome_memory.md`

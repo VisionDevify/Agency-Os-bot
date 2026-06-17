@@ -11,6 +11,7 @@ def test_model_tables_are_registered() -> None:
         AutomationRunStep,
         AutomationSchedule,
         AutomationSimulationRun,
+        ConfidenceRecord,
         Incident,
         AccountAuthSession,
         AccountVerificationCode,
@@ -20,12 +21,16 @@ def test_model_tables_are_registered() -> None:
         IntelligenceRun,
         IntelligenceSignal,
         IssuePattern,
+        LearningEvent,
         ModelBrand,
         ModelBrandMember,
         NotificationTarget,
         Opportunity,
         OpportunityResult,
         OpportunitySource,
+        OutcomeMemory,
+        Playbook,
+        PlaybookRun,
         Proxy,
         ProxyRotationHistory,
         Recommendation,
@@ -58,12 +63,17 @@ def test_model_tables_are_registered() -> None:
         "intelligence_runs",
         "intelligence_signals",
         "issue_patterns",
+        "confidence_records",
+        "learning_events",
         "model_brand_members",
         "model_brands",
         "notification_targets",
         "opportunities",
         "opportunity_results",
         "opportunity_sources",
+        "outcome_memory",
+        "playbook_runs",
+        "playbooks",
         "proxies",
         "proxy_rotation_history",
         "recommendations",
@@ -115,6 +125,11 @@ def test_model_tables_are_registered() -> None:
     assert WorkloadSnapshot.__tablename__ == "workload_snapshots"
     assert ExecutiveInsight.__tablename__ == "executive_insights"
     assert IntelligenceRun.__tablename__ == "intelligence_runs"
+    assert LearningEvent.__tablename__ == "learning_events"
+    assert Playbook.__tablename__ == "playbooks"
+    assert PlaybookRun.__tablename__ == "playbook_runs"
+    assert OutcomeMemory.__tablename__ == "outcome_memory"
+    assert ConfidenceRecord.__tablename__ == "confidence_records"
     assert OpportunitySource.__tablename__ == "opportunity_sources"
     assert Opportunity.__tablename__ == "opportunities"
     assert OpportunityResult.__tablename__ == "opportunity_results"

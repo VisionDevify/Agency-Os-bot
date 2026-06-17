@@ -12,6 +12,7 @@ from app.models.core import Automation, Report
 from app.models.event_log import EventLog
 from app.models.incident import Incident, IncidentTimeline
 from app.models.intelligence import ExecutiveInsight, IntelligenceRun, IntelligenceSignal, IssuePattern, TrendSnapshot, WorkloadSnapshot
+from app.models.learning import ConfidenceRecord, LearningEvent, OutcomeMemory, Playbook, PlaybookRun
 from app.models.model_brand import ModelBrand, ModelBrandMember
 from app.models.opportunity import Opportunity, OpportunityResult, OpportunitySource
 from app.models.permissions import Permission, Role, RolePermission, UserRole
@@ -38,11 +39,13 @@ __all__ = [
     "DailyBriefing",
     "EventLog",
     "ExecutiveInsight",
+    "ConfidenceRecord",
     "Incident",
     "IncidentTimeline",
     "IntelligenceRun",
     "IntelligenceSignal",
     "IssuePattern",
+    "LearningEvent",
     "ModelBrand",
     "ModelBrandMember",
     "NotificationTarget",
@@ -50,7 +53,10 @@ __all__ = [
     "Opportunity",
     "OpportunityResult",
     "OpportunitySource",
+    "OutcomeMemory",
     "Permission",
+    "Playbook",
+    "PlaybookRun",
     "Proxy",
     "ProxyRotationHistory",
     "Recommendation",

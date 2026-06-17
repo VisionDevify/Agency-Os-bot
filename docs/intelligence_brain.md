@@ -16,6 +16,7 @@ This layer is deterministic. It does not call an LLM, scrape external platforms,
 ## Telegram Surfaces
 
 - Intelligence -> command center status.
+- Intelligence -> Learning Center.
 - Intelligence -> Run Analysis.
 - Intelligence -> Signals.
 - Intelligence -> Patterns.
@@ -23,6 +24,18 @@ This layer is deterministic. It does not call an LLM, scrape external platforms,
 - Reports -> Workload Intelligence.
 - Reports -> Executive Intelligence Briefing.
 - Executive Dashboard -> Recommendations -> Why am I seeing this?
+
+## Learning Memory
+
+Sprint 15 adds memory to the deterministic intelligence layer:
+
+- learning events from meaningful outcomes.
+- outcome memory for recurring success/failure patterns.
+- playbook memory for reusable fixes.
+- confidence records explaining why trust changed.
+- executive memory briefing showing what the system is learning.
+
+See `docs/learning_engine.md`, `docs/playbook_memory.md`, `docs/outcome_memory.md`, and `docs/confidence_engine.md`.
 
 ## Safety Limits
 

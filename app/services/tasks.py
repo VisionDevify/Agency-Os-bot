@@ -203,6 +203,14 @@ def update_task_status(
         resource_id=str(task.id),
         payload=_task_payload(task),
     )
+    if event_name == "task.completed":
+        from app.services.learning import capture_task_completed
+
+        capture_task_completed(session, task, actor=actor)
+    elif event_name == "task.blocked":
+        from app.services.learning import capture_task_blocked
+
+        capture_task_blocked(session, task, actor=actor)
     return task
 
 
@@ -310,6 +318,9 @@ def record_overdue_tasks(session: Session, *, actor: User | None = None, now: da
             status="overdue",
             payload=payload,
         )
+        from app.services.learning import capture_task_overdue
+
+        capture_task_overdue(session, task, actor=actor)
     return len(tasks)
 
 

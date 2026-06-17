@@ -88,3 +88,15 @@ Sprint 14 seeds:
 - Notification Failure Watch.
 
 Templates are regular rules after seeding. Operators can simulate, review, approve, activate, pause, and retire them.
+
+## Automation Learning
+
+Sprint 15 connects automation run outcomes to the learning engine.
+
+- Successful runs create success learning events and can raise confidence.
+- Failed runs create failure learning events, outcome memory, and review recommendations.
+- Skipped runs are tracked as partial outcomes.
+- Repeated failure should suggest pausing or reviewing the rule.
+- Successful repeated operation can support future recommendations to activate safe manual rules.
+
+Automation learning does not bypass simulation, approval, owner gates, or rollback limitations.

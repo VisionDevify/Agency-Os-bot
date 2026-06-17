@@ -380,4 +380,7 @@ def update_recommendation_status(
         resource_id=str(recommendation.id),
         payload={"from": old_status, "to": status, "recommendation_type": recommendation.recommendation_type},
     )
+    from app.services.learning import capture_recommendation_status
+
+    capture_recommendation_status(session, recommendation, actor=actor, status=status)
     return recommendation

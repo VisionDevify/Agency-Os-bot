@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session, selectinload
 
+from app.models.learning import OutcomeMemory
 from app.models.opportunity import (
     OPPORTUNITY_PLATFORMS,
     OPPORTUNITY_RESULT_STATUSES,
@@ -158,6 +159,43 @@ def create_default_opportunity(session: Session, *, actor: User | None) -> Oppor
     )
 
 
+def _opportunity_memory_adjustment(session: Session, opportunity: Opportunity) -> int:
+    terms = [
+        term
+        for term in (
+            opportunity.niche,
+            opportunity.suggested_angle,
+            str(opportunity.source_id) if opportunity.source_id else None,
+        )
+        if term
+    ]
+    if not terms:
+        return 0
+    memories = list(
+        session.scalars(
+            select(OutcomeMemory).where(OutcomeMemory.memory_type == "opportunity_result").order_by(desc(OutcomeMemory.last_seen_at))
+        ).all()
+    )
+    adjustment = 0
+    for memory in memories:
+        haystack = " ".join(
+            str(value)
+            for value in (
+                memory.memory_key,
+                memory.summary,
+                (memory.metadata_json or {}).get("last_summary"),
+                (memory.metadata_json or {}).get("last_event_type"),
+            )
+            if value
+        ).lower()
+        if any(term.lower() in haystack for term in terms):
+            if memory.success_rate >= 70:
+                adjustment += 5
+            elif memory.failure_count > memory.success_count:
+                adjustment -= 5
+    return max(-10, min(10, adjustment))
+
+
 def score_opportunity(
     session: Session,
     opportunity: Opportunity,
@@ -178,6 +216,7 @@ def score_opportunity(
             score += 10
         if opportunity.suggested_angle:
             score += 10
+        score += _opportunity_memory_adjustment(session, opportunity)
     opportunity.score = max(0, min(100, score))
     if opportunity.status == "discovered":
         opportunity.status = "reviewing"
@@ -287,6 +326,9 @@ def record_opportunity_result(
             }
         ),
     )
+    from app.services.learning import capture_opportunity_result
+
+    capture_opportunity_result(session, result, actor=actor)
     return result
 
 

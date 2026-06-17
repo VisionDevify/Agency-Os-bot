@@ -1087,6 +1087,9 @@ def run_automation_rule(
             resource_id=str(run.id),
             payload={"automation_rule_id": rule.id},
         )
+        from app.services.learning import capture_automation_run
+
+        capture_automation_run(session, run, actor=actor)
         return run
 
     affected: list[dict[str, Any]] = []
@@ -1123,6 +1126,9 @@ def run_automation_rule(
             resource_id=str(run.id),
             payload={"automation_rule_id": rule.id, "steps": len(_rule_actions(rule))},
         )
+        from app.services.learning import capture_automation_run
+
+        capture_automation_run(session, run, actor=actor)
         return run
     except Exception as exc:
         if run.steps:
@@ -1146,6 +1152,9 @@ def run_automation_rule(
             status="failed",
             payload={"automation_rule_id": rule.id, "error": run.error_message},
         )
+        from app.services.learning import capture_automation_run
+
+        capture_automation_run(session, run, actor=actor)
         return run
 
 

@@ -1173,6 +1173,9 @@ def generate_executive_intelligence_briefing(session: Session, *, actor: User | 
     )
     top_risks = [signal.title for signal in critical_signals[:3]] or [signal.title for signal in signals[:3]]
     top_improvements = [recommendation.title for recommendation in recommendations[:3]]
+    from app.services.learning import executive_memory_briefing
+
+    memory = executive_memory_briefing(session)
     source_signal_ids = [signal.id for signal in signals[:10]]
     insight = _create_executive_insight(
         session,
@@ -1206,6 +1209,10 @@ def generate_executive_intelligence_briefing(session: Session, *, actor: User | 
         "recommended_actions": top_improvements[:5],
         "production_status": session.scalar(select(SystemHeartbeat.status).where(SystemHeartbeat.service_name == "api")) or "unknown",
         "confidence_notes": "Deterministic V1 analysis from internal Agency OS events, audits, and persisted operational records.",
+        "learning_summary": memory["summary"],
+        "top_recurring_problem": memory["top_recurring_problem"],
+        "best_playbook": memory["best_playbook"].name if memory["best_playbook"] else None,
+        "lowest_confidence_playbook": memory["lowest_confidence_playbook"].name if memory["lowest_confidence_playbook"] else None,
     }
     emit_event(
         session,

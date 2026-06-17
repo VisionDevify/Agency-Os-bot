@@ -22,11 +22,12 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Sprint 11: Agency operations activation layer with task ownership/escalation, incident timelines, shift/availability and localization onboarding, smart notification routing, Daily Digest delivery, Manager Command View, and duplicate bot polling protection.
 - Sprint 12: Agency Intelligence Brain V1 with deterministic signals, issue patterns, trend snapshots, workload snapshots, executive insights, no-code intelligence runs, Recommendation V2 metadata, critical-signal routing, and manual opportunity intelligence foundation.
 - Sprint 14: Automation Builder and Simulation Engine with durable rules, triggers, conditions, actions, simulation runs, approval workflow, execution records, step records, rollback plans, built-in templates, metrics, and Telegram automation management.
+- Sprint 15: Agency Learning Engine and Playbook Memory with learning events, outcome memory, seeded recovery playbooks, playbook runs, confidence records, feedback loops, automation learning, opportunity learning, and executive memory briefing.
 
 ## Roadmap
 
 - Sprint 13: Team rollout hardening, richer task/incident creation forms, notification group activation, and operational QA with real agency users.
-- Sprint 15: Team rollout hardening, scheduled automation execution, richer rule creation forms, and operational QA with real agency users.
+- Sprint 16: Team rollout hardening, scheduled automation execution, richer rule creation forms, learning-driven operator QA, and rollout readiness for real agency users.
 - Future: AI Operations Brain for natural-language summaries, anomaly explanations, and operator-approved next actions.
 
 ## Core Modules
@@ -48,6 +49,10 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Automations: no-code automation builder with safe triggers, conditions, actions, simulations, approval gates, execution records, rollback planning, built-in templates, and success/failure metrics.
 - Recommendations: deterministic operational recommendations generated from database state.
 - Intelligence Brain: deterministic signals, issue patterns, trends, workload analysis, executive insights, and run history for no-code scans.
+- Learning Engine: captures meaningful outcomes from tasks, incidents, proxy repairs, automations, recommendations, opportunities, notifications, and production health.
+- Playbook Memory: reusable recovery and operating playbooks with run history, confidence, success/failure counts, and operator feedback.
+- Outcome Memory: aggregated pattern memory that tracks what worked, what failed, and how often recurring issue categories succeed or fail.
+- Confidence Engine: records why confidence changed for playbooks, recommendations, automations, opportunities, signals, and patterns.
 - Opportunities: manual, human-approved opportunity records for future funnel intelligence without scraping or automatic posting.
 - System Status: service heartbeats for API, bot, db, redis, and Railway deployment state.
 - Settings: administrative utilities including audit log access, Bot Status, and Notification Targets.
@@ -108,6 +113,8 @@ Model/Brand assignment changes require `manage_users` or `manage_accounts`. Mode
 - Verification codes are hashed immediately, expire quickly, and the bot should try to delete Telegram messages that contain submitted codes.
 - Proxy passwords are encrypted at rest and never shown in Telegram, events, audits, or logs.
 - Proxy session suffixes may be shown because they are operational identity controls, but raw provider passwords and credentials must remain hidden.
+- Learning records, playbooks, outcome memories, and confidence records must use safe metadata only and must never contain secrets, raw credentials, proxy passwords, 2FA codes, or platform session data.
+- The learning engine does not self-modify code, auto-post to social platforms, or execute security-evasion behavior.
 - Future real platform connections should prefer official APIs or OAuth where available.
 - Destructive repo or database cleanup requires explicit confirmation.
 

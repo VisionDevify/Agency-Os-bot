@@ -311,6 +311,9 @@ def mark_delivery_sent(
         resource_id=str(attempt.id),
         payload={"event_type": attempt.event_type, "target_id": attempt.notification_target_id},
     )
+    from app.services.learning import capture_notification_delivery
+
+    capture_notification_delivery(session, attempt, actor=actor)
     return attempt
 
 
@@ -339,6 +342,9 @@ def mark_delivery_failed(
     )
     if attempt.target:
         _maybe_recommend_delivery_review(session, attempt.target, actor=actor)
+    from app.services.learning import capture_notification_delivery
+
+    capture_notification_delivery(session, attempt, actor=actor)
     return attempt
 
 

@@ -274,6 +274,9 @@ def escalate_incident(session: Session, incident: Incident, *, actor: User) -> I
         message=f"Escalated from {previous_target} to {new_target}",
         metadata={"from": previous_target, "to": new_target, "escalation_level": incident.escalation_level},
     )
+    from app.services.learning import capture_incident_escalated
+
+    capture_incident_escalated(session, incident, actor=actor)
     return incident
 
 
@@ -329,6 +332,9 @@ def resolve_incident(
         message=incident.resolution_notes or "Incident resolved.",
         metadata={"resolved_by_user_id": actor.id},
     )
+    from app.services.learning import capture_incident_resolved
+
+    capture_incident_resolved(session, incident, actor=actor)
     return incident
 
 

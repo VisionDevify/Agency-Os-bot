@@ -1,6 +1,6 @@
 # Event Architecture
 
-Agency OS should become event-driven over time. Audit logs remain the operator-facing safety record. Sprint 8 added `event_logs` as the first lightweight durable event feed for reports, notifications, automations, self-healing, and future AI operations. Sprint 9 adds notification routing events, durable automation simulation events, recommendations, and heartbeat state changes. Sprint 11 adds operations activation events for task ownership, incident timelines, localization, availability, smart notification routing, daily digest delivery, and duplicate polling protection. Sprint 12 adds deterministic intelligence events for signals, patterns, trends, workload, executive insights, intelligence runs, recommendations, and manual opportunities.
+Agency OS should become event-driven over time. Audit logs remain the operator-facing safety record. Sprint 8 added `event_logs` as the first lightweight durable event feed for reports, notifications, automations, self-healing, and future AI operations. Sprint 9 adds notification routing events, durable automation simulation events, recommendations, and heartbeat state changes. Sprint 11 adds operations activation events for task ownership, incident timelines, localization, availability, smart notification routing, daily digest delivery, and duplicate polling protection. Sprint 12 adds deterministic intelligence events for signals, patterns, trends, workload, executive insights, intelligence runs, recommendations, and manual opportunities. Sprint 15 adds learning events, outcome memory, playbook runs, confidence changes, and feedback events.
 
 ## Principle
 
@@ -18,6 +18,7 @@ Future events can feed:
 - Automations: triggers for safe follow-up actions.
 - Self-healing: detection and repair workflows.
 - AI Operations Brain: context for summaries, anomaly explanations, and recommendations.
+- Learning Engine: remembers what worked, what failed, and which playbooks or recommendations should be trusted next time.
 
 ## Current Lightweight Pattern
 
@@ -134,6 +135,16 @@ This avoids over-engineering while preserving a clean upgrade path.
 - `opportunity.assigned`: opportunity assigned to a user.
 - `opportunity.result_recorded`: manual opportunity result recorded.
 - `opportunity_scoring.completed`: deterministic opportunity scoring run completed.
+- `learning.event.created`: safe learning event captured from an operational outcome.
+- `playbook.suggested`: playbook was recommended or suggested to an operator.
+- `playbook.run.created`: playbook run or use record was created.
+- `playbook.succeeded`: playbook use succeeded and may raise confidence.
+- `playbook.failed`: playbook use failed and should reduce confidence or require review.
+- `recommendation.feedback.useful`: operator said a recommendation was useful.
+- `recommendation.feedback.not_useful`: operator said a recommendation was not useful.
+- `recommendation.feedback.wrong`: operator marked recommendation reasoning as wrong.
+- `playbook.feedback.useful`: operator marked a playbook useful.
+- `playbook.feedback.needs_review`: operator marked a playbook for review.
 - `heartbeat.status_changed`: service heartbeat status changed.
 - `repair.succeeded`: future self-healing repair succeeded.
 

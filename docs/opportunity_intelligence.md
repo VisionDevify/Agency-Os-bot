@@ -54,6 +54,22 @@ Scoring is deterministic and simple:
 - URL present increases score.
 - Reason present increases score.
 - Suggested angle present increases score.
+- Historical outcome memory can nudge score up or down when enough similar safe internal results exist.
+
+## Opportunity Learning
+
+Sprint 15 records manual opportunity results into outcome memory.
+
+The system can learn by:
+
+- platform.
+- niche.
+- source.
+- suggested angle.
+- Model/Brand.
+- assigned user.
+
+Opportunity learning can identify stronger niches, stronger angles, weak sources, and poor-result patterns. It still does not scrape, post, comment, message, like, follow, or automate public platform behavior.
 
 ## Future Direction
 

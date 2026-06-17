@@ -98,6 +98,7 @@ from app.services.automations import (
 )
 from app.services.recommendations import get_recommendation, update_recommendation_status
 from app.services.intelligence import run_full_intelligence_scan, run_intelligence_analysis
+from app.services.learning import create_playbook_run, get_playbook, record_feedback, seed_default_playbooks
 from app.services.opportunities import (
     assign_opportunity,
     create_default_opportunity,
@@ -165,6 +166,8 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
     if page.startswith("recommendation:"):
         return ("manage_reports", "view_dashboard")
     if page.startswith("intelligence"):
+        return ("manage_reports", "view_dashboard")
+    if page.startswith("playbook:"):
         return ("manage_reports", "view_dashboard")
     if page.startswith("opportunities") or page.startswith("opportunity:"):
         return ("manage_reports", "manage_tasks")
@@ -304,6 +307,9 @@ def _perform_admin_action(
         if recommendation is None:
             return "reports:executive:recommendations"
         action = parts[2]
+        if action == "feedback" and len(parts) >= 4:
+            record_feedback(session, actor=actor, subject_type="recommendation", subject_id=recommendation.id, feedback=parts[3])
+            return f"recommendation:{recommendation.id}:why"
         if action in {"acknowledge", "dismiss", "resolve"}:
             status = {"acknowledge": "acknowledged", "dismiss": "dismissed", "resolve": "resolved"}[action]
             update_recommendation_status(session, recommendation, actor=actor, status=status)
@@ -323,6 +329,27 @@ def _perform_admin_action(
         if action == "create_automation":
             suggest_automation_from_recommendation(session, recommendation, actor=actor)
             return f"recommendation:{recommendation.id}:why"
+    if page in {"intelligence:learning", "intelligence:learning:playbooks", "intelligence:learning:recommended"}:
+        seed_default_playbooks(session, actor=actor)
+        return page
+    if len(parts) >= 3 and parts[0] == "playbook" and parts[1].isdigit():
+        playbook = get_playbook(session, int(parts[1]))
+        if playbook is None:
+            return "intelligence:learning:playbooks"
+        action = parts[2]
+        if action == "suggest":
+            create_playbook_run(
+                session,
+                playbook,
+                actor=actor,
+                status="suggested",
+                source_type="telegram",
+                metadata={"requested_from": "playbook_detail"},
+            )
+            return f"playbook:{playbook.id}:history"
+        if action == "feedback" and len(parts) >= 4:
+            record_feedback(session, actor=actor, subject_type="playbook", subject_id=playbook.id, feedback=parts[3])
+            return f"playbook:{playbook.id}"
     if page == "intelligence:run:full":
         run_full_intelligence_scan(session, actor=actor)
         return "intelligence:runs"
@@ -734,6 +761,7 @@ def screen_for_page(
         or normalized.startswith("reports:")
         or normalized.startswith("recommendation:")
         or normalized.startswith("intelligence")
+        or normalized.startswith("playbook:")
         or normalized.startswith("opportunities")
         or normalized.startswith("opportunity:")
         or normalized.startswith("automations:")
