@@ -64,10 +64,13 @@ pytest
 - Deterministic Recommendations engine for missing proxies, auth attention, critical incidents, overdue work, and staffing gaps.
 - Bot Status and system heartbeat records for API, bot, db, redis, and Railway deployment state.
 - Lightweight EventLog persistence for report and operational event feeds.
+- Notification delivery attempt records for sent/failed/skipped test deliveries, with safe audit/event output and failure recommendations.
 
 ## Railway Deployment
 
 Railway inspection found no existing project in the logged-in workspace. The repo is prepared for Railway, but project/service creation and billing-impacting actions require explicit approval.
+
+Sprint 10 inspection showed the workspace is on a trial/credit boundary. Creating a project, API service, bot worker, PostgreSQL, or Redis may consume credits, so production creation remains blocked until the owner explicitly approves it.
 
 Expected Railway services:
 
@@ -103,6 +106,10 @@ GET /health
 The health endpoint returns safe status labels for API, database, and Redis and writes heartbeat records. It never returns secret values.
 
 See `docs/railway_deployment.md` for the full production checklist and blockers.
+
+Production smoke testing checklist:
+
+- `docs/production_smoke_test.md`
 
 ## Architecture Docs
 

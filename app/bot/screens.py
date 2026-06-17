@@ -109,7 +109,11 @@ from app.services.operations import (
     view_accountability_report,
     view_latest_daily_briefing,
 )
-from app.services.notifications import list_notification_targets, mask_target_chat_id
+from app.services.notifications import (
+    latest_delivery_attempts_for_target,
+    list_notification_targets,
+    mask_target_chat_id,
+)
 from app.services.proxies import (
     accounts_for_proxy,
     accounts_missing_proxy,
@@ -1068,13 +1072,28 @@ def render_simulation_run_detail_page(session: Session, run_id: int) -> Screen:
 def render_bot_status_page(session: Session) -> Screen:
     summary = system_status_summary(session)
     heartbeats = list_heartbeats(session)
+    last_heartbeat = summary["last_heartbeat_at"].isoformat() if summary["last_heartbeat_at"] else "not seen yet"
+    last_delivery_at = (
+        summary["last_delivery_attempted_at"].isoformat()
+        if summary["last_delivery_attempted_at"]
+        else "not attempted"
+    )
+    deployment_time = summary["last_deployment_time"] or "not available"
     lines = [
         "Bot Status",
         "",
+        f"Environment: {summary['environment']}",
         f"Production Status: {summary['production_status']}",
         f"Last Deployment: {summary['last_deployment_status']}",
+        f"Last Deployment Time: {deployment_time}",
         f"API: {summary['api_status']}",
         f"Bot: {summary['bot_status']}",
+        f"DB: {summary['db_status']}",
+        f"Redis: {summary['redis_status']}",
+        f"Last Heartbeat: {last_heartbeat}",
+        f"Railway Deployment: {summary['railway_deployment_status']}",
+        f"Last Delivery Attempt: {summary['last_delivery_event_type']} / {summary['last_delivery_status']} at {last_delivery_at}",
+        f"Failed Notification Count: {summary['failed_notification_count']}",
         f"Last Event: {summary['latest_event_type']}",
         "",
         "Services:",
@@ -1116,8 +1135,19 @@ def render_notification_target_detail_page(session: Session, target_id: int) -> 
         f"Telegram Chat ID: {mask_target_chat_id(target)}",
         f"Last Tested: {target.last_tested_at.isoformat() if target.last_tested_at else 'Never'}",
         "",
-        "Test messages are allowed only for explicitly configured safe targets.",
+        "Recent Delivery Attempts:",
     ]
+    attempts = latest_delivery_attempts_for_target(session, target, limit=5)
+    if not attempts:
+        lines.append("- None yet")
+    for attempt in attempts:
+        when = attempt.attempted_at.isoformat() if attempt.attempted_at else "unknown time"
+        suffix = f" ({attempt.error_message})" if attempt.error_message else ""
+        lines.append(f"- {attempt.event_type}: {attempt.status} at {when}{suffix}")
+    lines.extend([
+        "",
+        "Test messages are allowed only for explicitly configured safe targets.",
+    ])
     return Screen(text="\n".join(lines), reply_markup=notification_target_detail_menu(target.id))
 
 

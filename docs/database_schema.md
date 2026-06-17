@@ -1,6 +1,6 @@
 # Database Schema
 
-This document describes the current schema as of Sprint 9 and the planned direction. PostgreSQL is the production database, SQLAlchemy owns the models, and Alembic owns migrations.
+This document describes the current schema as of Sprint 10 and the planned direction. PostgreSQL is the production database, SQLAlchemy owns the models, and Alembic owns migrations.
 
 ## Current Tables
 
@@ -532,6 +532,30 @@ Indexes and constraints:
 - `ix_notification_targets_purpose`.
 - `ix_notification_targets_is_active`.
 
+### notification_delivery_attempts
+
+Append-style delivery records for notification sends. These records track whether a send was attempted, sent, failed, or skipped without exposing raw chat IDs or secrets.
+
+Columns:
+
+- `id`: primary key.
+- `notification_target_id`: foreign key to `notification_targets.id`, cascade delete.
+- `event_type`: event or notification family being delivered.
+- `status`: one of `pending`, `sent`, `failed`, or `skipped`.
+- `error_message`: nullable safe/redacted error label.
+- `attempted_at`: timestamp when delivery was attempted.
+- `created_at`: creation timestamp.
+- `metadata_json`: safe non-secret metadata.
+
+Indexes and constraints:
+
+- `ck_notification_delivery_attempts_status`.
+- `ix_notification_delivery_attempts_target_id`.
+- `ix_notification_delivery_attempts_event_type`.
+- `ix_notification_delivery_attempts_status`.
+- `ix_notification_delivery_attempts_attempted_at`.
+- `ix_notification_delivery_attempts_created_at`.
+
 ### recommendations
 
 Deterministic operational recommendations generated from current database state.
@@ -602,6 +626,7 @@ Indexes and constraints:
 - An automation simulation run references the user who simulated it.
 - A recommendation may reference the event that generated it and may point to an entity by `entity_type`/`entity_id`.
 - System heartbeats are keyed by service name and do not reference secrets or deployment credentials.
+- A notification target can have many delivery attempts through `notification_delivery_attempts.notification_target_id`.
 
 ## Status Strategy
 
@@ -695,6 +720,7 @@ Soft-delete strategy:
 - Tasks should use `complete` or `archived` instead of hard deletion.
 - Incidents should use `resolved` or `archived` instead of hard deletion.
 - Notification targets should be disabled instead of deleted.
+- Notification delivery attempts are append-style history records and should not be deleted during normal operations.
 - Automation simulation runs are history records and should not be deleted during normal operations.
 - Recommendations should move through status instead of hard deletion.
 - System heartbeat rows are updated in place by service name; state changes are still emitted to audit/event logs.
@@ -710,6 +736,5 @@ Soft-delete strategy:
 - `incident_events`: richer incident timeline events if escalation history JSON becomes insufficient.
 - `report_runs`: richer report generation records if daily briefings/accountability snapshots are not enough.
 - `automation_runs`: live automation execution records once live actions are enabled.
-- `event_deliveries`: notification/event delivery attempts once routing is activated.
 - `repair_attempts`: self-healing attempts and outcomes.
 - `ai_recommendations`: AI operations suggestions, confidence, and operator disposition.

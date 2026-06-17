@@ -1,6 +1,6 @@
 # Production Operations
 
-Sprint 9 prepares Agency OS for production activation while stopping before billing-impacting or destructive actions.
+Sprint 9 prepares Agency OS for production activation while stopping before billing-impacting or destructive actions. Sprint 10 adds delivery-attempt tracking and confirms Railway project/service creation remains approval-gated because the inspected workspace shows trial/credit limits.
 
 ## Current Production State
 
@@ -43,6 +43,20 @@ The bot worker records `bot` heartbeat rows on startup and Telegram activity.
 
 `railway_deployment` heartbeat is a production status placeholder until Railway deployment exists.
 
+## Production Status Dashboard
+
+Settings -> Bot Status shows:
+
+- environment: `local`, `railway`, or `unknown`
+- API, bot, DB, Redis, and Railway deployment status
+- last heartbeat timestamp
+- last deployment status/time when available
+- last notification delivery attempt
+- failed notification count
+- latest EventLog event type
+
+These values are database-backed through `system_heartbeats`, `event_logs`, and `notification_delivery_attempts`.
+
 ## Production Safety
 
 - Do not delete databases.
@@ -63,3 +77,20 @@ Recommended Agency OS destinations:
 - Agency OS - Testing Sandbox
 
 Create and configure these only inside the Agency OS scope. Add `@FortunaSolstice_Bot` after confirming group/channel ownership and admin permissions.
+
+## Delivery Attempts
+
+Every real send attempt should create a `notification_delivery_attempts` row before delivery and then mark it `sent`, `failed`, or `skipped`.
+
+Audit actions:
+
+- `notification.delivery_attempted`
+- `notification.delivery_succeeded`
+- `notification.delivery_failed`
+
+EventLog events:
+
+- `notification.delivery_succeeded`
+- `notification.delivery_failed`
+
+Repeated failures create a warning recommendation for the affected Notification Target.

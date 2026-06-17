@@ -1,6 +1,6 @@
 # Railway Deployment
 
-Sprint 8 inspected Railway and found the logged-in workspace has no project yet. Sprint 9 re-confirmed the workspace currently has 0 projects. This repo is now prepared for Railway, but project creation, service creation, database provisioning, and any billing-impacting action require owner approval.
+Sprint 8 inspected Railway and found the logged-in workspace has no project yet. Sprint 9 re-confirmed the workspace currently has 0 projects. Sprint 10 re-inspected the workspace and found a trial/credit banner, so project creation, service creation, database provisioning, and any billing-impacting action require owner approval.
 
 ## Current Railway Status
 
@@ -11,6 +11,7 @@ Sprint 8 inspected Railway and found the logged-in workspace has no project yet.
 - Production Redis: not created.
 - Production environment variables: not present because services do not exist yet.
 - Action needed: owner approval to create the Railway project and provision services.
+- Approval blocker: creating the project/services may consume trial credit or require billing confirmation.
 
 ## Expected Services
 
@@ -29,6 +30,30 @@ Set these in Railway variables. Confirm presence only; never print values.
 - `APP_SECRET_KEY`
 - `ENCRYPTION_KEY`
 - `OWNER_TELEGRAM_ID`
+
+Shared/app variables:
+
+- `APP_SECRET_KEY`
+- `ENCRYPTION_KEY`
+- `OWNER_TELEGRAM_ID`
+
+Bot worker variables:
+
+- `TELEGRAM_BOT_TOKEN`
+- `DATABASE_URL`
+- `REDIS_URL`
+- `APP_SECRET_KEY`
+- `ENCRYPTION_KEY`
+- `OWNER_TELEGRAM_ID`
+
+API service variables:
+
+- `DATABASE_URL`
+- `REDIS_URL`
+- `APP_SECRET_KEY`
+- `ENCRYPTION_KEY`
+- `OWNER_TELEGRAM_ID`
+- `PORT` if Railway does not inject it automatically.
 
 ## API Service
 
@@ -82,6 +107,10 @@ Recommended safe flow:
 7. Verify `/start` in Telegram.
 
 Do not reset, delete, or recreate production databases without explicit approval.
+
+## Smoke Test
+
+After deploy, run the checklist in `docs/production_smoke_test.md`.
 
 ## Current Blockers
 

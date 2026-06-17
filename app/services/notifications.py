@@ -1,18 +1,22 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from app.models.reporting import (
+    NOTIFICATION_DELIVERY_STATUSES,
     NOTIFICATION_TARGET_PURPOSES,
     NOTIFICATION_TARGET_TYPES,
+    NotificationDeliveryAttempt,
     NotificationTarget,
 )
 from app.models.user import User
+from app.services.audit import sanitize_details
 from app.services.auth import audit_action, is_owner
 from app.services.crypto import decrypt_secret, encrypt_secret
 from app.services.events import emit_event
 from app.services.permissions import RoleName
+from app.services.recommendations import upsert_recommendation
 
 NOTIFICATION_ROUTING_RULES: dict[str, tuple[str, ...]] = {
     "briefing.generated": ("owner", "operations"),
@@ -47,6 +51,15 @@ def _require_notification_admin(session: Session, actor: User | None) -> None:
         details={"permission": "owner_or_admin"},
     )
     raise PermissionError("Only Owner/Admin can manage notification targets")
+
+
+def _safe_error_message(error_message: str | None) -> str | None:
+    if not error_message:
+        return None
+    lowered = error_message.lower()
+    if any(marker in lowered for marker in ("token", "secret", "password", "key", "credential", "chat_id")):
+        return "delivery failed; sensitive details redacted"
+    return error_message[:500]
 
 
 def mask_chat_id(value: str | None) -> str:
@@ -196,6 +209,173 @@ def test_notification_target(session: Session, target: NotificationTarget, *, ac
         resource_type="notification_target",
         resource_id=str(target.id),
         payload={"delivery": "placeholder", "target_type": target.target_type, "purpose": target.purpose},
+    )
+
+
+def create_delivery_attempt(
+    session: Session,
+    target: NotificationTarget,
+    *,
+    event_type: str,
+    actor: User | None,
+    status: str = "pending",
+    error_message: str | None = None,
+    metadata: dict | None = None,
+) -> NotificationDeliveryAttempt:
+    if status not in NOTIFICATION_DELIVERY_STATUSES:
+        raise ValueError(f"Invalid notification delivery status: {status}")
+    attempt = NotificationDeliveryAttempt(
+        notification_target_id=target.id,
+        event_type=event_type,
+        status=status,
+        error_message=_safe_error_message(error_message),
+        attempted_at=_now(),
+        metadata_json=sanitize_details(metadata),
+    )
+    session.add(attempt)
+    session.flush()
+    audit_action(
+        session,
+        actor=actor,
+        action="notification.delivery_attempted",
+        resource_type="notification_delivery_attempt",
+        resource_id=str(attempt.id),
+        details={
+            "target_id": target.id,
+            "event_type": event_type,
+            "purpose": target.purpose,
+            "target_type": target.target_type,
+            "status": status,
+        },
+    )
+    return attempt
+
+
+def _failed_attempt_count(session: Session, target: NotificationTarget) -> int:
+    return (
+        session.scalar(
+            select(func.count(NotificationDeliveryAttempt.id)).where(
+                NotificationDeliveryAttempt.notification_target_id == target.id,
+                NotificationDeliveryAttempt.status == "failed",
+            )
+        )
+        or 0
+    )
+
+
+def _maybe_recommend_delivery_review(
+    session: Session,
+    target: NotificationTarget,
+    *,
+    actor: User | None,
+) -> None:
+    failed_count = _failed_attempt_count(session, target)
+    if failed_count < 3:
+        return
+    upsert_recommendation(
+        session,
+        actor=actor,
+        recommendation_type="notification_delivery_failures",
+        title="Notification Delivery Failures",
+        description=f"{target.name} has {failed_count} failed delivery attempts and needs review.",
+        severity="warning",
+        entity_type="notification_target",
+        entity_id=target.id,
+        metadata={"failed_count": failed_count, "purpose": target.purpose, "target_type": target.target_type},
+    )
+
+
+def mark_delivery_sent(
+    session: Session,
+    attempt: NotificationDeliveryAttempt,
+    *,
+    actor: User | None,
+) -> NotificationDeliveryAttempt:
+    attempt.status = "sent"
+    attempt.error_message = None
+    session.flush()
+    emit_event(
+        session,
+        actor=actor,
+        event_name="notification.delivery_succeeded",
+        resource_type="notification_delivery_attempt",
+        resource_id=str(attempt.id),
+        payload={"event_type": attempt.event_type, "target_id": attempt.notification_target_id},
+    )
+    return attempt
+
+
+def mark_delivery_failed(
+    session: Session,
+    attempt: NotificationDeliveryAttempt,
+    *,
+    actor: User | None,
+    error_message: str | None = None,
+) -> NotificationDeliveryAttempt:
+    attempt.status = "failed"
+    attempt.error_message = _safe_error_message(error_message) or "delivery failed"
+    session.flush()
+    emit_event(
+        session,
+        actor=actor,
+        event_name="notification.delivery_failed",
+        resource_type="notification_delivery_attempt",
+        resource_id=str(attempt.id),
+        status="failed",
+        payload={
+            "event_type": attempt.event_type,
+            "target_id": attempt.notification_target_id,
+            "error": attempt.error_message,
+        },
+    )
+    if attempt.target:
+        _maybe_recommend_delivery_review(session, attempt.target, actor=actor)
+    return attempt
+
+
+def mark_delivery_skipped(
+    session: Session,
+    attempt: NotificationDeliveryAttempt,
+    *,
+    actor: User | None,
+    reason: str = "skipped",
+) -> NotificationDeliveryAttempt:
+    attempt.status = "skipped"
+    attempt.error_message = _safe_error_message(reason)
+    session.flush()
+    return attempt
+
+
+def latest_delivery_attempts_for_target(
+    session: Session,
+    target: NotificationTarget,
+    *,
+    limit: int = 5,
+) -> list[NotificationDeliveryAttempt]:
+    return list(
+        session.scalars(
+            select(NotificationDeliveryAttempt)
+            .where(NotificationDeliveryAttempt.notification_target_id == target.id)
+            .order_by(desc(NotificationDeliveryAttempt.attempted_at), desc(NotificationDeliveryAttempt.id))
+            .limit(limit)
+        ).all()
+    )
+
+
+def latest_delivery_attempt(session: Session) -> NotificationDeliveryAttempt | None:
+    return session.scalar(
+        select(NotificationDeliveryAttempt)
+        .order_by(desc(NotificationDeliveryAttempt.attempted_at), desc(NotificationDeliveryAttempt.id))
+        .limit(1)
+    )
+
+
+def failed_delivery_count(session: Session) -> int:
+    return (
+        session.scalar(
+            select(func.count(NotificationDeliveryAttempt.id)).where(NotificationDeliveryAttempt.status == "failed")
+        )
+        or 0
     )
 
 

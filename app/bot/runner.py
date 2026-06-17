@@ -38,7 +38,14 @@ from app.services.accounts import (
 from app.services.permissions import PermissionPrincipal, RoleName, require_owner
 from app.services.model_brands import get_model_brand
 from app.services.heartbeats import record_heartbeat
-from app.services.notifications import decrypt_target_chat_id, get_notification_target
+from app.services.notifications import (
+    create_delivery_attempt,
+    decrypt_target_chat_id,
+    get_notification_target,
+    mark_delivery_failed,
+    mark_delivery_sent,
+    mark_delivery_skipped,
+)
 
 logger = logging.getLogger(__name__)
 dp = Dispatcher()
@@ -307,13 +314,28 @@ async def navigate(callback: CallbackQuery) -> None:
             if target_id is not None:
                 target = get_notification_target(session, target_id)
                 raw_chat_id = decrypt_target_chat_id(target) if target else None
+                attempt = None
+                if target is not None:
+                    attempt = create_delivery_attempt(
+                        session,
+                        target,
+                        event_type="notification.test",
+                        actor=user,
+                        metadata={"source": "telegram_test"},
+                    )
                 if target is None or not target.is_active or target.purpose != "testing" or raw_chat_id is None:
+                    if attempt is not None:
+                        mark_delivery_skipped(session, attempt, actor=user, reason="test target not eligible")
                     await callback.answer("Test sends require an active testing target.", show_alert=True)
                     session.commit()
                     return
                 try:
                     await callback.bot.send_message(int(raw_chat_id), "Agency OS test notification.")
+                    if attempt is not None:
+                        mark_delivery_sent(session, attempt, actor=user)
                 except Exception:
+                    if attempt is not None:
+                        mark_delivery_failed(session, attempt, actor=user, error_message="telegram_send_failed")
                     logger.warning("Unable to send test notification to configured target")
             await callback.answer()
             session.commit()

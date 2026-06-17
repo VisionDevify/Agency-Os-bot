@@ -18,11 +18,12 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Sprint 7: Operations command layer with real tasks, real incidents, escalation paths, department dashboards, daily company briefing, team accountability reporting, and operations event emission.
 - Sprint 8: Executive intelligence and Railway production readiness with database-backed daily briefings, accountability snapshots, EventLog, Notification Targets, Executive Dashboard V2, operations reporting, and Railway deployment documentation/config.
 - Sprint 9: Production activation preparation, notification routing V1, automation simulation run records, deterministic recommendations, system heartbeats, Bot Status, and Executive Command Center upgrades.
+- Sprint 10: Production launch approval boundaries, Railway trial-credit blocker documentation, notification delivery attempt persistence, production status upgrades, and production smoke-test documentation.
 
 ## Roadmap
 
-- Sprint 10: Telegram notification group activation, production deploy execution, and event delivery tracking.
-- Sprint 11: Self-healing playbooks, repair approval gates, and richer repair event tracking.
+- Sprint 11: Telegram group/channel activation after owner approval, Railway production project creation, and production smoke-test execution.
+- Sprint 12: Self-healing playbooks, repair approval gates, and richer repair event tracking.
 - Sprint 12: AI Operations Brain for summaries, anomaly explanations, and recommended next actions.
 
 ## Core Modules
@@ -38,7 +39,7 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Tasks: real work queue with status, priority, assignment, due dates, completion, model/account attachment, and audit/event history.
 - Incidents: real escalation and resolution records with severity, source, assignment, proxy/account/model attachment, escalation history, and audit/event history.
 - Reports: database-backed daily briefing, accountability snapshots, executive command center, operations dashboard, chatter dashboard placeholder, VA dashboard placeholder, and event-backed report view/generation tracking.
-- Notifications: encrypted Telegram notification targets, purpose-based routing rules, masked chat IDs, and testing-only safe sends.
+- Notifications: encrypted Telegram notification targets, purpose-based routing rules, masked chat IDs, testing-only safe sends, and durable delivery-attempt records.
 - Automations: placeholder resource model plus durable simulation runs for preview/approve workflows.
 - Recommendations: deterministic operational recommendations generated from database state.
 - System Status: service heartbeats for API, bot, db, redis, and Railway deployment state.
@@ -171,6 +172,9 @@ Important actions should use stable event-style names, such as:
 - `notification_target.disabled`
 - `notification_target.tested`
 - `notification.routed`
+- `notification.delivery_attempted`
+- `notification.delivery_succeeded`
+- `notification.delivery_failed`
 - `automation.simulated`
 - `automation.simulation.approved`
 - `automation.simulation.rejected`
@@ -376,7 +380,7 @@ RED:
 - EventLog is now a lightweight event sink. A queue/stream should wait until real automation/reporting consumers need asynchronous delivery.
 - Reports and automations are still placeholder tables. Current generated report screens are computed from live records and audit events.
 - Proxy health tests are simulated service results until a real provider/network adapter is introduced.
-- Railway has no project/services in the inspected workspace yet. Production deploy still requires creating API, bot worker, PostgreSQL, and Redis services and setting variables in Railway.
+- Railway has no project/services in the inspected workspace yet. Sprint 10 observed a trial/credit boundary, so production deploy still requires explicit owner approval before creating API, bot worker, PostgreSQL, and Redis services and setting variables in Railway.
 
 ## Executive Intelligence Layer
 
@@ -431,6 +435,10 @@ Automation Simulation Runs are durable safety previews. They record what an auto
 Recommendations are deterministic for now. They are generated from current database state for issues such as missing proxies, critical incidents, overdue tasks, warning/critical proxies, accounts needing login, models without managers, models without chatter teams, location mismatches, and failed repair attempts.
 
 System Heartbeats track service health for `api`, `bot`, `db`, `redis`, and `railway_deployment`. Heartbeats audit state changes only, not every check.
+
+Sprint 10 adds Notification Delivery Attempts. A real send creates a `pending` attempt and then records `sent`, `failed`, or `skipped`. Failed attempts store only safe/redacted messages, audit delivery failures, emit EventLog rows, and create warning recommendations after repeated failures.
+
+Bot Status now shows environment, API, bot, DB, Redis, Railway deployment status, last heartbeat, last deployment data if available, latest delivery attempt, failed notification count, and latest event type.
 
 ## Railway Production Readiness
 

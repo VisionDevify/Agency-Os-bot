@@ -108,6 +108,31 @@ def _upsert_recommendation(
     return recommendation
 
 
+def upsert_recommendation(
+    session: Session,
+    *,
+    actor: User | None,
+    recommendation_type: str,
+    title: str,
+    description: str,
+    severity: str,
+    entity_type: str | None = None,
+    entity_id: int | str | None = None,
+    metadata: dict | None = None,
+) -> Recommendation:
+    return _upsert_recommendation(
+        session,
+        actor=actor,
+        recommendation_type=recommendation_type,
+        title=title,
+        description=description,
+        severity=severity,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        metadata=metadata,
+    )
+
+
 def generate_recommendations(session: Session, *, actor: User | None) -> list[Recommendation]:
     _require_reports(session, actor)
     generated: list[Recommendation] = []

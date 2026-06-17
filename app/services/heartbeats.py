@@ -1,9 +1,11 @@
+import os
 from datetime import UTC, datetime
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
 from app.models.event_log import EventLog
+from app.models.reporting import NotificationDeliveryAttempt
 from app.models.system import SystemHeartbeat
 from app.models.user import User
 from app.services.events import emit_event
@@ -76,20 +78,59 @@ def latest_event_logged(session: Session) -> EventLog | None:
     return session.scalar(select(EventLog).order_by(desc(EventLog.created_at), desc(EventLog.id)).limit(1))
 
 
+def detect_environment() -> str:
+    if os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("RAILWAY_PROJECT_ID"):
+        return "railway"
+    if os.getenv("DATABASE_URL") or os.getenv("REDIS_URL"):
+        return "local"
+    return "unknown"
+
+
+def _latest_delivery_attempt(session: Session) -> NotificationDeliveryAttempt | None:
+    return session.scalar(
+        select(NotificationDeliveryAttempt)
+        .order_by(desc(NotificationDeliveryAttempt.attempted_at), desc(NotificationDeliveryAttempt.id))
+        .limit(1)
+    )
+
+
 def system_status_summary(session: Session) -> dict:
     heartbeats = {heartbeat.service_name: heartbeat for heartbeat in list_heartbeats(session)}
     railway = heartbeats.get("railway_deployment")
     bot = heartbeats.get("bot")
     api = heartbeats.get("api")
+    db = heartbeats.get("db")
+    redis = heartbeats.get("redis")
     latest_event = latest_event_logged(session)
+    latest_delivery = _latest_delivery_attempt(session)
+    failed_notifications = (
+        session.scalar(
+            select(func.count(NotificationDeliveryAttempt.id)).where(NotificationDeliveryAttempt.status == "failed")
+        )
+        or 0
+    )
+    last_heartbeat_at = max(
+        (heartbeat.last_seen_at for heartbeat in heartbeats.values() if heartbeat.last_seen_at),
+        default=None,
+    )
+    railway_metadata = railway.metadata_json or {} if railway else {}
     return {
+        "environment": detect_environment(),
         "production_status": railway.status if railway else "pending",
-        "last_deployment_status": (railway.metadata_json or {}).get("deployment_status", railway.status)
-        if railway
-        else "pending",
+        "last_deployment_status": railway_metadata.get("deployment_status", railway.status) if railway else "pending",
+        "last_deployment_time": railway_metadata.get("last_deployment_time"),
+        "railway_deployment_status": railway.status if railway else "pending",
         "bot_status": bot.status if bot else "unknown",
         "bot_last_seen_at": bot.last_seen_at if bot else None,
         "api_status": api.status if api else "unknown",
+        "db_status": db.status if db else "unknown",
+        "redis_status": redis.status if redis else "unknown",
+        "last_heartbeat_at": last_heartbeat_at,
+        "last_delivery_attempt_id": latest_delivery.id if latest_delivery else None,
+        "last_delivery_status": latest_delivery.status if latest_delivery else "none",
+        "last_delivery_event_type": latest_delivery.event_type if latest_delivery else "none",
+        "last_delivery_attempted_at": latest_delivery.attempted_at if latest_delivery else None,
+        "failed_notification_count": failed_notifications,
         "latest_event_type": latest_event.event_type if latest_event else "none",
         "latest_event_at": latest_event.created_at if latest_event else None,
     }

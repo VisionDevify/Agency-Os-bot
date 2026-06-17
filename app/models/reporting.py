@@ -1,13 +1,14 @@
 from datetime import date, datetime
 
 from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, JSON, String, Text, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 from app.models.mixins import TimestampMixin
 
 NOTIFICATION_TARGET_TYPES = ("telegram_user", "telegram_group", "telegram_channel")
 NOTIFICATION_TARGET_PURPOSES = ("owner", "operations", "incidents", "automation_logs", "testing")
+NOTIFICATION_DELIVERY_STATUSES = ("pending", "sent", "failed", "skipped")
 
 
 class DailyBriefing(Base):
@@ -83,3 +84,40 @@ class NotificationTarget(TimestampMixin, Base):
     purpose: Mapped[str] = mapped_column(String(40), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     last_tested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivery_attempts: Mapped[list["NotificationDeliveryAttempt"]] = relationship(
+        back_populates="target",
+        cascade="all, delete-orphan",
+    )
+
+
+class NotificationDeliveryAttempt(Base):
+    __tablename__ = "notification_delivery_attempts"
+    __table_args__ = (
+        CheckConstraint(
+            "status in ('pending', 'sent', 'failed', 'skipped')",
+            name="ck_notification_delivery_attempts_status",
+        ),
+        Index("ix_notification_delivery_attempts_target_id", "notification_target_id"),
+        Index("ix_notification_delivery_attempts_event_type", "event_type"),
+        Index("ix_notification_delivery_attempts_status", "status"),
+        Index("ix_notification_delivery_attempts_attempted_at", "attempted_at"),
+        Index("ix_notification_delivery_attempts_created_at", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    notification_target_id: Mapped[int] = mapped_column(
+        ForeignKey("notification_targets.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    event_type: Mapped[str] = mapped_column(String(160), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), default="pending", nullable=False)
+    error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    attempted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+
+    target: Mapped[NotificationTarget] = relationship(back_populates="delivery_attempts")

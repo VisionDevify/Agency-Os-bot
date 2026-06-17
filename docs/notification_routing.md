@@ -1,6 +1,6 @@
 # Notification Routing
 
-Sprint 9 introduces safe notification routing without spamming real groups or exposing Telegram chat IDs.
+Sprint 9 introduces safe notification routing without spamming real groups or exposing Telegram chat IDs. Sprint 10 adds durable delivery-attempt records for actual send attempts.
 
 ## Goals
 
@@ -38,6 +38,7 @@ Settings -> Notification Targets supports:
 - Disable Target.
 - Test Send metadata update.
 - Send Test Notification to active testing targets only.
+- Recent delivery attempts on target detail.
 
 ## Safety Rules
 
@@ -48,8 +49,22 @@ Settings -> Notification Targets supports:
 - Do not send to real operations/incidents channels until the owner approves routing activation.
 - Audit/event metadata must never contain tokens, raw chat IDs, credentials, proxy passwords, or verification codes.
 
+## Delivery Attempt Records
+
+`notification_delivery_attempts` stores one row per send attempt:
+
+- target
+- event type
+- status: `pending`, `sent`, `failed`, or `skipped`
+- safe error message
+- attempted timestamp
+- safe metadata
+
+The service creates an audit record for every attempted send. Successful and failed outcomes also emit EventLog rows. Repeated failed deliveries generate a warning recommendation so operators can repair the target.
+
+The Telegram UI still masks chat IDs. Failure text is deliberately coarse and redacted if it looks like it might contain tokens, keys, passwords, credentials, or chat IDs.
+
 ## Future Work
 
-- Add `event_deliveries` for per-target delivery attempts.
 - Add owner-approved routing activation per purpose.
 - Add group/channel setup verification once Agency OS Telegram groups are created.
