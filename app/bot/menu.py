@@ -285,8 +285,39 @@ def briefing_menu() -> InlineKeyboardMarkup:
 def executive_dashboard_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [InlineKeyboardButton(text="Recommendations", callback_data=callback_for("reports:executive:recommendations"))],
+            [
+                InlineKeyboardButton(text="Daily Briefing", callback_data=callback_for("reports:daily:latest")),
+                InlineKeyboardButton(text="Accountability", callback_data=callback_for("reports:accountability")),
+            ],
+            [
+                InlineKeyboardButton(text="Infrastructure", callback_data=callback_for("proxies:dashboard")),
+                InlineKeyboardButton(text="Incidents", callback_data=callback_for("incidents")),
+            ],
+            [InlineKeyboardButton(text="Bot Status", callback_data=callback_for("bot_status"))],
             [InlineKeyboardButton(text="Refresh", callback_data=callback_for("reports:executive"))],
             *page_controls(back_to="reports"),
+        ]
+    )
+
+
+def recommendations_menu(recommendation_buttons: list[tuple[str, str]]) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in recommendation_buttons]
+    rows.append([InlineKeyboardButton(text="Refresh Recommendations", callback_data=callback_for("reports:executive:recommendations"))])
+    rows.extend(page_controls(back_to="reports:executive"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def recommendation_detail_menu(recommendation_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Acknowledge", callback_data=f"nav:recommendation:{recommendation_id}:acknowledge"),
+                InlineKeyboardButton(text="Dismiss", callback_data=f"nav:recommendation:{recommendation_id}:dismiss"),
+            ],
+            [InlineKeyboardButton(text="Mark Resolved", callback_data=f"nav:recommendation:{recommendation_id}:resolve")],
+            [InlineKeyboardButton(text="Jump to Related Entity", callback_data=f"nav:recommendation:{recommendation_id}:jump")],
+            *page_controls(back_to="reports:executive:recommendations"),
         ]
     )
 
@@ -301,6 +332,37 @@ def operations_dashboard_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="View Accounts Needing Attention", callback_data=callback_for("accounts:attention"))],
             [InlineKeyboardButton(text="View Proxies Needing Attention", callback_data=callback_for("proxies:dashboard"))],
             *page_controls(back_to="reports"),
+        ]
+    )
+
+
+def automations_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Simulation Runs", callback_data=callback_for("automations:simulations"))],
+            [InlineKeyboardButton(text="Run Proxy Repair Simulation", callback_data=callback_for("automations:simulate:proxy_repair"))],
+            [InlineKeyboardButton(text="Run Daily Briefing Simulation", callback_data=callback_for("automations:simulate:daily_briefing"))],
+            *page_controls(back_to="menu"),
+        ]
+    )
+
+
+def simulation_runs_menu(run_buttons: list[tuple[str, str]]) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in run_buttons]
+    rows.append([InlineKeyboardButton(text="Run Proxy Repair Simulation", callback_data=callback_for("automations:simulate:proxy_repair"))])
+    rows.append([InlineKeyboardButton(text="Run Daily Briefing Simulation", callback_data=callback_for("automations:simulate:daily_briefing"))])
+    rows.extend(page_controls(back_to="automations"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def simulation_run_detail_menu(run_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Approve Simulation", callback_data=f"nav:simulation:{run_id}:approve"),
+                InlineKeyboardButton(text="Reject Simulation", callback_data=f"nav:simulation:{run_id}:reject"),
+            ],
+            *page_controls(back_to="automations:simulations"),
         ]
     )
 
@@ -502,6 +564,7 @@ def permission_choice_menu(role_id: int, action: str, permission_keys: list[str]
 def settings_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [InlineKeyboardButton(text="Bot Status", callback_data=callback_for("bot_status"))],
             [InlineKeyboardButton(text="View Audit Logs", callback_data=callback_for("audit_logs"))],
             [InlineKeyboardButton(text="Notification Targets", callback_data=callback_for("notification_targets"))],
             [
@@ -515,6 +578,7 @@ def settings_menu() -> InlineKeyboardMarkup:
 def notification_targets_menu(target_buttons: list[tuple[str, str]]) -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in target_buttons]
     rows.append([InlineKeyboardButton(text="Add Target", callback_data=callback_for("notification_targets:add"))])
+    rows.append([InlineKeyboardButton(text="Add Current Chat As Target", callback_data=callback_for("notification_targets:add_current"))])
     rows.extend(page_controls(back_to="settings"))
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -522,10 +586,39 @@ def notification_targets_menu(target_buttons: list[tuple[str, str]]) -> InlineKe
 def notification_target_detail_menu(target_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [InlineKeyboardButton(text="Set Purpose", callback_data=f"nav:notification_target:{target_id}:purpose")],
             [
                 InlineKeyboardButton(text="Disable Target", callback_data=f"nav:notification_target:{target_id}:disable"),
                 InlineKeyboardButton(text="Test Send", callback_data=f"nav:notification_target:{target_id}:test"),
             ],
+            [InlineKeyboardButton(text="Send Test Notification", callback_data=f"nav:notification_target:{target_id}:send_test")],
             *page_controls(back_to="notification_targets"),
+        ]
+    )
+
+
+def notification_target_purpose_menu(target_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Owner", callback_data=f"nav:notification_target:{target_id}:purpose:owner")],
+            [InlineKeyboardButton(text="Operations", callback_data=f"nav:notification_target:{target_id}:purpose:operations")],
+            [InlineKeyboardButton(text="Incidents", callback_data=f"nav:notification_target:{target_id}:purpose:incidents")],
+            [
+                InlineKeyboardButton(
+                    text="Automation Logs",
+                    callback_data=f"nav:notification_target:{target_id}:purpose:automation_logs",
+                )
+            ],
+            [InlineKeyboardButton(text="Testing", callback_data=f"nav:notification_target:{target_id}:purpose:testing")],
+            *page_controls(back_to=f"notification_target:{target_id}"),
+        ]
+    )
+
+
+def bot_status_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Refresh", callback_data=callback_for("bot_status"))],
+            *page_controls(back_to="settings"),
         ]
     )

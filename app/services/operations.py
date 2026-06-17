@@ -20,8 +20,10 @@ from app.services.account_health import (
 )
 from app.services.auth import audit_action, user_has_permission
 from app.services.events import emit_event
+from app.services.heartbeats import system_status_summary
 from app.services.incidents import count_incidents
 from app.services.model_health import HEALTH_CRITICAL, HEALTH_HEALTHY, HEALTH_WARNING, calculate_model_health
+from app.services.recommendations import list_recommendations
 from app.services.tasks import completed_today_by_user, completed_today_count, count_tasks, overdue_tasks, record_overdue_tasks
 
 
@@ -187,6 +189,14 @@ def agency_health_score(session: Session) -> int:
     return max(0, min(100, score))
 
 
+def _status_banner(score: int, *, critical_incidents: int, critical_accounts: int, critical_proxies: int) -> str:
+    if critical_incidents or critical_accounts or critical_proxies or score < 60:
+        return "🔴 Critical"
+    if score < 80:
+        return "🟡 Warning"
+    return "🟢 Healthy"
+
+
 def executive_dashboard(session: Session) -> dict:
     account_counts = _account_health_counts(session)
     proxy_counts = _proxy_status_counts(session)
@@ -194,8 +204,22 @@ def executive_dashboard(session: Session) -> dict:
     total_models = session.scalar(select(func.count(ModelBrand.id)).where(ModelBrand.status != "archived")) or 0
     total_accounts = session.scalar(select(func.count(Account.id)).where(Account.status != "archived")) or 0
     total_proxies = session.scalar(select(func.count(Proxy.id))) or 0
+    score = agency_health_score(session)
+    critical_incident_count = count_incidents(
+        session,
+        statuses=("open", "investigating"),
+        severity="critical",
+    )
+    top_recommendations = list_recommendations(session, status="open", limit=5)
+    system_status = system_status_summary(session)
     return {
-        "agency_health_score": agency_health_score(session),
+        "agency_health_score": score,
+        "operational_status_banner": _status_banner(
+            score,
+            critical_incidents=critical_incident_count,
+            critical_accounts=account_counts[ACCOUNT_HEALTH_CRITICAL],
+            critical_proxies=proxy_counts.get("critical", 0),
+        ),
         "total_models": total_models,
         "healthy_models": model_counts[HEALTH_HEALTHY],
         "warning_models": model_counts[HEALTH_WARNING],
@@ -223,9 +247,37 @@ def executive_dashboard(session: Session) -> dict:
         "open_tasks": count_tasks(session, statuses=("open", "in_progress", "blocked")),
         "overdue_tasks": count_tasks(session, overdue=True),
         "open_incidents": count_incidents(session, statuses=("open", "investigating")),
-        "critical_incidents": count_incidents(session, statuses=("open", "investigating"), severity="critical"),
+        "critical_incidents": critical_incident_count,
         "completed_tasks_today": completed_today_count(session),
         "recent_high_risk_events": _recent_high_risk_events(session),
+        "critical_alerts": [
+            item
+            for item in (
+                f"{critical_incident_count} critical incidents open" if critical_incident_count else None,
+                f"{account_counts[ACCOUNT_HEALTH_CRITICAL]} critical accounts" if account_counts[ACCOUNT_HEALTH_CRITICAL] else None,
+                f"{proxy_counts.get('critical', 0)} critical proxies" if proxy_counts.get("critical", 0) else None,
+                f"{count_tasks(session, overdue=True)} overdue tasks" if count_tasks(session, overdue=True) else None,
+            )
+            if item
+        ],
+        "top_recommendations": [
+            {
+                "id": recommendation.id,
+                "title": recommendation.title,
+                "severity": recommendation.severity,
+                "status": recommendation.status,
+            }
+            for recommendation in top_recommendations
+        ],
+        "production_status": system_status["production_status"],
+        "last_deployment_status": system_status["last_deployment_status"],
+        "last_bot_heartbeat": system_status["bot_last_seen_at"].isoformat()
+        if system_status["bot_last_seen_at"]
+        else "not seen yet",
+        "last_event_logged": system_status["latest_event_type"],
+        "last_event_at": system_status["latest_event_at"].isoformat()
+        if system_status["latest_event_at"]
+        else "none",
     }
 
 

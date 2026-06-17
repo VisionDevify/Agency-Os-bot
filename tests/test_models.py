@@ -5,6 +5,8 @@ def test_model_tables_are_registered() -> None:
         AccountabilitySnapshot,
         AuditLog,
         Automation,
+        AutomationRule,
+        AutomationSimulationRun,
         Incident,
         AccountAuthSession,
         AccountVerificationCode,
@@ -15,8 +17,10 @@ def test_model_tables_are_registered() -> None:
         NotificationTarget,
         Proxy,
         ProxyRotationHistory,
+        Recommendation,
         Report,
         Role,
+        SystemHeartbeat,
         Task,
         User,
     )
@@ -28,6 +32,8 @@ def test_model_tables_are_registered() -> None:
         "accountability_snapshots",
         "audit_logs",
         "automations",
+        "automation_rules",
+        "automation_simulation_runs",
         "daily_briefings",
         "event_logs",
         "incidents",
@@ -36,8 +42,10 @@ def test_model_tables_are_registered() -> None:
         "notification_targets",
         "proxies",
         "proxy_rotation_history",
+        "recommendations",
         "reports",
         "roles",
+        "system_heartbeats",
         "tasks",
         "user_roles",
         "users",
@@ -67,3 +75,7 @@ def test_model_tables_are_registered() -> None:
     assert ModelBrandMember.__tablename__ == "model_brand_members"
     assert Report.__tablename__ == "reports"
     assert Automation.__tablename__ == "automations"
+    assert AutomationRule.__tablename__ == "automation_rules"
+    assert AutomationSimulationRun.__tablename__ == "automation_simulation_runs"
+    assert Recommendation.__tablename__ == "recommendations"
+    assert SystemHeartbeat.__tablename__ == "system_heartbeats"

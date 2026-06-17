@@ -1,6 +1,6 @@
 # Database Schema
 
-This document describes the current schema as of Sprint 8 and the planned direction. PostgreSQL is the production database, SQLAlchemy owns the models, and Alembic owns migrations.
+This document describes the current schema as of Sprint 9 and the planned direction. PostgreSQL is the production database, SQLAlchemy owns the models, and Alembic owns migrations.
 
 ## Current Tables
 
@@ -398,7 +398,7 @@ Indexes and constraints:
 
 ### reports, automations
 
-Current placeholder resource tables.
+Current placeholder resource tables retained from the foundation.
 
 Shared columns:
 
@@ -408,7 +408,58 @@ Shared columns:
 - `metadata_json`: JSON object for safe non-secret metadata.
 - `created_at`, `updated_at`: timestamps.
 
-These tables are intentionally minimal until their modules are implemented.
+These tables are intentionally minimal until their modules need richer records. Sprint 9 adds dedicated automation rule and simulation-run tables below.
+
+### automation_rules
+
+Future-ready automation rule placeholders. Full automation builder logic is intentionally not implemented yet.
+
+Columns:
+
+- `id`: primary key.
+- `name`: operator-facing automation name.
+- `automation_type`: stable automation family.
+- `status`: one of `draft`, `active`, `disabled`, or `archived`.
+- `metadata_json`: safe non-secret metadata.
+- `created_at`, `updated_at`: timestamps.
+
+Indexes and constraints:
+
+- `ck_automation_rules_status`.
+- `ix_automation_rules_name`.
+- `ix_automation_rules_automation_type`.
+- `ix_automation_rules_status`.
+
+### automation_simulation_runs
+
+Durable dry-run records. These records preview what would happen without mutating production data.
+
+Columns:
+
+- `id`: primary key.
+- `automation_name`: display name of the simulated automation.
+- `automation_type`: automation family, such as `proxy_repair` or `daily_briefing`.
+- `status`: one of `draft`, `simulated`, `approved`, `rejected`, or `expired`.
+- `simulated_by_user_id`: foreign key to `users.id`.
+- `target_scope`: scope label for the preview.
+- `would_trigger_count`: number of items that would be touched.
+- `would_succeed_count`: estimated successful outcomes.
+- `would_fail_count`: estimated failed outcomes.
+- `impact_summary_json`: safe impact preview.
+- `risk_level`: one of `low`, `medium`, `high`, or `critical`.
+- `created_at`: timestamp.
+- `expires_at`: simulation expiry timestamp.
+
+Indexes and constraints:
+
+- `ck_automation_simulation_runs_status`.
+- `ck_automation_simulation_runs_risk_level`.
+- `ix_automation_simulation_runs_automation_type`.
+- `ix_automation_simulation_runs_status`.
+- `ix_automation_simulation_runs_risk`.
+- `ix_automation_simulation_runs_simulated_by`.
+- `ix_automation_simulation_runs_created_at`.
+- `ix_automation_simulation_runs_expires_at`.
 
 ### daily_briefings
 
@@ -469,6 +520,7 @@ Columns:
 - `telegram_chat_id`: encrypted or null Telegram chat reference.
 - `purpose`: one of `owner`, `operations`, `incidents`, `automation_logs`, or `testing`.
 - `is_active`: active/disabled flag.
+- `last_tested_at`: nullable timestamp for the latest safe test notification attempt.
 - `created_at`, `updated_at`: timestamps.
 
 Indexes and constraints:
@@ -479,6 +531,53 @@ Indexes and constraints:
 - `ix_notification_targets_target_type`.
 - `ix_notification_targets_purpose`.
 - `ix_notification_targets_is_active`.
+
+### recommendations
+
+Deterministic operational recommendations generated from current database state.
+
+Columns:
+
+- `id`: primary key.
+- `recommendation_type`: stable recommendation family.
+- `title`: short operator-facing title.
+- `description`: safe detail text.
+- `severity`: one of `info`, `warning`, or `critical`.
+- `entity_type`: nullable related entity family.
+- `entity_id`: nullable related entity ID.
+- `status`: one of `open`, `acknowledged`, `dismissed`, or `resolved`.
+- `generated_from_event_id`: nullable foreign key to `event_logs.id`.
+- `metadata_json`: safe non-secret recommendation metadata.
+- `created_at`, `updated_at`: timestamps.
+
+Indexes and constraints:
+
+- `ck_recommendations_severity`.
+- `ck_recommendations_status`.
+- `ix_recommendations_type`.
+- `ix_recommendations_severity`.
+- `ix_recommendations_status`.
+- `ix_recommendations_entity`.
+- `ix_recommendations_event`.
+- `ix_recommendations_created_at`.
+
+### system_heartbeats
+
+Latest known status for core production services.
+
+Columns:
+
+- `id`: primary key.
+- `service_name`: unique service identifier, such as `api`, `bot`, `db`, `redis`, or `railway_deployment`.
+- `status`: safe status string.
+- `last_seen_at`: latest heartbeat timestamp.
+- `metadata_json`: safe non-secret metadata, such as deployment status labels.
+
+Indexes and constraints:
+
+- Unique constraint/index on `service_name`.
+- `ix_system_heartbeats_status`.
+- `ix_system_heartbeats_last_seen_at`.
 
 ## Relationships
 
@@ -500,6 +599,9 @@ Indexes and constraints:
 - An event log may reference an actor user through `actor_user_id`.
 - A daily briefing may reference the user who generated it.
 - An accountability snapshot references the user it describes.
+- An automation simulation run references the user who simulated it.
+- A recommendation may reference the event that generated it and may point to an entity by `entity_type`/`entity_id`.
+- System heartbeats are keyed by service name and do not reference secrets or deployment credentials.
 
 ## Status Strategy
 
@@ -568,6 +670,21 @@ Notification target state:
 - `is_active = true`: eligible for future routing.
 - `is_active = false`: disabled without deleting historical configuration or events.
 
+Automation simulation status:
+
+- `draft`: saved but not yet simulated.
+- `simulated`: dry run completed and ready for review.
+- `approved`: operator approved the preview. High/critical risk requires Owner.
+- `rejected`: operator rejected the preview.
+- `expired`: preview is too old to approve.
+
+Recommendation status:
+
+- `open`: visible in the command center.
+- `acknowledged`: operator has seen it.
+- `dismissed`: operator decided it is not actionable.
+- `resolved`: underlying issue has been addressed.
+
 Soft-delete strategy:
 
 - Users are not deleted during normal admin flows. Use `disabled` or `denied`.
@@ -578,6 +695,9 @@ Soft-delete strategy:
 - Tasks should use `complete` or `archived` instead of hard deletion.
 - Incidents should use `resolved` or `archived` instead of hard deletion.
 - Notification targets should be disabled instead of deleted.
+- Automation simulation runs are history records and should not be deleted during normal operations.
+- Recommendations should move through status instead of hard deletion.
+- System heartbeat rows are updated in place by service name; state changes are still emitted to audit/event logs.
 - Daily briefings, accountability snapshots, event logs, and audit logs are append-style history records.
 - Future business resources should prefer status-based archival before hard deletes.
 
@@ -589,7 +709,7 @@ Soft-delete strategy:
 - `task_assignments`: richer task ownership and handoff history if one-assignee tasks become insufficient.
 - `incident_events`: richer incident timeline events if escalation history JSON becomes insufficient.
 - `report_runs`: richer report generation records if daily briefings/accountability snapshots are not enough.
-- `automation_runs`: simulation and live automation run records.
+- `automation_runs`: live automation execution records once live actions are enabled.
 - `event_deliveries`: notification/event delivery attempts once routing is activated.
 - `repair_attempts`: self-healing attempts and outcomes.
 - `ai_recommendations`: AI operations suggestions, confidence, and operator disposition.

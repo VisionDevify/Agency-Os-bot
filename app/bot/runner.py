@@ -37,6 +37,8 @@ from app.services.accounts import (
 )
 from app.services.permissions import PermissionPrincipal, RoleName, require_owner
 from app.services.model_brands import get_model_brand
+from app.services.heartbeats import record_heartbeat
+from app.services.notifications import decrypt_target_chat_id, get_notification_target
 
 logger = logging.getLogger(__name__)
 dp = Dispatcher()
@@ -91,6 +93,13 @@ def _set_pending_callback_state(telegram_id: int, page: str, session, user: User
             PENDING_AUTH_CODES[telegram_id] = auth_session.id
 
 
+def _notification_target_id_for_send_test(page: str) -> int | None:
+    parts = page.split(":")
+    if len(parts) >= 3 and parts[0] == "notification_target" and parts[1].isdigit() and parts[2] == "send_test":
+        return int(parts[1])
+    return None
+
+
 @dp.message(CommandStart())
 async def start(message: Message) -> None:
     if message.from_user is None or SessionLocal is None:
@@ -99,6 +108,7 @@ async def start(message: Message) -> None:
 
     with SessionLocal() as session:
         telegram_id = message.from_user.id
+        record_heartbeat(session, service_name="bot", status="healthy", metadata={"source": "telegram_start"})
         if telegram_id == settings.owner_telegram_id:
             user = setup_owner_if_needed(
                 session,
@@ -143,6 +153,7 @@ async def text_input(message: Message) -> None:
 
     telegram_id = message.from_user.id
     with SessionLocal() as session:
+        record_heartbeat(session, service_name="bot", status="healthy", metadata={"source": "telegram_text"})
         user = get_or_create_telegram_user(
             session,
             telegram_user_id=telegram_id,
@@ -224,6 +235,7 @@ async def navigate(callback: CallbackQuery) -> None:
         return
 
     with SessionLocal() as session:
+        record_heartbeat(session, service_name="bot", status="healthy", metadata={"source": "telegram_callback"})
         user = get_or_create_telegram_user(
             session,
             telegram_user_id=callback.from_user.id,
@@ -279,9 +291,30 @@ async def navigate(callback: CallbackQuery) -> None:
             session.commit()
             return
         try:
-            screen = screen_for_page(page, principal, session=session, user=user)
+            chat_id = callback.message.chat.id
+            chat_title = getattr(callback.message.chat, "title", None)
+            screen = screen_for_page(
+                page,
+                principal,
+                session=session,
+                user=user,
+                chat_id=chat_id,
+                chat_title=chat_title,
+            )
             _set_pending_callback_state(callback.from_user.id, page, session, user)
             await callback.message.edit_text(screen.text, reply_markup=screen.reply_markup)
+            target_id = _notification_target_id_for_send_test(page)
+            if target_id is not None:
+                target = get_notification_target(session, target_id)
+                raw_chat_id = decrypt_target_chat_id(target) if target else None
+                if target is None or not target.is_active or target.purpose != "testing" or raw_chat_id is None:
+                    await callback.answer("Test sends require an active testing target.", show_alert=True)
+                    session.commit()
+                    return
+                try:
+                    await callback.bot.send_message(int(raw_chat_id), "Agency OS test notification.")
+                except Exception:
+                    logger.warning("Unable to send test notification to configured target")
             await callback.answer()
             session.commit()
         except PermissionError:
@@ -296,6 +329,10 @@ async def main() -> None:
         raise RuntimeError("TELEGRAM_BOT_TOKEN is not configured")
     bot = Bot(token=token)
     logger.info("Starting Telegram bot")
+    if SessionLocal is not None:
+        with SessionLocal() as session:
+            record_heartbeat(session, service_name="bot", status="healthy", metadata={"source": "startup"})
+            session.commit()
     await dp.start_polling(bot)
 
 

@@ -11,7 +11,9 @@ from app.bot.menu import (
     account_platform_menu,
     account_proxy_choice_menu,
     accounts_menu,
+    automations_menu,
     briefing_menu,
+    bot_status_menu,
     dashboard_menu,
     executive_dashboard_menu,
     incident_detail_menu,
@@ -26,6 +28,7 @@ from app.bot.menu import (
     model_team_menu,
     models_menu,
     notification_target_detail_menu,
+    notification_target_purpose_menu,
     notification_targets_menu,
     operations_dashboard_menu,
     page_menu,
@@ -36,10 +39,14 @@ from app.bot.menu import (
     proxy_detail_menu,
     proxy_list_menu,
     reports_menu,
+    recommendation_detail_menu,
+    recommendations_menu,
     role_choice_menu,
     role_detail_menu,
     roles_menu,
     settings_menu,
+    simulation_run_detail_menu,
+    simulation_runs_menu,
     task_detail_menu,
     task_list_menu,
     task_user_choice_menu,
@@ -53,10 +60,14 @@ from app.models.incident import Incident
 from app.models.model_brand import MODEL_BRAND_RELATIONSHIP_TYPES, ModelBrand, ModelBrandMember
 from app.models.permissions import Permission, Role
 from app.models.proxy import Proxy
+from app.models.automation import AutomationSimulationRun
+from app.models.recommendation import Recommendation
 from app.models.reporting import NotificationTarget
 from app.models.task import Task
 from app.models.user import User
 from app.services.auth import DEFAULT_PERMISSION_DESCRIPTIONS
+from app.services.automations import list_simulation_runs
+from app.services.heartbeats import list_heartbeats, system_status_summary
 from app.services.dashboard import DashboardStats, dashboard_stats, placeholder_dashboard_stats
 from app.services.accounts import (
     account_audit_logs,
@@ -98,7 +109,7 @@ from app.services.operations import (
     view_accountability_report,
     view_latest_daily_briefing,
 )
-from app.services.notifications import list_notification_targets, mask_chat_id
+from app.services.notifications import list_notification_targets, mask_target_chat_id
 from app.services.proxies import (
     accounts_for_proxy,
     accounts_missing_proxy,
@@ -119,6 +130,7 @@ from app.services.tasks import (
     task_audit_logs,
     tasks_for_model,
 )
+from app.services.recommendations import generate_recommendations, list_recommendations
 
 
 @dataclass(frozen=True)
@@ -231,6 +243,16 @@ def render_incidents_home() -> Screen:
 
 def render_reports_home() -> Screen:
     return Screen(text="Reports\nBriefings, dashboards, and accountability.", reply_markup=reports_menu())
+
+
+def render_automations_home() -> Screen:
+    lines = [
+        "Automations",
+        "",
+        "Simulation mode is active.",
+        "Preview, simulate, approve, then execute.",
+    ]
+    return Screen(text="\n".join(lines), reply_markup=automations_menu())
 
 
 def _identity(user: User | None) -> str:
@@ -764,34 +786,48 @@ def render_incident_assignment_page(session: Session, incident_id: int) -> Scree
 
 def render_executive_dashboard_page(session: Session, user: User | None = None) -> Screen:
     record_dashboard_view(session, actor=user, dashboard_name="executive")
+    generate_recommendations(session, actor=user)
     stats = executive_dashboard(session)
     lines = [
-        "Executive Dashboard",
+        "Executive Command Center",
         "",
-        f"Agency Health Score: {stats['agency_health_score']}",
-        f"Total Models: {stats['total_models']}",
-        f"Healthy Models: {stats['healthy_models']}",
-        f"Warning Models: {stats['warning_models']}",
-        f"Critical Models: {stats['critical_models']}",
-        f"Total Accounts: {stats['total_accounts']}",
-        f"Healthy Accounts: {stats['healthy_accounts']}",
-        f"Warning Accounts: {stats['warning_accounts']}",
-        f"Critical Accounts: {stats['critical_accounts']}",
-        f"Accounts Needing Login: {stats['accounts_needing_login']}",
-        f"Accounts Needing 2FA: {stats['accounts_needing_2fa']}",
-        f"Total Proxies: {stats['total_proxies']}",
-        f"Healthy Proxies: {stats['healthy_proxies']}",
-        f"Warning Proxies: {stats['warning_proxies']}",
-        f"Critical Proxies: {stats['critical_proxies']}",
+        f"Status: {stats['operational_status_banner']}",
+        f"Agency Health Score: {stats['agency_health_score']}/100",
+        f"Models: {stats['total_models']} "
+        f"({stats['healthy_models']} healthy / {stats['warning_models']} warning / {stats['critical_models']} critical)",
+        f"Accounts: {stats['total_accounts']} "
+        f"({stats['healthy_accounts']} healthy / {stats['warning_accounts']} warning / {stats['critical_accounts']} critical)",
+        f"Auth Attention: login {stats['accounts_needing_login']} / 2FA {stats['accounts_needing_2fa']}",
+        f"Proxies: {stats['total_proxies']} "
+        f"({stats['healthy_proxies']} healthy / {stats['warning_proxies']} warning / {stats['critical_proxies']} critical)",
         f"Accounts Missing Proxy: {stats['accounts_missing_proxy']}",
-        f"Open Tasks: {stats['open_tasks']}",
-        f"Overdue Tasks: {stats['overdue_tasks']}",
-        f"Open Incidents: {stats['open_incidents']}",
-        f"Critical Incidents: {stats['critical_incidents']}",
-        f"Completed Today: {stats['completed_tasks_today']}",
+        f"Tasks: {stats['open_tasks']} open / {stats['overdue_tasks']} overdue / {stats['completed_tasks_today']} done today",
+        f"Incidents: {stats['open_incidents']} open / {stats['critical_incidents']} critical",
         "",
-        "Recent High-Risk Events:",
+        "Critical Alerts:",
     ]
+    lines.extend(f"- {item}" for item in stats["critical_alerts"][:5])
+    if not stats["critical_alerts"]:
+        lines.append("- No active critical alerts")
+    lines.extend(["", "Top Recommendations:"])
+    if stats["top_recommendations"]:
+        for recommendation in stats["top_recommendations"]:
+            marker = _status_marker(recommendation["severity"])
+            lines.append(f"- {marker} {recommendation['title']}")
+    else:
+        lines.append("- No open recommendations")
+    lines.extend(
+        [
+            "",
+            "Production Status:",
+            f"Railway: {stats['production_status']}",
+            f"Last Deployment: {stats['last_deployment_status']}",
+            f"Bot Heartbeat: {stats['last_bot_heartbeat']}",
+            f"Last Event: {stats['last_event_logged']} at {stats['last_event_at']}",
+            "",
+            "Recent High-Risk Events:",
+        ]
+    )
     lines.extend(f"- {item}" for item in stats["recent_high_risk_events"][:5])
     if not stats["recent_high_risk_events"]:
         lines.append("- No high-risk events found")
@@ -935,6 +971,120 @@ def render_accountability_page(session: Session, user: User | None = None) -> Sc
     return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="reports"))
 
 
+def render_recommendations_page(session: Session, user: User | None = None) -> Screen:
+    generate_recommendations(session, actor=user)
+    recommendations = list_recommendations(session, status="open", limit=20)
+    record_report_view(session, actor=user, report_name="recommendations")
+    lines = ["Recommendations", ""]
+    buttons: list[tuple[str, str]] = []
+    if not recommendations:
+        lines.append("No open recommendations.")
+    for recommendation in recommendations:
+        marker = _status_marker(recommendation.severity)
+        lines.append(f"{recommendation.id}. {marker} {recommendation.title}")
+        lines.append(f"   Status: {recommendation.status} | Type: {recommendation.recommendation_type}")
+        buttons.append(
+            (
+                f"{recommendation.id}. {recommendation.title}",
+                f"nav:recommendation:{recommendation.id}",
+            )
+        )
+    return Screen(text="\n".join(lines), reply_markup=recommendations_menu(buttons))
+
+
+def render_recommendation_detail_page(session: Session, recommendation_id: int) -> Screen:
+    recommendation = session.get(Recommendation, recommendation_id)
+    if recommendation is None:
+        return Screen(
+            text="Recommendation not found.",
+            reply_markup=page_menu(back_to="reports:executive:recommendations"),
+        )
+    target = (
+        f"{recommendation.entity_type}:{recommendation.entity_id}"
+        if recommendation.entity_type and recommendation.entity_id
+        else "General"
+    )
+    lines = [
+        "Recommendation",
+        "",
+        f"Title: {recommendation.title}",
+        f"Severity: {_status_marker(recommendation.severity)} {recommendation.severity}",
+        f"Status: {recommendation.status}",
+        f"Type: {recommendation.recommendation_type}",
+        f"Target: {target}",
+        f"Description: {recommendation.description}",
+        "",
+        "Jump opens the closest related Agency OS page when available.",
+    ]
+    return Screen(text="\n".join(lines), reply_markup=recommendation_detail_menu(recommendation.id))
+
+
+def render_simulation_runs_page(session: Session) -> Screen:
+    runs = list_simulation_runs(session)
+    lines = ["Automation Simulation Runs", ""]
+    buttons: list[tuple[str, str]] = []
+    if not runs:
+        lines.append("No simulation runs yet.")
+    for run in runs[:15]:
+        created = run.created_at.isoformat() if run.created_at else "pending timestamp"
+        lines.append(f"{run.id}. {run.automation_name}")
+        lines.append(
+            f"   Status: {run.status} | Risk: {run.risk_level} | Would Trigger: {run.would_trigger_count}"
+        )
+        lines.append(f"   Created: {created}")
+        buttons.append((f"{run.id}. {run.automation_name}", f"nav:simulation:{run.id}"))
+    return Screen(text="\n".join(lines), reply_markup=simulation_runs_menu(buttons))
+
+
+def render_simulation_run_detail_page(session: Session, run_id: int) -> Screen:
+    run = session.get(AutomationSimulationRun, run_id)
+    if run is None:
+        return Screen(text="Simulation run not found.", reply_markup=page_menu(back_to="automations:simulations"))
+    expires = run.expires_at.isoformat() if run.expires_at else "not set"
+    impact = run.impact_summary_json or {}
+    lines = [
+        "Simulation Impact Preview",
+        "",
+        f"Automation: {run.automation_name}",
+        f"Type: {run.automation_type}",
+        f"Status: {run.status}",
+        f"Risk: {_status_marker(run.risk_level)} {run.risk_level}",
+        f"Target Scope: {run.target_scope}",
+        f"Would Trigger: {run.would_trigger_count}",
+        f"Would Succeed: {run.would_succeed_count}",
+        f"Would Fail: {run.would_fail_count}",
+        f"Expires: {expires}",
+        "",
+        "Impact Summary:",
+    ]
+    for key, value in sorted(impact.items()):
+        lines.append(f"- {key}: {value}")
+    if not impact:
+        lines.append("- No impact details recorded")
+    lines.extend(["", "No production changes are applied by simulation runs."])
+    return Screen(text="\n".join(lines), reply_markup=simulation_run_detail_menu(run.id))
+
+
+def render_bot_status_page(session: Session) -> Screen:
+    summary = system_status_summary(session)
+    heartbeats = list_heartbeats(session)
+    lines = [
+        "Bot Status",
+        "",
+        f"Production Status: {summary['production_status']}",
+        f"Last Deployment: {summary['last_deployment_status']}",
+        f"API: {summary['api_status']}",
+        f"Bot: {summary['bot_status']}",
+        f"Last Event: {summary['latest_event_type']}",
+        "",
+        "Services:",
+    ]
+    for heartbeat in heartbeats:
+        seen = heartbeat.last_seen_at.isoformat() if heartbeat.last_seen_at else "not seen yet"
+        lines.append(f"- {heartbeat.service_name}: {heartbeat.status} at {seen}")
+    return Screen(text="\n".join(lines), reply_markup=bot_status_menu())
+
+
 def render_notification_targets_page(session: Session) -> Screen:
     targets = list_notification_targets(session)
     lines = ["Notification Targets", ""]
@@ -945,7 +1095,8 @@ def render_notification_targets_page(session: Session) -> Screen:
         status = "active" if target.is_active else "disabled"
         lines.append(f"{target.id}. {target.name}")
         lines.append(f"   Type: {target.target_type} | Purpose: {target.purpose} | Status: {status}")
-        lines.append(f"   Chat: {mask_chat_id(target.telegram_chat_id)}")
+        lines.append(f"   Chat: {mask_target_chat_id(target)}")
+        lines.append(f"   Last Tested: {target.last_tested_at.isoformat() if target.last_tested_at else 'Never'}")
         buttons.append((f"{target.id}. {target.name} ({status})", f"nav:notification_target:{target.id}"))
     return Screen(text="\n".join(lines), reply_markup=notification_targets_menu(buttons))
 
@@ -962,11 +1113,25 @@ def render_notification_target_detail_page(session: Session, target_id: int) -> 
         f"Type: {target.target_type}",
         f"Purpose: {target.purpose}",
         f"Status: {status}",
-        f"Telegram Chat ID: {mask_chat_id(target.telegram_chat_id)}",
+        f"Telegram Chat ID: {mask_target_chat_id(target)}",
+        f"Last Tested: {target.last_tested_at.isoformat() if target.last_tested_at else 'Never'}",
         "",
-        "Sending is placeholder-only until a real operations group is configured.",
+        "Test messages are allowed only for explicitly configured safe targets.",
     ]
     return Screen(text="\n".join(lines), reply_markup=notification_target_detail_menu(target.id))
+
+
+def render_notification_target_purpose_page(session: Session, target_id: int) -> Screen:
+    target = session.get(NotificationTarget, target_id)
+    if target is None:
+        return Screen(text="Notification target not found.", reply_markup=page_menu(back_to="notification_targets"))
+    lines = [
+        "Set Notification Purpose",
+        "",
+        f"Target: {target.name}",
+        f"Current Purpose: {target.purpose}",
+    ]
+    return Screen(text="\n".join(lines), reply_markup=notification_target_purpose_menu(target.id))
 
 
 def _model_identity(model_brand: ModelBrand) -> str:
@@ -1583,6 +1748,12 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_accountability_page(session, user=user)
     if page == "reports:executive" and session is not None:
         return render_executive_dashboard_page(session, user=user)
+    if page == "reports:executive:recommendations" and session is not None:
+        return render_recommendations_page(session, user=user)
+    if page.startswith("recommendation:") and session is not None:
+        parts = page.split(":")
+        if len(parts) >= 2 and parts[1].isdigit():
+            return render_recommendation_detail_page(session, int(parts[1]))
     if page == "reports:operations" and session is not None:
         return render_operations_dashboard_page(session, user=user)
     if page == "reports:chatter" and session is not None:
@@ -1609,13 +1780,25 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
             return render_role_detail_page(session, int(parts[1]))
     if page == "permissions":
         return render_default_permissions_page()
+    if page == "automations":
+        return render_automations_home()
+    if page == "automations:simulations" and session is not None:
+        return render_simulation_runs_page(session)
+    if page.startswith("simulation:") and session is not None:
+        parts = page.split(":")
+        if len(parts) >= 2 and parts[1].isdigit():
+            return render_simulation_run_detail_page(session, int(parts[1]))
     if page == "audit_logs" and session is not None:
         return render_audit_logs_page(session)
+    if page == "bot_status" and session is not None:
+        return render_bot_status_page(session)
     if page == "notification_targets" and session is not None:
         return render_notification_targets_page(session)
     if page.startswith("notification_target:") and session is not None:
         parts = page.split(":")
         if len(parts) >= 2 and parts[1].isdigit():
+            if len(parts) >= 3 and parts[2] == "purpose":
+                return render_notification_target_purpose_page(session, int(parts[1]))
             return render_notification_target_detail_page(session, int(parts[1]))
     if page == "settings":
         return Screen(text="Settings\n\nAdministrative tools.", reply_markup=settings_menu())

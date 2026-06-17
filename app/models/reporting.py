@@ -82,3 +82,4 @@ class NotificationTarget(TimestampMixin, Base):
     telegram_chat_id: Mapped[str | None] = mapped_column(Text(), nullable=True)
     purpose: Mapped[str] = mapped_column(String(40), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    last_tested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

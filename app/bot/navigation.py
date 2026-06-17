@@ -65,11 +65,20 @@ from app.services.tasks import (
     start_task,
 )
 from app.services.notifications import (
+    add_current_chat_as_target,
     create_placeholder_notification_target,
     disable_notification_target,
     get_notification_target,
+    set_notification_target_purpose,
     test_notification_target,
 )
+from app.services.automations import (
+    get_simulation_run,
+    run_daily_briefing_simulation,
+    run_proxy_repair_simulation,
+    update_simulation_status,
+)
+from app.services.recommendations import get_recommendation, update_recommendation_status
 from app.services.permissions import PermissionPrincipal, require_permission
 
 PAGE_PERMISSIONS: dict[str, str] = {
@@ -118,6 +127,10 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         return ("upload_content", "manage_tasks", "view_dashboard")
     if page.startswith("reports:"):
         return ("manage_reports",)
+    if page.startswith("recommendation:"):
+        return ("manage_reports", "view_dashboard")
+    if page.startswith("automations:") or page.startswith("simulation:"):
+        return ("manage_automations",)
     if page.startswith("accounts:"):
         return ("manage_accounts",)
     if page.startswith("account:"):
@@ -138,12 +151,57 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         return ("manage_roles",)
     if page.startswith("notification_targets") or page.startswith("notification_target:"):
         return ("manage_reports", "manage_roles")
+    if page == "bot_status":
+        return ("view_dashboard", "manage_reports", "manage_roles")
     permission = PAGE_PERMISSIONS.get(page)
     return (permission,) if permission else None
 
 
-def _perform_admin_action(page: str, session: Session, actor: User) -> str | None:
+def _perform_admin_action(
+    page: str,
+    session: Session,
+    actor: User,
+    *,
+    chat_id: int | None = None,
+    chat_title: str | None = None,
+) -> str | None:
     parts = page.split(":")
+    if page == "automations:simulate:proxy_repair":
+        run = run_proxy_repair_simulation(session, actor=actor)
+        return f"simulation:{run.id}"
+    if page == "automations:simulate:daily_briefing":
+        run = run_daily_briefing_simulation(session, actor=actor)
+        return f"simulation:{run.id}"
+    if len(parts) >= 3 and parts[0] == "simulation" and parts[1].isdigit():
+        run = get_simulation_run(session, int(parts[1]))
+        if run is None:
+            return "automations:simulations"
+        action = parts[2]
+        if action == "approve":
+            update_simulation_status(session, run, actor=actor, status="approved")
+            return f"simulation:{run.id}"
+        if action == "reject":
+            update_simulation_status(session, run, actor=actor, status="rejected")
+            return f"simulation:{run.id}"
+    if len(parts) >= 3 and parts[0] == "recommendation" and parts[1].isdigit():
+        recommendation = get_recommendation(session, int(parts[1]))
+        if recommendation is None:
+            return "reports:executive:recommendations"
+        action = parts[2]
+        if action in {"acknowledge", "dismiss", "resolve"}:
+            status = {"acknowledge": "acknowledged", "dismiss": "dismissed", "resolve": "resolved"}[action]
+            update_recommendation_status(session, recommendation, actor=actor, status=status)
+            return f"recommendation:{recommendation.id}"
+        if action == "jump":
+            if recommendation.entity_type == "incident" and recommendation.entity_id:
+                return f"incident:{recommendation.entity_id}"
+            if recommendation.entity_type == "account" and recommendation.entity_id:
+                return f"account:{recommendation.entity_id}"
+            if recommendation.entity_type == "proxy" and recommendation.entity_id:
+                return f"proxy:{recommendation.entity_id}"
+            if recommendation.entity_type == "model_brand" and recommendation.entity_id:
+                return f"model:{recommendation.entity_id}"
+            return "reports:executive:recommendations"
     if page == "tasks:create":
         task = create_default_task(session, actor=actor)
         return f"task:{task.id}"
@@ -362,6 +420,17 @@ def _perform_admin_action(page: str, session: Session, actor: User) -> str | Non
     if page == "notification_targets:add":
         target = create_placeholder_notification_target(session, actor=actor)
         return f"notification_target:{target.id}"
+    if page == "notification_targets:add_current" and chat_id is not None:
+        target_type = "telegram_group" if chat_title else "telegram_user"
+        target = add_current_chat_as_target(
+            session,
+            actor=actor,
+            chat_id=chat_id,
+            chat_title=chat_title,
+            target_type=target_type,
+            purpose="testing",
+        )
+        return f"notification_target:{target.id}"
     if len(parts) >= 3 and parts[0] == "notification_target" and parts[1].isdigit():
         target = get_notification_target(session, int(parts[1]))
         if target is None:
@@ -373,6 +442,12 @@ def _perform_admin_action(page: str, session: Session, actor: User) -> str | Non
         if action == "test":
             test_notification_target(session, target, actor=actor)
             return f"notification_target:{target.id}"
+        if action == "send_test":
+            test_notification_target(session, target, actor=actor)
+            return f"notification_target:{target.id}"
+        if action == "purpose" and len(parts) >= 4:
+            set_notification_target_purpose(session, target, parts[3], actor=actor)
+            return f"notification_target:{target.id}"
     return None
 
 
@@ -382,6 +457,8 @@ def screen_for_page(
     recorder: AuditRecorder = audit_recorder,
     session: Session | None = None,
     user: User | None = None,
+    chat_id: int | None = None,
+    chat_title: str | None = None,
 ) -> Screen:
     normalized = "dashboard" if page == "dashboard:refresh" else page
     if normalized == "menu":
@@ -446,7 +523,13 @@ def screen_for_page(
             raise
 
     if session is not None and user is not None:
-        action_target = _perform_admin_action(normalized, session, user)
+        action_target = _perform_admin_action(
+            normalized,
+            session,
+            user,
+            chat_id=chat_id,
+            chat_title=chat_title,
+        )
         if action_target is not None:
             normalized = action_target
 
@@ -481,6 +564,9 @@ def screen_for_page(
         or normalized.startswith("incidents:")
         or normalized.startswith("incident:")
         or normalized.startswith("reports:")
+        or normalized.startswith("recommendation:")
+        or normalized.startswith("automations:")
+        or normalized.startswith("simulation:")
         or normalized.startswith("models:")
         or normalized.startswith("model:")
         or normalized.startswith("users:")
@@ -488,6 +574,7 @@ def screen_for_page(
         or normalized.startswith("role:")
         or normalized.startswith("notification_targets")
         or normalized.startswith("notification_target:")
+        or normalized == "bot_status"
     ):
         return render_page(normalized, session=session, user=user)
     return render_main_menu()

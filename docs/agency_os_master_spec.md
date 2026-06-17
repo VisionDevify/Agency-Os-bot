@@ -17,12 +17,12 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Sprint 6: Infrastructure intelligence layer with Proxy Vault, encrypted proxy passwords, session rotation/rollback, proxy health scoring, account proxy assignment, location verification, proxy incidents, simulation mode, and self-healing V1.
 - Sprint 7: Operations command layer with real tasks, real incidents, escalation paths, department dashboards, daily company briefing, team accountability reporting, and operations event emission.
 - Sprint 8: Executive intelligence and Railway production readiness with database-backed daily briefings, accountability snapshots, EventLog, Notification Targets, Executive Dashboard V2, operations reporting, and Railway deployment documentation/config.
+- Sprint 9: Production activation preparation, notification routing V1, automation simulation run records, deterministic recommendations, system heartbeats, Bot Status, and Executive Command Center upgrades.
 
 ## Roadmap
 
-- Sprint 9: Automations with simulation mode as the default safety posture.
-- Sprint 10: Notification routing activation, incident delivery targets, and production deploy verification.
-- Sprint 11: Self-healing playbooks and repair event tracking.
+- Sprint 10: Telegram notification group activation, production deploy execution, and event delivery tracking.
+- Sprint 11: Self-healing playbooks, repair approval gates, and richer repair event tracking.
 - Sprint 12: AI Operations Brain for summaries, anomaly explanations, and recommended next actions.
 
 ## Core Modules
@@ -37,9 +37,12 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Proxies: encrypted Proxy Vault with account assignment, session suffix rotation, rollback, health scoring, location verification, simulation, and repair workflows.
 - Tasks: real work queue with status, priority, assignment, due dates, completion, model/account attachment, and audit/event history.
 - Incidents: real escalation and resolution records with severity, source, assignment, proxy/account/model attachment, escalation history, and audit/event history.
-- Reports: database-backed daily briefing, accountability snapshots, executive dashboard, operations dashboard, chatter dashboard placeholder, VA dashboard placeholder, and event-backed report view/generation tracking.
-- Automations: placeholder resource model with simulation-mode placeholder.
-- Settings: administrative utilities including audit log access and Notification Target placeholders.
+- Reports: database-backed daily briefing, accountability snapshots, executive command center, operations dashboard, chatter dashboard placeholder, VA dashboard placeholder, and event-backed report view/generation tracking.
+- Notifications: encrypted Telegram notification targets, purpose-based routing rules, masked chat IDs, and testing-only safe sends.
+- Automations: placeholder resource model plus durable simulation runs for preview/approve workflows.
+- Recommendations: deterministic operational recommendations generated from database state.
+- System Status: service heartbeats for API, bot, db, redis, and Railway deployment state.
+- Settings: administrative utilities including audit log access, Bot Status, and Notification Targets.
 
 ## Roles
 
@@ -164,7 +167,19 @@ Important actions should use stable event-style names, such as:
 - `dashboard.viewed`
 - `report.viewed`
 - `notification_target.created`
+- `notification_target.updated`
 - `notification_target.disabled`
+- `notification_target.tested`
+- `notification.routed`
+- `automation.simulated`
+- `automation.simulation.approved`
+- `automation.simulation.rejected`
+- `recommendation.generated`
+- `recommendation.acknowledged`
+- `recommendation.dismissed`
+- `recommendation.resolved`
+- `recommendation.status_changed`
+- `heartbeat.status_changed`
 - `access.denied`
 - `owner.protection_triggered`
 
@@ -386,9 +401,40 @@ Notification Targets are placeholders for future routing. They can represent Tel
 
 EventLog is the durable lightweight event feed for reporting and future automations. It stores event type, actor, entity type/id, safe metadata, and timestamp. AuditLog remains the human safety trail.
 
+## Production Activation And Command Center
+
+Sprint 9 turns the executive view into a live company command center without adding risky platform automation.
+
+Executive Command Center now includes:
+
+- Agency Health Score.
+- Operational status banner.
+- critical alerts.
+- top deterministic recommendations.
+- shortcuts for daily briefing, accountability, infrastructure, incidents, and Bot Status.
+- production status, last deployment status, last bot heartbeat, and last event logged.
+
+Notification Routing V1 uses `notification_targets` with encrypted chat IDs and purpose-based routing:
+
+- Daily Briefing -> owner + operations.
+- Accountability Report -> operations.
+- Critical Incident -> owner + incidents.
+- Proxy Repair Failed -> incidents + automation logs.
+- Proxy Repair Succeeded -> automation logs.
+- Deployment Event -> testing + owner.
+- Automation Simulation -> automation logs.
+
+Only Owner/Admin can manage notification targets. Normal Telegram views mask chat IDs. Test sends are intentionally limited to active `testing` targets until real groups/channels are approved and configured.
+
+Automation Simulation Runs are durable safety previews. They record what an automation would trigger, would likely succeed, would likely fail, risk level, impact summary, creator, creation time, and expiry. Simulations must not mutate production proxies, accounts, tasks, or incidents.
+
+Recommendations are deterministic for now. They are generated from current database state for issues such as missing proxies, critical incidents, overdue tasks, warning/critical proxies, accounts needing login, models without managers, models without chatter teams, location mismatches, and failed repair attempts.
+
+System Heartbeats track service health for `api`, `bot`, `db`, `redis`, and `railway_deployment`. Heartbeats audit state changes only, not every check.
+
 ## Railway Production Readiness
 
-The repo has a Railway API service config, `/health` endpoint, Docker `PORT` support, and deployment docs. Railway inspection found the logged-in workspace has zero projects, so no production services or variables currently exist to verify.
+The repo has a Railway API service config, `/health` endpoint with safe heartbeat checks, Docker `PORT` support, and deployment docs. Railway inspection found the logged-in workspace has zero projects, so no production services or variables currently exist to verify.
 
 Expected production services:
 

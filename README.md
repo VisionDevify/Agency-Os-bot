@@ -49,7 +49,7 @@ pytest
 - Logging must never print raw tokens, session strings, or secret values.
 - Owner setup is restricted to `OWNER_TELEGRAM_ID`.
 - Permission checks and audit logging are centralized in `app.services`.
-- Proxy session-string rotation, automation simulation mode, and self-healing are placeholders until concrete production workflows are defined.
+- Proxy session-string rotation, automation simulation mode, notification routing, and self-healing stay safety-gated until concrete production workflows are approved.
 
 ## Current Modules
 
@@ -58,8 +58,11 @@ pytest
 - Account inventory with secure auth-session and hashed 2FA-code flow.
 - Proxy Vault with encrypted proxy passwords, rotation placeholders, health scoring, incidents, and simulation mode.
 - Tasks and incidents operations layer.
-- Executive Dashboard V2, Daily Company Briefings, Team Accountability, Operations Dashboard, Chatter Dashboard placeholder, and VA Dashboard placeholder.
-- Notification Target placeholders for future owner/operations/incident routing.
+- Executive Command Center, Daily Company Briefings, Team Accountability, Operations Dashboard, Chatter Dashboard placeholder, and VA Dashboard placeholder.
+- Notification Routing V1 with encrypted/masked Notification Targets and testing-only safe sends.
+- Automation Simulation Runs for non-mutating impact previews.
+- Deterministic Recommendations engine for missing proxies, auth attention, critical incidents, overdue work, and staffing gaps.
+- Bot Status and system heartbeat records for API, bot, db, redis, and Railway deployment state.
 - Lightweight EventLog persistence for report and operational event feeds.
 
 ## Railway Deployment
@@ -97,6 +100,8 @@ Health check:
 GET /health
 ```
 
+The health endpoint returns safe status labels for API, database, and Redis and writes heartbeat records. It never returns secret values.
+
 See `docs/railway_deployment.md` for the full production checklist and blockers.
 
 ## Architecture Docs
@@ -105,3 +110,7 @@ See `docs/railway_deployment.md` for the full production checklist and blockers.
 - `docs/database_schema.md`
 - `docs/event_architecture.md`
 - `docs/railway_deployment.md`
+- `docs/notification_routing.md`
+- `docs/production_operations.md`
+- `docs/automation_simulation.md`
+- `docs/recommendations_engine.md`

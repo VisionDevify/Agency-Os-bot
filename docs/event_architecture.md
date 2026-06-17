@@ -1,6 +1,6 @@
 # Event Architecture
 
-Agency OS should become event-driven over time. Audit logs remain the operator-facing safety record. Sprint 8 adds `event_logs` as the first lightweight durable event feed for reports, notifications, automations, self-healing, and future AI operations.
+Agency OS should become event-driven over time. Audit logs remain the operator-facing safety record. Sprint 8 added `event_logs` as the first lightweight durable event feed for reports, notifications, automations, self-healing, and future AI operations. Sprint 9 adds notification routing events, durable automation simulation events, recommendations, and heartbeat state changes.
 
 ## Principle
 
@@ -24,7 +24,7 @@ Future events can feed:
 Sprint 8 keeps event work lightweight:
 
 - Admin and access events are written through audit helpers.
-- Model/Brand, Account, Proxy, Task, Incident, Briefing, Accountability, Dashboard, Report, and Notification Target domain events are emitted through `app.services.events.emit_event`.
+- Model/Brand, Account, Proxy, Task, Incident, Briefing, Accountability, Dashboard, Report, Notification Target, Automation Simulation, Recommendation, and Heartbeat domain events are emitted through `app.services.events.emit_event`.
 - `emit_event` writes an `audit_logs` row and an `event_logs` row with sanitized metadata.
 - Event names use a consistent dotted format.
 - Sensitive metadata is masked or omitted.
@@ -92,10 +92,21 @@ This avoids over-engineering while preserving a clean upgrade path.
 - `dashboard.viewed`: dashboard page viewed.
 - `report.viewed`: report page viewed.
 - `notification_target.created`: notification target placeholder created.
+- `notification_target.updated`: notification target purpose or safe metadata changed.
 - `notification_target.disabled`: notification target disabled.
+- `notification_target.tested`: operator requested a safe target test.
+- `notification.routed`: routing service selected delivery targets for an event.
 - `access.denied`: user attempted a restricted or blocked action.
 - `owner.protection_triggered`: lockout protection blocked a risky action.
-- `automation.simulated`: future automation dry-run completed.
+- `automation.simulated`: automation dry-run completed without mutating production records.
+- `automation.simulation.approved`: simulation preview approved.
+- `automation.simulation.rejected`: simulation preview rejected.
+- `recommendation.generated`: deterministic recommendation created from current state.
+- `recommendation.acknowledged`: operator acknowledged a recommendation.
+- `recommendation.dismissed`: operator dismissed a recommendation.
+- `recommendation.resolved`: operator marked a recommendation resolved.
+- `recommendation.status_changed`: recommendation status changed.
+- `heartbeat.status_changed`: service heartbeat status changed.
 - `repair.succeeded`: future self-healing repair succeeded.
 
 ## Future Event Shape
@@ -152,3 +163,13 @@ Daily briefing and accountability events are report-generation events. They shou
 Executive dashboards emit `dashboard.viewed` events for report visibility. Daily briefings persist metrics in `daily_briefings` and emit `briefing.generated`; viewing or requesting placeholder sends is audited. Team accountability persists per-user `accountability_snapshots` and emits `accountability.generated`.
 
 Notification Target events should include only type and purpose. Telegram chat IDs should be encrypted or omitted and never emitted as raw event metadata.
+
+## Sprint 9 Event Notes
+
+Notification routing stays purpose-based for now. Routing events can include event type, purpose, and target count, but not raw chat IDs. Delivery attempt history is still a future table.
+
+Automation simulation events are first-class safety records. They should include automation type, target scope, would-trigger count, would-succeed count, would-fail count, and risk level. They should not imply any live action was executed.
+
+Recommendation events are deterministic and safe. They should identify recommendation type, severity, entity type, and entity ID when present. Recommendation metadata must not include credentials, tokens, chat IDs, proxy passwords, verification codes, or raw session data.
+
+Heartbeat events are emitted only when a service status changes. Routine heartbeat refreshes should update `system_heartbeats` without filling the audit log with noise.

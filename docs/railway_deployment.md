@@ -1,6 +1,16 @@
 # Railway Deployment
 
-Sprint 8 inspected Railway and found the logged-in workspace has no project yet. This repo is now prepared for Railway, but project creation, service creation, database provisioning, and any billing-impacting action require owner approval.
+Sprint 8 inspected Railway and found the logged-in workspace has no project yet. Sprint 9 re-confirmed the workspace currently has 0 projects. This repo is now prepared for Railway, but project creation, service creation, database provisioning, and any billing-impacting action require owner approval.
+
+## Current Railway Status
+
+- Project count: 0 in the inspected workspace.
+- Production API service: not created.
+- Production bot worker service: not created.
+- Production PostgreSQL: not created.
+- Production Redis: not created.
+- Production environment variables: not present because services do not exist yet.
+- Action needed: owner approval to create the Railway project and provision services.
 
 ## Expected Services
 
@@ -38,8 +48,10 @@ curl https://<api-service-domain>/health
 Expected response:
 
 ```json
-{"status":"ok"}
+{"status":"ok","api":"healthy","db":"healthy","redis":"healthy"}
 ```
+
+If PostgreSQL or Redis are not attached yet, `/health` may return `unknown` or `unhealthy` for those dependencies while still avoiding secret output.
 
 ## Bot Worker Service
 
@@ -77,3 +89,4 @@ Do not reset, delete, or recreate production databases without explicit approval
 - API, bot worker, PostgreSQL, and Redis services must be created.
 - Required variables must be added in Railway without exposing values.
 - A production migration command must be run after the database is attached.
+- Creating services and databases may consume Railway trial credit or require billing decisions, so it is intentionally blocked until owner approval.
