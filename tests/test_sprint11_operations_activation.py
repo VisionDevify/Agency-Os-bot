@@ -1,6 +1,8 @@
+import asyncio
 from datetime import UTC, datetime, time, timedelta
 
 from app.bot.navigation import screen_for_page
+from app.bot.runner import _acquire_polling_guard
 from app.bot.screens import render_manager_command_page, render_onboarding_page
 from app.models.audit import AuditLog
 from app.models.event_log import EventLog
@@ -273,3 +275,18 @@ def test_bot_polling_guard_blocks_duplicate_and_releases() -> None:
     assert first.refresh() is True
     first.release()
     assert second.acquire() is True
+
+
+def test_polling_guard_waits_for_stale_lock_to_clear() -> None:
+    class _RetryGuard:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def acquire(self) -> bool:
+            self.calls += 1
+            return self.calls >= 3
+
+    guard = _RetryGuard()
+
+    assert asyncio.run(_acquire_polling_guard(guard, retry_seconds=0, max_wait_seconds=1)) is True
+    assert guard.calls == 3

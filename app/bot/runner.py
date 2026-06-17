@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import logging
+import time
 from datetime import UTC, datetime
 
 from aiogram import Bot, Dispatcher
@@ -56,6 +57,25 @@ dp = Dispatcher()
 
 PENDING_ACCOUNT_CREATES: dict[int, dict[str, int | str]] = {}
 PENDING_AUTH_CODES: dict[int, int] = {}
+
+
+async def _acquire_polling_guard(
+    guard: BotPollingGuard,
+    *,
+    retry_seconds: int = 10,
+    max_wait_seconds: int = 420,
+) -> bool:
+    if guard.acquire():
+        return True
+
+    logger.warning("Another Agency OS bot polling instance appears active; waiting for lock to clear")
+    deadline = time.monotonic() + max_wait_seconds
+    while time.monotonic() < deadline:
+        await asyncio.sleep(retry_seconds)
+        if guard.acquire():
+            logger.info("Acquired Agency OS bot polling lock after waiting")
+            return True
+    return False
 
 
 def _principal_from_user(user: User) -> PermissionPrincipal:
@@ -389,9 +409,8 @@ async def main() -> None:
     if not token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN is not configured")
     guard = BotPollingGuard(settings.redis_url)
-    if not guard.acquire():
-        logger.error("Another Agency OS bot polling instance appears active; refusing to start duplicate polling")
-        return
+    if not await _acquire_polling_guard(guard):
+        raise RuntimeError("Another Agency OS bot polling instance appears active after waiting")
     refresh_task: asyncio.Task | None = None
 
     main_task = asyncio.current_task()
