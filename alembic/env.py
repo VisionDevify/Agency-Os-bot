@@ -16,7 +16,10 @@ target_metadata = Base.metadata
 
 
 def get_url() -> str:
-    return str(settings.database_url)
+    database_url = str(settings.database_url)
+    if database_url.startswith("postgresql://"):
+        return database_url.replace("postgresql://", "postgresql+psycopg://", 1)
+    return database_url
 
 
 def run_migrations_offline() -> None:
