@@ -63,21 +63,29 @@ def render_dashboard(stats: DashboardStats | None = None) -> Screen:
     return Screen(text=text, reply_markup=dashboard_menu())
 
 
-def render_users_page(session: Session) -> Screen:
+def render_users_page(session: Session, status_filter: str | None = None) -> Screen:
     users = session.scalars(
         select(User).options(selectinload(User.roles)).order_by(User.id).limit(10)
     ).all()
-    pending_count = sum(1 for user in users if user.status == "pending")
-    lines = ["Users", "", f"Pending: {pending_count}", ""]
+    all_pending_count = sum(1 for user in users if user.status == "pending")
+    if status_filter is not None:
+        users = [user for user in users if user.status == status_filter]
+    title = "Pending Users" if status_filter == "pending" else "Users"
+    lines = [title, "", f"Pending: {all_pending_count}", ""]
     if not users:
         lines.append("No users yet.")
     buttons: list[tuple[str, str]] = []
     for user in users:
         role_names = ", ".join(role.name for role in user.roles) or "No roles"
-        username = f"@{user.username}" if user.username else (user.display_name or f"User {user.id}")
-        lines.append(f"{user.id}. {username}")
+        if user.display_name and user.username:
+            identity = f"{user.display_name} (@{user.username})"
+        elif user.username:
+            identity = f"@{user.username}"
+        else:
+            identity = user.display_name or f"User {user.id}"
+        lines.append(f"{user.id}. {identity}")
         lines.append(f"   Status: {user.status} | Roles: {role_names}")
-        buttons.append((f"{user.id}. {username} ({user.status})", f"nav:user:{user.id}"))
+        buttons.append((f"{user.id}. {identity} ({user.status})", f"nav:user:{user.id}"))
     return Screen(text="\n".join(lines), reply_markup=users_menu(buttons))
 
 
@@ -126,11 +134,24 @@ def render_user_detail_page(session: Session, user_id: int) -> Screen:
 
 
 def render_role_assignment_page(session: Session, user_id: int, action: str) -> Screen:
-    user = session.get(User, user_id)
+    user = session.scalar(select(User).where(User.id == user_id).options(selectinload(User.roles)))
     if user is None:
         return Screen(text="User not found.", reply_markup=page_menu(back_to="users"))
-    role_names = session.scalars(select(Role.name).order_by(Role.name)).all()
     title = "Assign Role" if action == "assign_role" else "Remove Role"
+    if action == "remove_role":
+        role_names = sorted(role.name for role in user.roles)
+    else:
+        assigned = {role.name for role in user.roles}
+        role_names = [
+            role_name
+            for role_name in session.scalars(select(Role.name).order_by(Role.name)).all()
+            if role_name not in assigned
+        ]
+    if not role_names:
+        return Screen(
+            text=f"{title}\n\nNo roles available.",
+            reply_markup=page_menu(back_to=f"user:{user_id}"),
+        )
     return Screen(
         text=f"{title}\n\nUser: {user.display_name or user.username or user.id}",
         reply_markup=role_choice_menu(user_id, action, list(role_names)),
@@ -227,6 +248,8 @@ def render_denied() -> Screen:
 def render_page(page: str, session: Session | None = None) -> Screen:
     if page == "users" and session is not None:
         return render_users_page(session)
+    if page == "users:pending" and session is not None:
+        return render_users_page(session, status_filter="pending")
     if page.startswith("user:") and session is not None:
         parts = page.split(":")
         if len(parts) >= 2 and parts[1].isdigit():

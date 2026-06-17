@@ -17,7 +17,9 @@ from app.services.auth import (
     USER_STATUS_DISABLED,
     USER_STATUS_DENIED,
     USER_STATUS_PENDING,
+    audit_action,
     get_or_create_telegram_user,
+    mask_telegram_id,
     setup_owner_if_needed,
 )
 from app.services.permissions import PermissionPrincipal, RoleName, require_owner
@@ -109,18 +111,45 @@ async def navigate(callback: CallbackQuery) -> None:
         user.last_seen = datetime.now(UTC)
         principal = _principal_from_user(user)
         if user.status == USER_STATUS_DISABLED:
+            audit_action(
+                session,
+                actor=user,
+                action="access.denied",
+                resource_type="telegram_page",
+                resource_id=page,
+                status="denied",
+                details={"reason": "disabled", "telegram_id_masked": mask_telegram_id(user.telegram_id)},
+            )
             screen = render_disabled()
             await callback.message.edit_text(screen.text, reply_markup=screen.reply_markup)
             await callback.answer("Access disabled.", show_alert=True)
             session.commit()
             return
         if user.status == USER_STATUS_DENIED:
+            audit_action(
+                session,
+                actor=user,
+                action="access.denied",
+                resource_type="telegram_page",
+                resource_id=page,
+                status="denied",
+                details={"reason": "denied", "telegram_id_masked": mask_telegram_id(user.telegram_id)},
+            )
             screen = render_denied()
             await callback.message.edit_text(screen.text, reply_markup=screen.reply_markup)
             await callback.answer("Access denied.", show_alert=True)
             session.commit()
             return
         if user.status == USER_STATUS_PENDING:
+            audit_action(
+                session,
+                actor=user,
+                action="access.denied",
+                resource_type="telegram_page",
+                resource_id=page,
+                status="denied",
+                details={"reason": "pending", "telegram_id_masked": mask_telegram_id(user.telegram_id)},
+            )
             screen = render_access_pending()
             await callback.message.edit_text(screen.text, reply_markup=screen.reply_markup)
             await callback.answer("Access pending.", show_alert=True)

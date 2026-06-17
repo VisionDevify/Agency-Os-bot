@@ -51,7 +51,10 @@ def dashboard_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="View Tasks", callback_data=callback_for("tasks")),
                 InlineKeyboardButton(text="View Incidents", callback_data=callback_for("incidents")),
             ],
-            [InlineKeyboardButton(text="Main Menu", callback_data=callback_for("menu"))],
+            [
+                InlineKeyboardButton(text="Back", callback_data=callback_for("menu")),
+                InlineKeyboardButton(text="Main Menu", callback_data=callback_for("menu")),
+            ],
         ]
     )
 
@@ -61,7 +64,10 @@ def page_menu(back_to: str = "menu") -> InlineKeyboardMarkup:
 
 
 def users_menu(user_buttons: list[tuple[str, str]]) -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in user_buttons]
+    rows = [[InlineKeyboardButton(text="Pending Users", callback_data=callback_for("users:pending"))]]
+    rows.extend(
+        [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in user_buttons]
+    )
     rows.extend(page_controls(back_to="menu"))
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -71,15 +77,15 @@ def user_detail_menu(user_id: int, status: str) -> InlineKeyboardMarkup:
     if status == "pending":
         rows.append(
             [
-                InlineKeyboardButton(text="Approve User", callback_data=f"nav:user:{user_id}:approve"),
-                InlineKeyboardButton(text="Deny User", callback_data=f"nav:user:{user_id}:deny"),
+                InlineKeyboardButton(text="Approve", callback_data=f"nav:user:{user_id}:approve"),
+                InlineKeyboardButton(text="Deny", callback_data=f"nav:user:{user_id}:deny"),
             ]
         )
     if status == "active":
-        rows.append([InlineKeyboardButton(text="Disable User", callback_data=f"nav:user:{user_id}:disable")])
+        rows.append([InlineKeyboardButton(text="Disable", callback_data=f"nav:user:{user_id}:disable")])
     if status in {"disabled", "denied"}:
         rows.append(
-            [InlineKeyboardButton(text="Reactivate User", callback_data=f"nav:user:{user_id}:reactivate")]
+            [InlineKeyboardButton(text="Reactivate", callback_data=f"nav:user:{user_id}:reactivate")]
         )
     rows.append(
         [

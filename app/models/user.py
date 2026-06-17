@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Index, String
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, Index, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -11,6 +11,10 @@ from app.models.permissions import Role
 class User(TimestampMixin, Base):
     __tablename__ = "users"
     __table_args__ = (
+        CheckConstraint(
+            "status in ('pending', 'active', 'disabled', 'denied')",
+            name="ck_users_status",
+        ),
         Index("ix_users_telegram_id", "telegram_id"),
         Index("ix_users_status", "status"),
     )

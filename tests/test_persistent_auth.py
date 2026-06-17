@@ -64,6 +64,25 @@ def test_non_owner_cannot_self_promote() -> None:
             prevent_self_promotion(user, user, [RoleName.OWNER.value])
 
 
+def test_unknown_telegram_user_becomes_pending_and_is_audited() -> None:
+    with session_scope() as session:
+        user = get_or_create_telegram_user(
+            session,
+            telegram_user_id=20000,
+            display_name="New Person",
+            username="new_person",
+            owner_telegram_id=100,
+        )
+
+        log = session.query(AuditLog).filter_by(action="user.pending_created").one()
+        assert user.status == USER_STATUS_PENDING
+        assert user.is_active is False
+        assert log.actor_user_id is None
+        assert log.resource_type == "user"
+        assert "telegram_id" not in log.details
+        assert log.details["telegram_id_masked"] == "20...00"
+
+
 def test_disabled_user_is_blocked() -> None:
     with session_scope() as session:
         seed_default_roles_and_permissions(session)
@@ -127,14 +146,14 @@ def test_restricted_access_attempt_gets_audited() -> None:
         audit_action(
             session,
             actor=user,
-            action="restricted_page.accessed",
+            action="access.denied",
             resource_type="telegram_page",
             resource_id="users",
             status="denied",
             details={"permission": "manage_users"},
         )
 
-        log = session.query(AuditLog).one()
+        log = session.query(AuditLog).filter_by(action="access.denied").one()
         assert log.actor_user_id == user.id
         assert log.status == "denied"
         assert log.details == {"permission": "manage_users"}
@@ -187,6 +206,8 @@ def test_owner_role_cannot_be_deleted() -> None:
         with pytest.raises(PermissionError):
             delete_role(session, owner_role, actor=owner)
 
+        assert session.query(AuditLog).filter_by(action="owner.protection_triggered").count() == 1
+
 
 def test_final_owner_cannot_be_removed() -> None:
     with session_scope() as session:
@@ -194,6 +215,19 @@ def test_final_owner_cannot_be_removed() -> None:
 
         with pytest.raises(PermissionError):
             remove_role_from_user(session, owner, RoleName.OWNER, actor=owner)
+
+        assert session.query(AuditLog).filter_by(action="owner.protection_triggered").count() == 1
+
+
+def test_final_owner_cannot_be_disabled() -> None:
+    with session_scope() as session:
+        owner = setup_owner_if_needed(session, telegram_user_id=100, owner_telegram_id=100)
+
+        with pytest.raises(PermissionError):
+            disable_user(session, owner, actor=owner)
+
+        assert owner.status == USER_STATUS_ACTIVE
+        assert session.query(AuditLog).filter_by(action="owner.protection_triggered").count() == 1
 
 
 def test_owner_role_cannot_be_assigned_by_non_owner() -> None:
@@ -208,6 +242,22 @@ def test_owner_role_cannot_be_assigned_by_non_owner() -> None:
         with pytest.raises(PermissionError):
             assign_role_to_user(session, target, RoleName.OWNER, actor=admin)
 
+        assert session.query(AuditLog).filter_by(action="owner.protection_triggered").count() == 1
+
+
+def test_role_assignment_and_removal_work() -> None:
+    with session_scope() as session:
+        owner = setup_owner_if_needed(session, telegram_user_id=100, owner_telegram_id=100)
+        target = get_or_create_telegram_user(session, telegram_user_id=400)
+        target.status = USER_STATUS_ACTIVE
+        target.is_active = True
+
+        assign_role_to_user(session, target, RoleName.VIEWER, actor=owner)
+        assert RoleName.VIEWER.value in {role.name for role in target.roles}
+
+        remove_role_from_user(session, target, RoleName.VIEWER, actor=owner)
+        assert RoleName.VIEWER.value not in {role.name for role in target.roles}
+
 
 def test_permission_add_remove_works() -> None:
     with session_scope() as session:
@@ -221,6 +271,10 @@ def test_permission_add_remove_works() -> None:
 
         remove_permission_from_role(session, role, "view_dashboard", actor=owner)
         assert "view_dashboard" not in {permission.key for permission in role.permissions}
+
+        actions = {row.action for row in session.query(AuditLog).all()}
+        assert "permission.added_to_role" in actions
+        assert "permission.removed_from_role" in actions
 
 
 def test_admin_actions_create_audit_logs() -> None:
@@ -246,6 +300,6 @@ def test_admin_actions_create_audit_logs() -> None:
             "user.denied",
             "role.assigned",
             "role.removed",
-            "role_permission.added",
-            "role_permission.removed",
+            "permission.added_to_role",
+            "permission.removed_from_role",
         }.issubset(actions)

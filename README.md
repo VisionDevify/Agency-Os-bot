@@ -50,3 +50,9 @@ pytest
 - Owner setup is restricted to `OWNER_TELEGRAM_ID`.
 - Permission checks and audit logging are centralized in `app.services`.
 - Proxy session-string rotation, automation simulation mode, and self-healing are placeholders until concrete production workflows are defined.
+
+## Architecture Docs
+
+- `docs/agency_os_master_spec.md`
+- `docs/database_schema.md`
+- `docs/event_architecture.md`

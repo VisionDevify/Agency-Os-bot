@@ -16,6 +16,7 @@ from app.services.auth import (
     reactivate_user,
     remove_permission_from_role,
     remove_role_from_user,
+    mask_telegram_id,
     user_has_permission,
 )
 from app.services.permissions import PermissionPrincipal, require_permission
@@ -36,6 +37,8 @@ PAGE_PERMISSIONS: dict[str, str] = {
 
 
 def permission_for_page(page: str) -> str | None:
+    if page.startswith("users:"):
+        return "manage_users"
     if page.startswith("user:"):
         return "manage_users"
     if page.startswith("role:") or page == "permissions":
@@ -102,14 +105,14 @@ def screen_for_page(
                 actor=user,
                 action="admin_area.opened",
                 resource_type="telegram_menu",
-                details={"telegram_id": principal.telegram_id},
+                details={"telegram_id_masked": mask_telegram_id(principal.telegram_id)},
             )
         else:
             recorder.record(
                 actor_user_id=None,
                 action="admin_area.opened",
                 resource_type="telegram_menu",
-                details={"telegram_id": principal.telegram_id},
+                details={"telegram_id_masked": mask_telegram_id(principal.telegram_id)},
             )
         return render_main_menu()
 
@@ -126,19 +129,25 @@ def screen_for_page(
                 audit_action(
                     session,
                     actor=user,
-                    action="restricted_page.accessed",
+                    action="access.denied",
                     resource_type="telegram_page",
                     resource_id=normalized,
                     status="denied",
-                    details={"telegram_id": principal.telegram_id, "permission": permission},
+                    details={
+                        "telegram_id_masked": mask_telegram_id(principal.telegram_id),
+                        "permission": permission,
+                    },
                 )
             else:
                 recorder.record(
                     actor_user_id=None,
-                    action="restricted_page.accessed",
+                    action="access.denied",
                     resource_type="telegram_page",
                     resource_id=normalized,
-                    details={"telegram_id": principal.telegram_id, "permission": permission},
+                    details={
+                        "telegram_id_masked": mask_telegram_id(principal.telegram_id),
+                        "permission": permission,
+                    },
                 )
             raise
 
@@ -154,7 +163,7 @@ def screen_for_page(
             action="management_action.performed",
             resource_type="telegram_page",
             resource_id=normalized,
-            details={"telegram_id": principal.telegram_id},
+            details={"telegram_id_masked": mask_telegram_id(principal.telegram_id)},
         )
     else:
         recorder.record(
@@ -171,6 +180,7 @@ def screen_for_page(
         normalized in PAGE_TITLES
         or normalized == "audit_logs"
         or normalized == "permissions"
+        or normalized.startswith("users:")
         or normalized.startswith("user:")
         or normalized.startswith("role:")
     ):
