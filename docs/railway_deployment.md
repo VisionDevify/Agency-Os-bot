@@ -1,21 +1,21 @@
 # Railway Deployment
 
-Sprint 8 inspected Railway and found the logged-in workspace has no project yet. Sprint 9 re-confirmed the workspace currently has 0 projects. Sprint 10 re-inspected the workspace and found a trial/credit banner, so project creation, service creation, database provisioning, and any billing-impacting action require owner approval.
+Sprint 8 inspected Railway and found the logged-in workspace had no project yet. Sprint 9 re-confirmed the workspace had 0 projects. Sprint 10 re-inspected the workspace and found a trial/credit banner, so project creation, service creation, database provisioning, and any billing-impacting action required owner approval. Owner approval was later granted for Agency OS production activation.
 
 ## Current Railway Status
 
-- Project count: 0 in the inspected workspace.
-- Production API service: not created.
-- Production bot worker service: not created.
-- Production PostgreSQL: not created.
-- Production Redis: not created.
-- Production environment variables: not present because services do not exist yet.
-- Action needed: owner approval to create the Railway project and provision services.
-- Approval blocker: creating the project/services may consume trial credit or require billing confirmation.
+- Project created: Agency OS Bot.
+- Production API service: created from `VisionDevify/Agency-Os-bot`.
+- Production bot worker service: created from `VisionDevify/Agency-Os-bot`.
+- Production PostgreSQL: created and attached.
+- Production Redis: created and attached.
+- Production environment variables: added in Railway without printing values.
+- API public domain: `agency-os-bot-production.up.railway.app`.
+- Remaining check: verify public `/health` after any networking/start-command changes finish deploying.
 
 ## Expected Services
 
-- API service: runs FastAPI with `uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}`.
+- API service: runs FastAPI with `uvicorn app.main:app --host 0.0.0.0 --port 8000`.
 - Bot worker service: runs `python -m app.bot.runner`.
 - PostgreSQL service.
 - Redis service.
@@ -53,7 +53,6 @@ API service variables:
 - `APP_SECRET_KEY`
 - `ENCRYPTION_KEY`
 - `OWNER_TELEGRAM_ID`
-- `PORT` if Railway does not inject it automatically.
 
 ## API Service
 
@@ -61,7 +60,7 @@ The root `railway.json` is suitable for shared repo deployments:
 
 - Dockerfile builder.
 - restart on failure.
-- start command using Railway `PORT`.
+- start command on port `8000`.
 
 The API exposes `/health`. Verify it manually after deployment, or configure an API-only Railway
 healthcheck in the API service settings. Do not put a shared healthcheck in `railway.json`, because
@@ -93,7 +92,8 @@ Do not expose an HTTP domain for the worker unless a future webhook mode is adde
 
 ## Migration Strategy
 
-Run migrations after database variables are present and before starting the bot worker:
+Migrations run at API and bot startup after database variables are present. A manual migration command
+is still safe when needed:
 
 ```bash
 alembic upgrade head
@@ -104,7 +104,7 @@ Recommended safe flow:
 1. Provision PostgreSQL and Redis.
 2. Attach variables to API and bot services.
 3. Deploy API.
-4. Run `alembic upgrade head` as a one-off Railway command.
+4. Allow startup migrations to run, or run `alembic upgrade head` as a one-off Railway command if needed.
 5. Verify `/health`.
 6. Start or redeploy the bot worker.
 7. Verify `/start` in Telegram.
@@ -117,8 +117,6 @@ After deploy, run the checklist in `docs/production_smoke_test.md`.
 
 ## Current Blockers
 
-- No Railway project exists in the inspected workspace.
-- API, bot worker, PostgreSQL, and Redis services must be created.
-- Required variables must be added in Railway without exposing values.
-- A production migration command must be run after the database is attached.
-- Creating services and databases may consume Railway trial credit or require billing decisions, so it is intentionally blocked until owner approval.
+- Public API `/health` must return healthy after the final networking/start-command deploy.
+- Telegram production `/start` should be smoke-tested after the Railway bot worker is confirmed active.
+- Telegram groups/channels and notification target registration are still manual/future production setup items.

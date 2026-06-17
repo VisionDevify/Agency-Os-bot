@@ -1,17 +1,15 @@
 # Production Operations
 
-Sprint 9 prepares Agency OS for production activation while stopping before billing-impacting or destructive actions. Sprint 10 adds delivery-attempt tracking and confirms Railway project/service creation remains approval-gated because the inspected workspace shows trial/credit limits.
+Sprint 9 prepared Agency OS for production activation while stopping before billing-impacting or destructive actions. Sprint 10 added delivery-attempt tracking. Owner approval was later granted for Railway production activation.
 
 ## Current Production State
 
-- Railway workspace inspection found 0 projects.
-- API service is not created.
-- Bot worker service is not created.
-- PostgreSQL is not provisioned.
-- Redis is not provisioned.
-- Production variables are not present because services do not exist yet.
-
-Owner approval is required before creating the Railway project and provisioning services.
+- Railway project exists for Agency OS.
+- API service is created from `VisionDevify/Agency-Os-bot`.
+- Bot worker service is created from `VisionDevify/Agency-Os-bot`.
+- PostgreSQL is provisioned.
+- Redis is provisioned.
+- Production variables are configured in Railway without exposing values.
 
 ## Expected Railway Services
 
@@ -41,7 +39,8 @@ The `/health` endpoint returns safe labels for API, database, and Redis. It also
 
 The bot worker records `bot` heartbeat rows on startup and Telegram activity.
 
-`railway_deployment` heartbeat is a production status placeholder until Railway deployment exists.
+`railway_deployment` heartbeat remains a production status placeholder until automated deployment
+status ingestion is added.
 
 ## Production Status Dashboard
 

@@ -68,11 +68,9 @@ pytest
 
 ## Railway Deployment
 
-Railway inspection found no existing project in the logged-in workspace. The repo is prepared for Railway, but project/service creation and billing-impacting actions require explicit approval.
+Railway production activation has been started for Agency OS after owner approval.
 
-Sprint 10 inspection showed the workspace is on a trial/credit boundary. Creating a project, API service, bot worker, PostgreSQL, or Redis may consume credits, so production creation remains blocked until the owner explicitly approves it.
-
-Expected Railway services:
+Current Railway services:
 
 - API service from this repo using `railway.json`.
 - Bot worker service from this repo with start command `python -m app.bot.runner`.
@@ -82,7 +80,7 @@ Expected Railway services:
 API start command:
 
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}
+uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 Bot worker start command:
@@ -91,7 +89,7 @@ Bot worker start command:
 python -m app.bot.runner
 ```
 
-Run migrations after Railway variables and PostgreSQL are attached:
+Migrations run at API and bot startup. A manual migration command is still safe if needed:
 
 ```bash
 alembic upgrade head
