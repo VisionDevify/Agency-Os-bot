@@ -11,6 +11,7 @@ def test_model_tables_are_registered() -> None:
         "reports",
         "roles",
         "tasks",
+        "user_roles",
         "users",
     }
 
@@ -18,6 +19,7 @@ def test_model_tables_are_registered() -> None:
     assert User.__tablename__ == "users"
     assert Role.__tablename__ == "roles"
     assert AuditLog.__tablename__ == "audit_logs"
+    assert "status" in AuditLog.__table__.columns
     assert Account.__tablename__ == "accounts"
     assert Proxy.__tablename__ == "proxies"
     assert Task.__tablename__ == "tasks"

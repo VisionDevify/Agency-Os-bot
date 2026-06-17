@@ -37,7 +37,7 @@ pytest
 ## Required Environment Variables
 
 - `TELEGRAM_BOT_TOKEN`: existing Telegram bot token.
-- `DATABASE_URL`: PostgreSQL SQLAlchemy URL, for example `postgresql+asyncpg://agency:agency@db:5432/agency_os`.
+- `DATABASE_URL`: PostgreSQL SQLAlchemy URL, for example `postgresql+psycopg://agency:agency@db:5432/agency_os`.
 - `REDIS_URL`: Redis URL, for example `redis://redis:6379/0`.
 - `APP_SECRET_KEY`: application signing secret.
 - `ENCRYPTION_KEY`: application encryption secret for future sensitive payloads.

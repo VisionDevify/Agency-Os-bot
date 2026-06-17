@@ -1,6 +1,6 @@
 from app.models.audit import AuditLog
 from app.models.core import Account, Automation, Incident, Proxy, Report, Task
-from app.models.permissions import Permission, Role, RolePermission
+from app.models.permissions import Permission, Role, RolePermission, UserRole
 from app.models.user import User
 
 __all__ = [
@@ -15,4 +15,5 @@ __all__ = [
     "RolePermission",
     "Task",
     "User",
+    "UserRole",
 ]

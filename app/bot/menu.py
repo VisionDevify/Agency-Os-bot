@@ -58,3 +58,15 @@ def dashboard_menu() -> InlineKeyboardMarkup:
 
 def page_menu(back_to: str = "menu") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=page_controls(back_to=back_to))
+
+
+def settings_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="View Audit Logs", callback_data=callback_for("audit_logs"))],
+            [
+                InlineKeyboardButton(text="Back", callback_data=callback_for("menu")),
+                InlineKeyboardButton(text="Main Menu", callback_data=callback_for("menu")),
+            ],
+        ]
+    )

@@ -1,4 +1,7 @@
 from app.services.audit import build_audit_event, sanitize_details
+from app.services.auth import audit_action
+
+from tests.utils import session_scope
 
 
 def test_audit_details_redact_secrets() -> None:
@@ -21,3 +24,20 @@ def test_build_audit_event_shape() -> None:
     assert event["resource_type"] == "user"
     assert event["resource_id"] == "2"
     assert event["details"] == {"safe": True}
+
+
+def test_audit_action_persists_and_redacts_details() -> None:
+    with session_scope() as session:
+        log = audit_action(
+            session,
+            actor=None,
+            action="restricted_page.accessed",
+            resource_type="telegram_page",
+            resource_id="users",
+            status="denied",
+            details={"token": "secret", "permission": "manage_users"},
+        )
+
+        assert log.id is not None
+        assert log.status == "denied"
+        assert log.details == {"token": "[redacted]", "permission": "manage_users"}

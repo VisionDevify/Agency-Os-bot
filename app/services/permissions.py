@@ -3,46 +3,54 @@ from enum import StrEnum
 
 
 class RoleName(StrEnum):
-    OWNER = "owner"
-    ADMIN = "admin"
-    MANAGER = "manager"
-    VA = "va"
-    CHATTER = "chatter"
-    VIEWER = "viewer"
+    OWNER = "Owner"
+    ADMIN = "Admin"
+    MANAGER = "Manager"
+    VA = "VA"
+    CHATTER_MANAGER = "Chatter Manager"
+    SENIOR_CHATTER = "Senior Chatter"
+    CHATTER = "Chatter"
+    VIEWER = "Viewer"
+    MODEL_CLIENT = "Model/Client"
 
 
 ROLE_PERMISSIONS: dict[RoleName, frozenset[str]] = {
     RoleName.OWNER: frozenset({"*"}),
     RoleName.ADMIN: frozenset(
         {
-            "dashboard.view",
-            "users.manage",
-            "roles.manage",
-            "accounts.manage",
-            "proxies.manage",
-            "tasks.manage",
-            "incidents.manage",
-            "reports.view",
-            "automations.manage",
-            "settings.manage",
+            "view_dashboard",
+            "manage_users",
+            "manage_roles",
+            "manage_accounts",
+            "manage_proxies",
+            "manage_tasks",
+            "manage_incidents",
+            "manage_reports",
+            "manage_automations",
+            "view_audit_logs",
         }
     ),
     RoleName.MANAGER: frozenset(
         {
-            "dashboard.view",
-            "accounts.manage",
-            "proxies.view",
-            "tasks.manage",
-            "incidents.manage",
-            "reports.view",
-            "automations.view",
+            "view_dashboard",
+            "manage_accounts",
+            "manage_tasks",
+            "manage_incidents",
+            "manage_reports",
+            "manage_automations",
+            "resolve_incidents",
         }
     ),
-    RoleName.VA: frozenset(
-        {"dashboard.view", "accounts.view", "tasks.manage", "incidents.create", "reports.view"}
+    RoleName.VA: frozenset({"view_dashboard", "manage_tasks", "upload_content"}),
+    RoleName.CHATTER_MANAGER: frozenset(
+        {"view_dashboard", "view_chatter_dashboard", "manage_chatter_team", "approve_content"}
     ),
-    RoleName.CHATTER: frozenset({"dashboard.view", "accounts.view", "tasks.view"}),
-    RoleName.VIEWER: frozenset({"dashboard.view", "reports.view"}),
+    RoleName.SENIOR_CHATTER: frozenset(
+        {"view_dashboard", "view_chatter_dashboard", "approve_content", "upload_content"}
+    ),
+    RoleName.CHATTER: frozenset({"view_dashboard", "view_chatter_dashboard", "upload_content"}),
+    RoleName.VIEWER: frozenset({"view_dashboard"}),
+    RoleName.MODEL_CLIENT: frozenset({"view_dashboard", "approve_content"}),
 }
 
 
