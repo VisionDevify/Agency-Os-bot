@@ -1,6 +1,13 @@
 from app.models.account import Account, AccountAuthSession, AccountVerificationCode
 from app.models.audit import AuditLog
-from app.models.automation import AutomationRule, AutomationSimulationRun
+from app.models.automation import (
+    AutomationApproval,
+    AutomationRule,
+    AutomationRun,
+    AutomationRunStep,
+    AutomationSchedule,
+    AutomationSimulationRun,
+)
 from app.models.core import Automation, Report
 from app.models.event_log import EventLog
 from app.models.incident import Incident, IncidentTimeline
@@ -22,7 +29,11 @@ __all__ = [
     "AccountabilitySnapshot",
     "AuditLog",
     "Automation",
+    "AutomationApproval",
     "AutomationRule",
+    "AutomationRun",
+    "AutomationRunStep",
+    "AutomationSchedule",
     "AutomationSimulationRun",
     "DailyBriefing",
     "EventLog",

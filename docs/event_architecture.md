@@ -227,3 +227,32 @@ Unsafe metadata remains forbidden:
 Critical intelligence signals may create notification delivery attempts through the existing purpose-based routing rules. The delivery attempt should summarize the signal and route to owner/HQ, incidents, or operations targets when active. It should not send raw diagnostic dumps.
 
 Opportunity events are manual-only. They must not imply automatic scraping, posting, commenting, liking, following, or platform automation. Future AI opportunity discovery must remain human-approved and should prefer official APIs where available.
+
+## Automation Builder Event Notes
+
+Sprint 14 automation events are internal Agency OS events. They describe rule management, simulations, approvals, execution, rollback planning, and metrics. They must not imply external social-platform automation.
+
+Core automation event names:
+
+- `automation.rule.created`
+- `automation.rule.simulated`
+- `automation.approval.requested`
+- `automation.approved`
+- `automation.rejected`
+- `automation.activated`
+- `automation.paused`
+- `automation.resumed`
+- `automation.retired`
+- `automation.run.started`
+- `automation.run.succeeded`
+- `automation.run.failed`
+- `automation.run.skipped`
+- `automation.suggested`
+
+Safe metadata can include automation rule ID, simulation run ID, automation run ID, rule category, trigger type, action types, risk level, status, affected entity IDs, counts, duration, and rollback availability.
+
+Unsafe metadata remains forbidden:
+
+- bot tokens, passwords, encryption keys, proxy passwords, credential references with secret-bearing context, raw Telegram chat IDs, verification codes, code hashes, platform session data, and raw provider payloads.
+
+Simulation events mean "reviewed as a dry run." They do not mean a proxy was rotated, a task was reassigned, an incident was escalated, or a notification was sent. Live execution must create `automation_runs` and `automation_run_steps` before recording success/failure events.

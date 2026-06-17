@@ -100,3 +100,21 @@ Signal routing must stay digest-friendly:
 
 - Add owner-approved routing activation per purpose.
 - Add group/channel setup verification once Agency OS Telegram groups are created.
+
+## Automation Routing
+
+Automation notifications should stay summary-first.
+
+Suggested routing:
+
+- High-risk approval needed -> owner/HQ.
+- Simulation completed -> automation logs.
+- Automation run succeeded -> automation logs.
+- Automation run failed -> automation logs and incidents when severity is high/critical.
+- Task or incident automation result -> operations.
+- Proxy repair failure -> incidents and automation logs.
+- Daily digest automation -> owner/HQ and operations after target approval.
+
+Low-risk run details should be grouped into run history instead of sent as separate chat messages. Telegram notifications should link operators back to the relevant automation rule, simulation, run, or incident screen when possible.
+
+Delivery attempts must still be recorded for every real send. Metadata should include only safe IDs, event type, purpose, status, and coarse error messages.

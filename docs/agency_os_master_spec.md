@@ -21,11 +21,12 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Sprint 10: Production launch approval boundaries, Railway trial-credit blocker documentation, notification delivery attempt persistence, production status upgrades, and production smoke-test documentation.
 - Sprint 11: Agency operations activation layer with task ownership/escalation, incident timelines, shift/availability and localization onboarding, smart notification routing, Daily Digest delivery, Manager Command View, and duplicate bot polling protection.
 - Sprint 12: Agency Intelligence Brain V1 with deterministic signals, issue patterns, trend snapshots, workload snapshots, executive insights, no-code intelligence runs, Recommendation V2 metadata, critical-signal routing, and manual opportunity intelligence foundation.
+- Sprint 14: Automation Builder and Simulation Engine with durable rules, triggers, conditions, actions, simulation runs, approval workflow, execution records, step records, rollback plans, built-in templates, metrics, and Telegram automation management.
 
 ## Roadmap
 
 - Sprint 13: Team rollout hardening, richer task/incident creation forms, notification group activation, and operational QA with real agency users.
-- Sprint 14: Self-healing playbooks, repair approval gates, and richer repair event tracking.
+- Sprint 15: Team rollout hardening, scheduled automation execution, richer rule creation forms, and operational QA with real agency users.
 - Future: AI Operations Brain for natural-language summaries, anomaly explanations, and operator-approved next actions.
 
 ## Core Modules
@@ -44,7 +45,7 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Daily Digest: operator-approved generated digest and delivery-attempt flow for HQ and Operations.
 - Notifications: encrypted Telegram notification targets, purpose-based routing rules, masked chat IDs, testing-only safe sends, and durable delivery-attempt records.
 - Availability: user language, country, timezone, time format, shift state, and quiet-hours foundation for smart routing.
-- Automations: placeholder resource model plus durable simulation runs for preview/approve workflows.
+- Automations: no-code automation builder with safe triggers, conditions, actions, simulations, approval gates, execution records, rollback planning, built-in templates, and success/failure metrics.
 - Recommendations: deterministic operational recommendations generated from database state.
 - Intelligence Brain: deterministic signals, issue patterns, trends, workload analysis, executive insights, and run history for no-code scans.
 - Opportunities: manual, human-approved opportunity records for future funnel intelligence without scraping or automatic posting.
@@ -254,7 +255,7 @@ Sprint 11 turns the production bot into a usable day-to-day operations console.
 - Tasks: assigned work, status movement, overdue queues, model/account attachment, and SLA signals.
 - Incidents: incident creation, triage, severity, ownership, escalation, and resolution.
 - Reports: operational summaries, daily briefings, team accountability reports, audit summaries, health metrics, and exportable views.
-- Automations: repeatable workflows with simulation mode before live execution.
+- Automations: repeatable workflows with simulation, approval, live run records, rollback planning, and metrics before broader scheduled execution.
 - Simulation Mode: dry-run execution that records intended changes without performing risky actions.
 - Self-Healing: playbooks that detect failures, attempt safe repairs, and emit repair events.
 - AI Operations Brain: contextual summaries, anomaly explanations, and recommended actions based on events and current state.
@@ -448,10 +449,10 @@ YELLOW:
 RED:
 
 - The original `users.role_id` column exists in the earliest migration but is not used by the current model. It should be removed in a future cleanup migration only after explicit approval because it is a schema deletion.
-- EventLog is now a lightweight event sink. A queue/stream should wait until real automation/reporting consumers need asynchronous delivery.
-- Reports and automations are still placeholder tables. Current generated report screens are computed from live records and audit events.
+- EventLog is now a lightweight event sink used by reports, intelligence, recommendations, notifications, and automations. A queue/stream should wait until real asynchronous consumers need it.
+- Some report delivery flows still use placeholders for scheduled sends, but automations now have durable rules, simulations, approvals, run history, and step records.
 - Proxy health tests are simulated service results until a real provider/network adapter is introduced.
-- Railway has no project/services in the inspected workspace yet. Sprint 10 observed a trial/credit boundary, so production deploy still requires explicit owner approval before creating API, bot worker, PostgreSQL, and Redis services and setting variables in Railway.
+- Railway production is expected to run API, bot worker, PostgreSQL, and Redis. Production verification should still avoid printing secrets, changing billing, deleting data, or forcing destructive migrations.
 
 ## Executive Intelligence Layer
 
@@ -532,3 +533,43 @@ Required variables:
 - `OWNER_TELEGRAM_ID`
 
 Production blockers are documented in `docs/railway_deployment.md`.
+
+## Automation Builder And Simulation Engine
+
+Sprint 14 turns automations from previews into a safe operations engine.
+
+Automation lifecycle:
+
+- Draft.
+- Simulate.
+- Review impact.
+- Approve.
+- Activate.
+- Run.
+- Verify.
+- Report.
+- Roll back when a supported rollback exists.
+
+Automation rules are durable records with category, status, trigger configuration, conditions, actions, rollback plan, risk level, creator, approver, and run timestamps. Simulations are read-only safety previews that estimate trigger count, success count, failure count, affected entities, risk, and warnings without mutating production records.
+
+Approval rules:
+
+- No rule can become active without simulation.
+- Mutating actions require approval.
+- High/critical risk rules require Owner approval.
+- Proxy repair automation requires Owner approval.
+- Expired simulations cannot be approved.
+- Disabled, denied, or unauthorized users cannot run automation management actions.
+
+Built-in templates:
+
+- Daily Intelligence Scan.
+- Daily Executive Digest.
+- Overdue Task Escalation.
+- Critical Incident Escalation.
+- Proxy Repair Assistant.
+- Notification Failure Watch.
+
+Execution records are split into `automation_runs` and `automation_run_steps` so operators can see what ran, what succeeded, what failed, which entities were affected, and whether rollback is available. Rollback V1 documents supported undo paths for proxy session rollback, task assignment rollback, incident assignment rollback, recommendation status rollback, and notification target disable rollback.
+
+Agency OS still does not automate IG/X/OnlyFans posting, commenting, liking, following, scraping, credential handling, or security bypassing. Automation actions are limited to internal infrastructure, operations, reports, intelligence, notifications, and system records.

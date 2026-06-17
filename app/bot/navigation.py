@@ -2,6 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.bot.screens import PAGE_TITLES, Screen, render_dashboard, render_main_menu, render_page
+from app.models.automation import AutomationApproval
 from app.models.permissions import Role
 from app.models.user import User
 from app.services.audit import AuditRecorder, audit_recorder
@@ -75,9 +76,24 @@ from app.services.notifications import (
     test_notification_target,
 )
 from app.services.automations import (
+    activate_automation_rule,
+    approve_automation,
+    approve_from_simulation,
+    create_placeholder_automation_rule,
+    get_automation_rule,
+    latest_rule_approval,
     get_simulation_run,
+    pause_automation_rule,
+    reject_automation,
+    request_automation_approval,
+    resume_automation_rule,
+    retire_automation_rule,
+    run_automation_rule,
     run_daily_briefing_simulation,
     run_proxy_repair_simulation,
+    seed_builtin_automation_templates,
+    simulate_automation_rule,
+    suggest_automation_from_recommendation,
     update_simulation_status,
 )
 from app.services.recommendations import get_recommendation, update_recommendation_status
@@ -152,7 +168,14 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         return ("manage_reports", "view_dashboard")
     if page.startswith("opportunities") or page.startswith("opportunity:"):
         return ("manage_reports", "manage_tasks")
-    if page.startswith("automations:") or page.startswith("simulation:"):
+    if (
+        page.startswith("automations:")
+        or page.startswith("automation:")
+        or page.startswith("automation_run:")
+        or page.startswith("automation_step:")
+        or page.startswith("approval:")
+        or page.startswith("simulation:")
+    ):
         return ("manage_automations",)
     if page.startswith("accounts:"):
         return ("manage_accounts",)
@@ -195,6 +218,64 @@ def _perform_admin_action(
         except ValueError:
             return "availability"
         return "availability"
+    if page == "automations:templates":
+        seed_builtin_automation_templates(session, actor=actor)
+        return "automations:templates"
+    if page == "automations:create":
+        rule = create_placeholder_automation_rule(session, actor=actor)
+        return f"automation:{rule.id}"
+    if len(parts) >= 3 and parts[0] == "automation" and parts[1].isdigit():
+        rule = get_automation_rule(session, int(parts[1]))
+        if rule is None:
+            return "automations:rules"
+        action = parts[2]
+        if action == "simulate":
+            run = simulate_automation_rule(session, rule, actor=actor)
+            return f"simulation:{run.id}"
+        if action == "request_approval":
+            try:
+                approval = request_automation_approval(session, rule, actor=actor)
+                return f"approval:{approval.id}"
+            except PermissionError:
+                return f"automation:{rule.id}"
+        if action == "activate":
+            try:
+                activate_automation_rule(session, rule, actor=actor)
+            except PermissionError:
+                pass
+            return f"automation:{rule.id}"
+        if action == "pause":
+            pause_automation_rule(session, rule, actor=actor)
+            return f"automation:{rule.id}"
+        if action == "resume":
+            try:
+                resume_automation_rule(session, rule, actor=actor)
+            except PermissionError:
+                pass
+            return f"automation:{rule.id}"
+        if action == "retire":
+            retire_automation_rule(session, rule, actor=actor)
+            return f"automation:{rule.id}"
+        if action == "run_now":
+            try:
+                run = run_automation_rule(session, rule, actor=actor)
+                return f"automation_run:{run.id}"
+            except PermissionError:
+                return f"automation:{rule.id}"
+    if len(parts) >= 3 and parts[0] == "approval" and parts[1].isdigit():
+        approval = session.get(AutomationApproval, int(parts[1]))
+        if approval is None:
+            return "automations:approvals"
+        action = parts[2]
+        if action == "approve":
+            try:
+                approve_automation(session, approval, actor=actor)
+            except PermissionError:
+                pass
+            return f"approval:{approval.id}"
+        if action == "reject":
+            reject_automation(session, approval, actor=actor)
+            return f"approval:{approval.id}"
     if page == "automations:simulate:proxy_repair":
         run = run_proxy_repair_simulation(session, actor=actor)
         return f"simulation:{run.id}"
@@ -207,7 +288,13 @@ def _perform_admin_action(
             return "automations:simulations"
         action = parts[2]
         if action == "approve":
-            update_simulation_status(session, run, actor=actor, status="approved")
+            if run.automation_rule_id:
+                try:
+                    approve_from_simulation(session, run, actor=actor)
+                except PermissionError:
+                    pass
+            else:
+                update_simulation_status(session, run, actor=actor, status="approved")
             return f"simulation:{run.id}"
         if action == "reject":
             update_simulation_status(session, run, actor=actor, status="rejected")
@@ -232,6 +319,9 @@ def _perform_admin_action(
                 return f"model:{recommendation.entity_id}"
             return "reports:executive:recommendations"
         if action == "why":
+            return f"recommendation:{recommendation.id}:why"
+        if action == "create_automation":
+            suggest_automation_from_recommendation(session, recommendation, actor=actor)
             return f"recommendation:{recommendation.id}:why"
     if page == "intelligence:run:full":
         run_full_intelligence_scan(session, actor=actor)
@@ -647,6 +737,10 @@ def screen_for_page(
         or normalized.startswith("opportunities")
         or normalized.startswith("opportunity:")
         or normalized.startswith("automations:")
+        or normalized.startswith("automation:")
+        or normalized.startswith("automation_run:")
+        or normalized.startswith("automation_step:")
+        or normalized.startswith("approval:")
         or normalized.startswith("simulation:")
         or normalized.startswith("models:")
         or normalized.startswith("model:")

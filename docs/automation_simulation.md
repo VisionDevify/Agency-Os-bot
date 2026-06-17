@@ -7,11 +7,11 @@ Agency OS follows the safety posture:
 - Approve
 - Execute
 
-Sprint 9 adds durable simulation records without enabling live automation execution.
+Sprint 9 added durable simulation records without enabling live automation execution. Sprint 14 upgrades this into a full automation builder with rule definitions, simulation impact previews, approvals, run records, step records, and rollback planning.
 
 ## Tables
 
-`automation_rules` is a future-ready placeholder for automation definitions.
+`automation_rules` stores durable automation definitions, including trigger type/config, conditions, actions, rollback plan, risk level, status, creator, approver, and run timestamps.
 
 `automation_simulation_runs` stores dry-run results:
 
@@ -26,7 +26,7 @@ Sprint 9 adds durable simulation records without enabling live automation execut
 - risk level.
 - creation and expiry timestamps.
 
-## Current Simulation Types
+## Current Simulation Types And Rules
 
 - Proxy Repair Simulation.
 - Daily Briefing Simulation.
@@ -39,12 +39,11 @@ Daily briefing simulation previews aggregate reporting impact. It does not creat
 
 - Simulations do not execute live changes.
 - High/critical risk approval requires Owner.
-- Approval is a placeholder state until a future sprint builds execution playbooks.
+- Approval now gates activation and execution for mutating or high-risk rules.
 - Every simulation creates audit and EventLog records.
 
 ## Future Work
 
-- Add automation builder UI.
-- Add live execution records.
-- Add owner-approved execution gates.
-- Add event delivery and rollback tracking.
+- Add scheduled execution.
+- Add richer no-code rule creation forms.
+- Add owner-approved routing activation per notification purpose.

@@ -326,6 +326,10 @@ def executive_dashboard_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="Infrastructure", callback_data=callback_for("proxies:dashboard")),
                 InlineKeyboardButton(text="Incidents", callback_data=callback_for("incidents")),
             ],
+            [
+                InlineKeyboardButton(text="Automations", callback_data=callback_for("automations")),
+                InlineKeyboardButton(text="Automation Health", callback_data=callback_for("automations:health")),
+            ],
             [InlineKeyboardButton(text="Bot Status", callback_data=callback_for("bot_status"))],
             [InlineKeyboardButton(text="Refresh", callback_data=callback_for("reports:executive"))],
             *page_controls(back_to="reports"),
@@ -350,6 +354,12 @@ def recommendation_detail_menu(recommendation_id: int) -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Mark Resolved", callback_data=f"nav:recommendation:{recommendation_id}:resolve")],
             [InlineKeyboardButton(text="Jump to Related Entity", callback_data=f"nav:recommendation:{recommendation_id}:jump")],
             [InlineKeyboardButton(text="Why am I seeing this?", callback_data=f"nav:recommendation:{recommendation_id}:why")],
+            [
+                InlineKeyboardButton(
+                    text="Create Draft Automation",
+                    callback_data=f"nav:recommendation:{recommendation_id}:create_automation",
+                )
+            ],
             *page_controls(back_to="reports:executive:recommendations"),
         ]
     )
@@ -473,12 +483,59 @@ def manager_command_menu() -> InlineKeyboardMarkup:
 def automations_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Simulation Runs", callback_data=callback_for("automations:simulations"))],
-            [InlineKeyboardButton(text="Run Proxy Repair Simulation", callback_data=callback_for("automations:simulate:proxy_repair"))],
-            [InlineKeyboardButton(text="Run Daily Briefing Simulation", callback_data=callback_for("automations:simulate:daily_briefing"))],
+            [InlineKeyboardButton(text="View Rules", callback_data=callback_for("automations:rules"))],
+            [InlineKeyboardButton(text="Built-In Templates", callback_data=callback_for("automations:templates"))],
+            [InlineKeyboardButton(text="Create Rule", callback_data=callback_for("automations:create"))],
+            [
+                InlineKeyboardButton(text="Simulations", callback_data=callback_for("automations:simulations")),
+                InlineKeyboardButton(text="Pending Approvals", callback_data=callback_for("automations:approvals")),
+            ],
+            [
+                InlineKeyboardButton(text="Run History", callback_data=callback_for("automations:runs")),
+                InlineKeyboardButton(text="Automation Health", callback_data=callback_for("automations:health")),
+            ],
             *page_controls(back_to="menu"),
         ]
     )
+
+
+def automation_rules_menu(rule_buttons: list[tuple[str, str]]) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in rule_buttons]
+    rows.append([InlineKeyboardButton(text="Built-In Templates", callback_data=callback_for("automations:templates"))])
+    rows.append([InlineKeyboardButton(text="Create Rule", callback_data=callback_for("automations:create"))])
+    rows.extend(page_controls(back_to="automations"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def automation_rule_detail_menu(rule_id: int, status: str) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(text="Run Simulation", callback_data=f"nav:automation:{rule_id}:simulate")],
+        [
+            InlineKeyboardButton(text="Impact Preview", callback_data=f"nav:automation:{rule_id}:simulations"),
+            InlineKeyboardButton(text="View Rollback Plan", callback_data=f"nav:automation:{rule_id}:rollback"),
+        ],
+        [
+            InlineKeyboardButton(text="Request Approval", callback_data=f"nav:automation:{rule_id}:request_approval"),
+            InlineKeyboardButton(text="Run Now", callback_data=f"nav:automation:{rule_id}:run_now"),
+        ],
+    ]
+    if status == "active":
+        rows.append([InlineKeyboardButton(text="Pause Rule", callback_data=f"nav:automation:{rule_id}:pause")])
+    elif status == "paused":
+        rows.append([InlineKeyboardButton(text="Resume Rule", callback_data=f"nav:automation:{rule_id}:resume")])
+    elif status == "approved":
+        rows.append([InlineKeyboardButton(text="Activate Rule", callback_data=f"nav:automation:{rule_id}:activate")])
+    rows.append([InlineKeyboardButton(text="Retire Rule", callback_data=f"nav:automation:{rule_id}:retire")])
+    rows.append([InlineKeyboardButton(text="Run History", callback_data=f"nav:automation:{rule_id}:runs")])
+    rows.extend(page_controls(back_to="automations:rules"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def automation_templates_menu(template_buttons: list[tuple[str, str]]) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in template_buttons]
+    rows.append([InlineKeyboardButton(text="Refresh Templates", callback_data=callback_for("automations:templates"))])
+    rows.extend(page_controls(back_to="automations"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def simulation_runs_menu(run_buttons: list[tuple[str, str]]) -> InlineKeyboardMarkup:
@@ -492,6 +549,7 @@ def simulation_runs_menu(run_buttons: list[tuple[str, str]]) -> InlineKeyboardMa
 def simulation_run_detail_menu(run_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [InlineKeyboardButton(text="View Affected Entities", callback_data=f"nav:simulation:{run_id}:affected")],
             [
                 InlineKeyboardButton(text="Approve Simulation", callback_data=f"nav:simulation:{run_id}:approve"),
                 InlineKeyboardButton(text="Reject Simulation", callback_data=f"nav:simulation:{run_id}:reject"),
@@ -499,6 +557,38 @@ def simulation_run_detail_menu(run_id: int) -> InlineKeyboardMarkup:
             *page_controls(back_to="automations:simulations"),
         ]
     )
+
+
+def automation_approvals_menu(approval_buttons: list[tuple[str, str]]) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in approval_buttons]
+    rows.extend(page_controls(back_to="automations"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def automation_approval_detail_menu(approval_id: int, rule_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Approve", callback_data=f"nav:approval:{approval_id}:approve"),
+                InlineKeyboardButton(text="Reject", callback_data=f"nav:approval:{approval_id}:reject"),
+            ],
+            [InlineKeyboardButton(text="View Rule", callback_data=f"nav:automation:{rule_id}")],
+            [InlineKeyboardButton(text="View Rollback Plan", callback_data=f"nav:automation:{rule_id}:rollback")],
+            *page_controls(back_to="automations:approvals"),
+        ]
+    )
+
+
+def automation_runs_menu(run_buttons: list[tuple[str, str]]) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in run_buttons]
+    rows.extend(page_controls(back_to="automations"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def automation_run_detail_menu(run_id: int, step_buttons: list[tuple[str, str]]) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in step_buttons]
+    rows.extend(page_controls(back_to="automations:runs"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def proxy_list_menu(proxy_buttons: list[tuple[str, str]], *, back_to: str = "proxies") -> InlineKeyboardMarkup:

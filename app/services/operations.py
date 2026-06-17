@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.models.account import Account
 from app.models.audit import AuditLog
+from app.models.automation import AutomationApproval, AutomationRun, AutomationRule
 from app.models.incident import Incident
 from app.models.model_brand import ModelBrand, ModelBrandMember
 from app.models.proxy import Proxy
@@ -213,6 +214,15 @@ def executive_dashboard(session: Session) -> dict:
     )
     top_recommendations = list_recommendations(session, status="open", limit=5)
     system_status = system_status_summary(session)
+    automation_runs_total = session.scalar(
+        select(func.count(AutomationRun.id)).where(AutomationRun.status.in_(("succeeded", "failed", "skipped", "rolled_back")))
+    ) or 0
+    automation_success_count = session.scalar(
+        select(func.count(AutomationRun.id)).where(AutomationRun.status == "succeeded")
+    ) or 0
+    latest_automation_run = session.scalar(
+        select(AutomationRun).order_by(desc(AutomationRun.started_at), desc(AutomationRun.id)).limit(1)
+    )
     return {
         "agency_health_score": score,
         "operational_status_banner": _status_banner(
@@ -279,6 +289,23 @@ def executive_dashboard(session: Session) -> dict:
         "last_event_at": system_status["latest_event_at"].isoformat()
         if system_status["latest_event_at"]
         else "none",
+        "active_automations": session.scalar(
+            select(func.count(AutomationRule.id)).where(AutomationRule.status == "active")
+        )
+        or 0,
+        "failed_automations": session.scalar(
+            select(func.count(AutomationRule.id)).where(AutomationRule.status == "failed")
+        )
+        or 0,
+        "pending_automation_approvals": session.scalar(
+            select(func.count(AutomationApproval.id)).where(AutomationApproval.status == "pending")
+        )
+        or 0,
+        "last_automation_run": latest_automation_run.status if latest_automation_run else "none",
+        "last_automation_run_at": latest_automation_run.started_at.isoformat() if latest_automation_run else "none",
+        "automation_success_rate": int((automation_success_count / automation_runs_total) * 100)
+        if automation_runs_total
+        else 100,
     }
 
 

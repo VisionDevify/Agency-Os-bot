@@ -134,3 +134,30 @@ Recommended daily flow:
 5. Use Opportunities only for manual, human-approved opportunity records.
 
 Critical signals can create notification delivery attempts for configured owner/incidents/operations targets. Delivery attempts remain durable records and must not include secrets or raw chat IDs.
+
+## Automation Operations
+
+Sprint 14 adds a production-safe automation builder. Operators should manage automations from Automations -> Automation Dashboard.
+
+Recommended flow:
+
+1. Review Built-In Templates.
+2. Open Rule Detail.
+3. Run Simulation.
+4. Review Impact Preview and rollback limitations.
+5. Request or apply approval when required.
+6. Activate only after a valid simulation exists.
+7. Run Now only for approved/active rules.
+8. Review Run History, Run Detail, and Step Detail after execution.
+
+Production safeguards:
+
+- No automation should become active without a simulation.
+- High/critical risk automations require Owner approval.
+- Proxy repair automation defaults to approval-required.
+- Simulation runs do not mutate production entities.
+- Execution writes `automation_runs` and `automation_run_steps` before reporting success/failure.
+- Automation logs, audits, events, and Telegram screens must not show secrets.
+- Social posting, commenting, liking, following, scraping, credential collection, and security bypass behavior remain out of scope.
+
+Automation health metrics should be checked from Automations -> Automation Health and Executive Command Center. Failed high-risk automations should be reviewed before rerun.

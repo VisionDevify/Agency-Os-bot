@@ -67,6 +67,7 @@ pytest
 - Notification delivery attempt records for sent/failed/skipped test deliveries, with safe audit/event output and failure recommendations.
 - Agency operations activation: task ownership/escalation, incident timelines, user availability/localization, Daily Digest delivery, Manager Command View, and duplicate polling guard.
 - Agency Intelligence Brain V1: deterministic signals, issue patterns, trend snapshots, workload intelligence, executive insights, intelligence runs, Recommendation V2 metadata, and manual opportunity intelligence.
+- Automation Builder and Simulation Engine: no-code rules, built-in templates, trigger/condition/action registries, durable simulations, approvals, run/step records, rollback planning, and automation health metrics.
 
 ## Railway Deployment
 
@@ -128,3 +129,7 @@ Production smoke testing checklist:
 - `docs/pattern_recognition.md`
 - `docs/opportunity_intelligence.md`
 - `docs/recommendation_engine_v2.md`
+- `docs/automation_builder.md`
+- `docs/simulation_engine.md`
+- `docs/approval_workflows.md`
+- `docs/rollback_planning.md`

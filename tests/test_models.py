@@ -5,7 +5,11 @@ def test_model_tables_are_registered() -> None:
         AccountabilitySnapshot,
         AuditLog,
         Automation,
+        AutomationApproval,
         AutomationRule,
+        AutomationRun,
+        AutomationRunStep,
+        AutomationSchedule,
         AutomationSimulationRun,
         Incident,
         AccountAuthSession,
@@ -41,7 +45,11 @@ def test_model_tables_are_registered() -> None:
         "accountability_snapshots",
         "audit_logs",
         "automations",
+        "automation_approvals",
         "automation_rules",
+        "automation_runs",
+        "automation_run_steps",
+        "automation_schedules",
         "automation_simulation_runs",
         "daily_briefings",
         "event_logs",
@@ -94,6 +102,10 @@ def test_model_tables_are_registered() -> None:
     assert Report.__tablename__ == "reports"
     assert Automation.__tablename__ == "automations"
     assert AutomationRule.__tablename__ == "automation_rules"
+    assert AutomationRun.__tablename__ == "automation_runs"
+    assert AutomationRunStep.__tablename__ == "automation_run_steps"
+    assert AutomationApproval.__tablename__ == "automation_approvals"
+    assert AutomationSchedule.__tablename__ == "automation_schedules"
     assert AutomationSimulationRun.__tablename__ == "automation_simulation_runs"
     assert Recommendation.__tablename__ == "recommendations"
     assert SystemHeartbeat.__tablename__ == "system_heartbeats"

@@ -1,6 +1,6 @@
 # Database Schema
 
-This document describes the current schema as of Sprint 12 and the planned direction. PostgreSQL is the production database, SQLAlchemy owns the models, and Alembic owns migrations.
+This document describes the current schema as of Sprint 14 and the planned direction. PostgreSQL is the production database, SQLAlchemy owns the models, and Alembic owns migrations.
 
 ## Current Tables
 
@@ -477,23 +477,44 @@ These tables are intentionally minimal until their modules need richer records. 
 
 ### automation_rules
 
-Future-ready automation rule placeholders. Full automation builder logic is intentionally not implemented yet.
+No-code automation definitions. Rules move through draft, simulation, approval, activation, execution, verification, reporting, and rollback planning.
 
 Columns:
 
 - `id`: primary key.
 - `name`: operator-facing automation name.
-- `automation_type`: stable automation family.
-- `status`: one of `draft`, `active`, `disabled`, or `archived`.
+- `description`: optional operator-facing description.
+- `category`: one of `infrastructure`, `operations`, `notifications`, `reports`, `intelligence`, `opportunities`, or `system`.
+- `automation_type`: stable automation family/slug.
+- `status`: one of `draft`, `simulated`, `pending_approval`, `approved`, `active`, `paused`, `retired`, `failed`, plus legacy `disabled` or `archived`.
+- `trigger_type`: stable trigger family such as `manual`, `scheduled`, `event`, or `condition`.
+- `trigger_config_json`: safe trigger config.
+- `conditions_json`: safe deterministic checks to evaluate before execution.
+- `actions_json`: safe action list. No social posting/commenting/liking/following actions are supported.
+- `rollback_plan_json`: safe rollback plan and limitations.
+- `risk_level`: `low`, `medium`, `high`, or `critical`.
+- `requires_owner_approval`: true when Owner approval is mandatory.
+- `created_by_user_id`: nullable foreign key to `users.id`.
+- `approved_by_user_id`: nullable foreign key to `users.id`.
+- `approved_at`: nullable approval timestamp.
+- `last_simulated_at`: nullable latest simulation timestamp.
+- `last_run_at`: nullable latest execution timestamp.
 - `metadata_json`: safe non-secret metadata.
 - `created_at`, `updated_at`: timestamps.
 
 Indexes and constraints:
 
+- `ck_automation_rules_category`.
 - `ck_automation_rules_status`.
+- `ck_automation_rules_risk_level`.
 - `ix_automation_rules_name`.
+- `ix_automation_rules_category`.
 - `ix_automation_rules_automation_type`.
 - `ix_automation_rules_status`.
+- `ix_automation_rules_trigger_type`.
+- `ix_automation_rules_risk_level`.
+- `ix_automation_rules_created_by_user_id`.
+- `ix_automation_rules_approved_by_user_id`.
 
 ### automation_simulation_runs
 
@@ -502,29 +523,105 @@ Durable dry-run records. These records preview what would happen without mutatin
 Columns:
 
 - `id`: primary key.
+- `automation_rule_id`: nullable foreign key to `automation_rules.id`.
 - `automation_name`: display name of the simulated automation.
 - `automation_type`: automation family, such as `proxy_repair` or `daily_briefing`.
-- `status`: one of `draft`, `simulated`, `approved`, `rejected`, or `expired`.
+- `status`: one of `pending`, `running`, `succeeded`, `failed`, or `expired`, plus legacy `draft`, `simulated`, `approved`, or `rejected`.
 - `simulated_by_user_id`: foreign key to `users.id`.
 - `target_scope`: scope label for the preview.
 - `would_trigger_count`: number of items that would be touched.
 - `would_succeed_count`: estimated successful outcomes.
 - `would_fail_count`: estimated failed outcomes.
+- `affected_entities_json`: safe list of entities that could be affected.
 - `impact_summary_json`: safe impact preview.
 - `risk_level`: one of `low`, `medium`, `high`, or `critical`.
+- `warnings_json`: safe warnings for operator review.
 - `created_at`: timestamp.
+- `finished_at`: nullable simulation finish timestamp.
 - `expires_at`: simulation expiry timestamp.
 
 Indexes and constraints:
 
 - `ck_automation_simulation_runs_status`.
 - `ck_automation_simulation_runs_risk_level`.
+- `ix_automation_simulation_runs_rule_id`.
 - `ix_automation_simulation_runs_automation_type`.
 - `ix_automation_simulation_runs_status`.
 - `ix_automation_simulation_runs_risk`.
 - `ix_automation_simulation_runs_simulated_by`.
 - `ix_automation_simulation_runs_created_at`.
+- `ix_automation_simulation_runs_finished_at`.
 - `ix_automation_simulation_runs_expires_at`.
+
+### automation_approvals
+
+Approval workflow records for automation activation.
+
+Columns:
+
+- `id`: primary key.
+- `automation_rule_id`: foreign key to `automation_rules.id`.
+- `requested_by_user_id`: foreign key to `users.id`.
+- `approved_by_user_id`: nullable foreign key to `users.id`.
+- `status`: `pending`, `approved`, `rejected`, or `expired`.
+- `approval_reason`: optional safe approval note.
+- `rejection_reason`: optional safe rejection note.
+- `created_at`: request timestamp.
+- `decided_at`: nullable decision timestamp.
+- `expires_at`: nullable approval expiry timestamp.
+
+### automation_runs
+
+Live execution records. A run is created only after simulation and approval gates pass.
+
+Columns:
+
+- `id`: primary key.
+- `automation_rule_id`: foreign key to `automation_rules.id`.
+- `status`: `pending`, `running`, `succeeded`, `failed`, `skipped`, or `rolled_back`.
+- `started_by_user_id`: nullable foreign key to `users.id`.
+- `started_at`, `finished_at`: execution timing.
+- `trigger_event_id`: nullable foreign key to `event_logs.id`.
+- `affected_entities_json`: safe list of affected entities and step outputs.
+- `result_summary_json`: safe result summary.
+- `error_message`: nullable safe/redacted error.
+- `rollback_available`: true when a rollback plan exists for at least one action.
+- `rollback_status`: `not_needed`, `available`, `completed`, or `failed`.
+- `created_at`, `updated_at`: timestamps.
+
+### automation_run_steps
+
+Step-by-step execution records for each automation action.
+
+Columns:
+
+- `id`: primary key.
+- `automation_run_id`: foreign key to `automation_runs.id`, cascade delete.
+- `step_order`: action order.
+- `action_type`: registry action key.
+- `status`: `pending`, `running`, `succeeded`, `failed`, `skipped`, or `rolled_back`.
+- `entity_type`, `entity_id`: optional affected entity reference.
+- `input_json`: safe action input.
+- `output_json`: safe action output.
+- `error_message`: nullable safe/redacted error.
+- `started_at`, `finished_at`: step timing.
+- `created_at`: timestamp.
+
+### automation_schedules
+
+Schedule configuration records for manual, recurring, or event-driven automation triggers.
+
+Columns:
+
+- `id`: primary key.
+- `automation_rule_id`: foreign key to `automation_rules.id`.
+- `schedule_type`: `manual`, `hourly`, `daily`, `weekly`, or `event_based`.
+- `timezone`: IANA timezone label.
+- `time_of_day_local`: optional local time.
+- `day_of_week`: optional local day label.
+- `is_active`: whether the schedule is enabled.
+- `last_run_at`, `next_run_at`: nullable scheduling timestamps.
+- `created_at`, `updated_at`: timestamps.
 
 ### daily_briefings
 
@@ -881,6 +978,9 @@ Columns:
 - A daily briefing may reference the user who generated it.
 - An accountability snapshot references the user it describes.
 - An automation simulation run references the user who simulated it.
+- An automation rule can have many simulation runs, approvals, execution runs, and schedules.
+- An automation run belongs to one automation rule and can have many ordered run steps.
+- An automation approval belongs to one automation rule and references the requesting and deciding users.
 - A recommendation may reference the event that generated it and may point to an entity by `entity_type`/`entity_id`.
 - System heartbeats are keyed by service name and do not reference secrets or deployment credentials.
 - A notification target can have many delivery attempts through `notification_delivery_attempts.notification_target_id`.
@@ -960,11 +1060,23 @@ Notification target state:
 
 Automation simulation status:
 
-- `draft`: saved but not yet simulated.
-- `simulated`: dry run completed and ready for review.
-- `approved`: operator approved the preview. High/critical risk requires Owner.
-- `rejected`: operator rejected the preview.
+- `pending`: simulation record is queued.
+- `running`: simulation is evaluating triggers, conditions, and impact.
+- `succeeded`: simulation completed and did not mutate production records.
+- `failed`: simulation failed safely.
 - `expired`: preview is too old to approve.
+- `draft`, `simulated`, `approved`, and `rejected`: legacy Sprint 9 review statuses retained for existing rows.
+
+Automation rule status:
+
+- `draft`: saved but not simulated yet.
+- `simulated`: a current simulation exists for review.
+- `pending_approval`: approval has been requested.
+- `approved`: approved but not active.
+- `active`: eligible for safe execution.
+- `paused`: temporarily inactive.
+- `retired`: no longer used.
+- `failed`: latest execution failed and needs review.
 
 Recommendation status:
 
@@ -1023,7 +1135,6 @@ Soft-delete strategy:
 - `task_assignments`: richer task ownership and handoff history if one-assignee tasks become insufficient.
 - `incident_events`: richer incident timeline events if escalation history JSON becomes insufficient.
 - `report_runs`: richer report generation records if daily briefings/accountability snapshots are not enough.
-- `automation_runs`: live automation execution records once live actions are enabled.
 - `repair_attempts`: self-healing attempts and outcomes.
 - `ai_recommendations`: AI operations suggestions, confidence, and operator disposition.
 - `opportunity_campaigns`: grouped opportunity batches once manual results need campaign-level attribution.

@@ -43,3 +43,18 @@ The deterministic layer creates clean data for a future AI Operations Brain:
 - recommendation reason and suggested next action.
 
 Future AI should explain and prioritize. It should not execute risky actions without explicit operator approval.
+
+## Automation Suggestions
+
+Sprint 14 lets deterministic intelligence suggest internal Agency OS automations.
+
+Examples:
+
+- recurring proxy failures -> suggest Proxy Repair Assistant.
+- overdue tasks rising -> suggest Overdue Task Escalation.
+- repeated notification delivery failures -> suggest Notification Failure Watch.
+- critical incident recurrence -> suggest Critical Incident Escalation.
+
+The suggestion creates a draft automation from the recommendation context. It does not activate, approve, or run the rule. Operators must still simulate, review impact, approve when required, and explicitly activate/run.
+
+Automation suggestions must not create social posting, scraping, credential-handling, or security-evasion actions.
