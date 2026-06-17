@@ -177,7 +177,7 @@ async def start(message: Message) -> None:
             session.commit()
             principal = _principal_from_user(user)
             require_owner(principal, settings.owner_telegram_id)
-            screen = render_main_menu()
+            screen = render_main_menu(session=session, user=user)
             await message.answer(screen.text, reply_markup=screen.reply_markup)
             return
 
@@ -189,17 +189,16 @@ async def start(message: Message) -> None:
             owner_telegram_id=settings.owner_telegram_id,
         )
         user.last_seen = datetime.now(UTC)
+        if user.status == USER_STATUS_DISABLED:
+            screen = render_disabled()
+        elif user.status == USER_STATUS_DENIED:
+            screen = render_denied()
+        elif user.status == USER_STATUS_PENDING:
+            screen = render_onboarding_page(session, user)
+        else:
+            screen = render_main_menu(session=session, user=user)
         session.commit()
-
-    if user.status == USER_STATUS_DISABLED:
-        screen = render_disabled()
-        await message.answer(screen.text, reply_markup=screen.reply_markup)
-    elif user.status == USER_STATUS_DENIED:
-        screen = render_denied()
-        await message.answer(screen.text, reply_markup=screen.reply_markup)
-    else:
-        screen = render_onboarding_page(session, user)
-        await message.answer(screen.text, reply_markup=screen.reply_markup)
+    await message.answer(screen.text, reply_markup=screen.reply_markup)
 
 
 @dp.message(F.text)
