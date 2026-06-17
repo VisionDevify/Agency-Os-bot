@@ -1,6 +1,6 @@
 # Opportunity Intelligence Foundation
 
-Sprint 12 creates the database and Telegram foundation for future funnel intelligence.
+Sprint 12 created the database and Telegram foundation for future funnel intelligence. Sprint 17 turns it into an everyday Opportunity Command Center for chatters and managers.
 
 It does not scrape X, Instagram, Reddit, OnlyFans, or any other platform. It does not automate posting, commenting, messaging, liking, following, or bypassing platform controls. Everything is manual and human-approved.
 
@@ -32,18 +32,54 @@ It does not scrape X, Instagram, Reddit, OnlyFans, or any other platform. It doe
 
 - opportunity
 - optional user who manually posted or recorded the outcome
-- status: `not_posted`, `posted`, `skipped`, `failed`
+- status: `not_posted`, `posted`, `skipped`, `failed`, `rejected`
 - optional clicks and conversions
 - safe notes
 
+### CreatorWatch
+
+- platform: `x`, `instagram`, or `other`
+- creator name and username
+- optional profile URL
+- niche
+- priority
+- optional assigned model, team placeholder, and chatter
+- active flag
+
+### PostWatch
+
+- model/brand
+- platform
+- optional account
+- post reference
+- post type
+- status: `recent`, `attention_needed`, `assigned`, or `archived`
+- safe notes
+
+### CommentStrategy
+
+- optional opportunity
+- angle
+- tone
+- curiosity score
+- engagement score
+- risk score
+- safe reasoning
+
 ## Telegram Flows
 
+- Opportunities -> Command Center.
+- Opportunities -> Creator Watchlist.
+- Opportunities -> Own Post Watch.
 - Opportunities -> View Opportunities.
 - Opportunities -> Add Opportunity Manually.
 - Opportunity Detail -> Score Opportunity.
 - Opportunity Detail -> Assign to Me.
+- Opportunity Detail -> Suggested Strategies.
 - Opportunity Detail -> Mark Posted.
 - Opportunities -> Opportunity Results.
+- Chatter Home -> Chatter Workspace.
+- Manager Home -> Manager Opportunity View.
 
 ## Scoring
 
@@ -70,6 +106,15 @@ The system can learn by:
 - assigned user.
 
 Opportunity learning can identify stronger niches, stronger angles, weak sources, and poor-result patterns. It still does not scrape, post, comment, message, like, follow, or automate public platform behavior.
+
+Sprint 17 also tracks:
+
+- best angles.
+- best niches.
+- best sources.
+- weak sources.
+- most successful teams or chatters.
+- creator watch and post watch operating context.
 
 ## Future Direction
 

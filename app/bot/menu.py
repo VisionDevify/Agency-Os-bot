@@ -107,6 +107,7 @@ def performance_menu() -> InlineKeyboardMarkup:
 
 def help_center_menu(topic_buttons: list[tuple[str, str]] | None = None) -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in (topic_buttons or [])]
+    rows.append([InlineKeyboardButton(text="Help Copilot", callback_data=callback_for("help_copilot"))])
     rows.extend(page_controls(back_to="menu"))
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -573,10 +574,18 @@ def opportunities_menu(opportunity_buttons: list[tuple[str, str]] | None = None)
     rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in (opportunity_buttons or [])]
     rows.extend(
         [
+            [InlineKeyboardButton(text="Command Center", callback_data=callback_for("opportunities:command"))],
+            [
+                InlineKeyboardButton(text="Creator Watchlist", callback_data=callback_for("opportunities:creators")),
+                InlineKeyboardButton(text="Own Post Watch", callback_data=callback_for("opportunities:posts")),
+            ],
             [InlineKeyboardButton(text="View Opportunities", callback_data=callback_for("opportunities:list"))],
             [InlineKeyboardButton(text="Add Opportunity Manually", callback_data=callback_for("opportunities:add"))],
             [InlineKeyboardButton(text="Score Opportunities", callback_data=callback_for("opportunities:score"))],
-            [InlineKeyboardButton(text="Opportunity Results", callback_data=callback_for("opportunities:results"))],
+            [
+                InlineKeyboardButton(text="Opportunity Results", callback_data=callback_for("opportunities:results")),
+                InlineKeyboardButton(text="Manager View", callback_data=callback_for("opportunities:manager")),
+            ],
         ]
     )
     rows.extend(page_controls(back_to="menu"))
@@ -590,9 +599,92 @@ def opportunity_detail_menu(opportunity_id: int) -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Assign to Me", callback_data=f"nav:opportunity:{opportunity_id}:assign_me")],
             [InlineKeyboardButton(text="Mark Posted", callback_data=f"nav:opportunity:{opportunity_id}:mark_posted")],
             [InlineKeyboardButton(text="Record Result", callback_data=f"nav:opportunity:{opportunity_id}:record_result")],
+            [InlineKeyboardButton(text="Suggested Strategies", callback_data=callback_for(f"opportunity:{opportunity_id}:strategies"))],
             *page_controls(back_to="opportunities:list"),
         ]
     )
+
+
+def creator_watch_menu(creator_buttons: list[tuple[str, str]] | None = None) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in (creator_buttons or [])]
+    rows.extend(
+        [
+            [InlineKeyboardButton(text="Add Creator", callback_data=callback_for("opportunities:creators:add"))],
+            [InlineKeyboardButton(text="View Watchlist", callback_data=callback_for("opportunities:creators"))],
+            *page_controls(back_to="opportunities"),
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def creator_watch_detail_menu(creator_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Assign Chatter", callback_data=f"nav:creator:{creator_id}:assign_me")],
+            [InlineKeyboardButton(text="Disable Creator", callback_data=f"nav:creator:{creator_id}:disable")],
+            [InlineKeyboardButton(text="Archive Creator", callback_data=f"nav:creator:{creator_id}:archive")],
+            *page_controls(back_to="opportunities:creators"),
+        ]
+    )
+
+
+def post_watch_menu(post_buttons: list[tuple[str, str]] | None = None) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in (post_buttons or [])]
+    rows.extend(
+        [
+            [InlineKeyboardButton(text="Recent Posts", callback_data=callback_for("opportunities:posts"))],
+            [InlineKeyboardButton(text="Attention Needed", callback_data=callback_for("opportunities:posts:attention"))],
+            [InlineKeyboardButton(text="Add Post Watch", callback_data=callback_for("opportunities:posts:add"))],
+            *page_controls(back_to="opportunities"),
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def opportunity_command_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Top Opportunities", callback_data=callback_for("opportunities:list"))],
+            [InlineKeyboardButton(text="Creator Watchlist", callback_data=callback_for("opportunities:creators"))],
+            [InlineKeyboardButton(text="Own Post Watch", callback_data=callback_for("opportunities:posts"))],
+            [InlineKeyboardButton(text="Opportunity Results", callback_data=callback_for("opportunities:results"))],
+            *page_controls(back_to="opportunities"),
+        ]
+    )
+
+
+def chatter_workspace_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="My Opportunities", callback_data=callback_for("my_opportunities")),
+                InlineKeyboardButton(text="My Models", callback_data=callback_for("my_models")),
+            ],
+            [
+                InlineKeyboardButton(text="My Tasks", callback_data=callback_for("tasks:my")),
+                InlineKeyboardButton(text="Availability", callback_data=callback_for("availability")),
+            ],
+            [InlineKeyboardButton(text="Performance", callback_data=callback_for("performance"))],
+            *page_controls(back_to="menu"),
+        ]
+    )
+
+
+def help_copilot_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="How do I complete an opportunity?", callback_data=callback_for("help_copilot:opportunity"))],
+            [InlineKeyboardButton(text="Where do I go?", callback_data=callback_for("help_copilot:where"))],
+            [InlineKeyboardButton(text="How does Availability work?", callback_data=callback_for("help_copilot:availability"))],
+            *page_controls(back_to="help"),
+        ]
+    )
+
+
+def team_activation_menu(user_buttons: list[tuple[str, str]] | None = None) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in (user_buttons or [])]
+    rows.extend(page_controls(back_to="menu"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def operations_dashboard_menu() -> InlineKeyboardMarkup:

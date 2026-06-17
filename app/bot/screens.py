@@ -22,11 +22,15 @@ from app.bot.menu import (
     availability_menu,
     briefing_menu,
     bot_status_menu,
+    chatter_workspace_menu,
+    creator_watch_detail_menu,
+    creator_watch_menu,
     dashboard_menu,
     daily_experience_menu,
     daily_digest_menu,
     executive_dashboard_menu,
     help_center_menu,
+    help_copilot_menu,
     incident_detail_menu,
     incident_list_menu,
     incident_user_choice_menu,
@@ -55,10 +59,12 @@ from app.bot.menu import (
     onboarding_timezone_menu,
     operations_dashboard_menu,
     opportunities_menu,
+    opportunity_command_menu,
     opportunity_detail_menu,
     page_menu,
     performance_menu,
     platform_filter_menu,
+    post_watch_menu,
     playbook_detail_menu,
     permission_choice_menu,
     proxies_menu,
@@ -80,6 +86,7 @@ from app.bot.menu import (
     task_list_menu,
     task_user_choice_menu,
     team_qa_detail_menu,
+    team_activation_menu,
     team_qa_menu,
     tasks_menu,
     user_detail_menu,
@@ -90,7 +97,7 @@ from app.models.audit import AuditLog
 from app.models.incident import Incident
 from app.models.intelligence import ExecutiveInsight, IntelligenceRun, IntelligenceSignal, IssuePattern, TrendSnapshot, WorkloadSnapshot
 from app.models.model_brand import MODEL_BRAND_RELATIONSHIP_TYPES, ModelBrand, ModelBrandMember
-from app.models.opportunity import Opportunity, OpportunityResult
+from app.models.opportunity import CreatorWatch, Opportunity, OpportunityResult, PostWatch
 from app.models.permissions import Permission, Role
 from app.models.proxy import Proxy
 from app.models.automation import AutomationApproval, AutomationRule, AutomationRun, AutomationRunStep, AutomationSimulationRun
@@ -234,9 +241,20 @@ from app.services.learning import (
     recommend_playbooks,
 )
 from app.services.opportunities import (
+    chatter_workspace,
+    comment_strategies_for_opportunity,
+    get_creator_watch,
     get_opportunity,
+    get_post_watch,
+    help_copilot_answer,
     list_opportunities,
+    list_creator_watches,
+    list_post_watches,
+    manager_opportunity_view,
+    opportunity_learning_overview,
+    opportunity_queue_summary,
     opportunity_results,
+    team_activation_summary,
 )
 
 
@@ -521,7 +539,13 @@ def render_intelligence_home(session: Session | None = None) -> Screen:
 
 def render_opportunities_home(session: Session | None = None) -> Screen:
     opportunities = list_opportunities(session, limit=5) if session is not None else []
-    lines = ["Opportunities", "", "Manual, human-approved opportunity intelligence foundation.", ""]
+    lines = [
+        "Opportunities",
+        "",
+        "Manual, human-approved opportunity command center.",
+        "Use it to decide what deserves attention next. No posting is automated.",
+        "",
+    ]
     buttons: list[tuple[str, str]] = []
     if not opportunities:
         lines.append("No opportunities yet.")
@@ -530,6 +554,117 @@ def render_opportunities_home(session: Session | None = None) -> Screen:
         lines.append(f"   Platform: {opportunity.platform} | Score: {opportunity.score} | Status: {opportunity.status}")
         buttons.append((f"{opportunity.id}. {opportunity.title[:36]}", f"nav:opportunity:{opportunity.id}"))
     return Screen(text="\n".join(lines), reply_markup=opportunities_menu(buttons))
+
+
+def render_opportunity_command_center_page(session: Session, user: User | None = None) -> Screen:
+    summary = opportunity_queue_summary(session, user=user)
+    counts = summary["counts"]
+    lines = [
+        "Opportunity Command Center",
+        "",
+        f"New: {counts['discovered']}",
+        f"Reviewing: {counts['reviewing']}",
+        f"Assigned: {counts['assigned']}",
+        f"Completed: {counts['completed']}",
+        f"Rejected: {counts['rejected']}",
+        f"Archived: {counts['archived']}",
+        "",
+        "Top Opportunities:",
+    ]
+    buttons: list[tuple[str, str]] = []
+    if not summary["top"]:
+        lines.append("- None yet")
+    for opportunity in summary["top"][:5]:
+        lines.append(f"- {opportunity.title} | {opportunity.score}/100 | {opportunity.status}")
+        buttons.append((f"{opportunity.id}. {opportunity.title[:32]}", f"nav:opportunity:{opportunity.id}"))
+    lines.append("")
+    lines.append("High Priority:")
+    if not summary["high_priority"]:
+        lines.append("- None")
+    for opportunity in summary["high_priority"][:5]:
+        lines.append(f"- {_status_marker('warning')} {opportunity.title} | {opportunity.score}/100")
+    lines.append("")
+    lines.append("Recent Results:")
+    if not summary["recent_results"]:
+        lines.append("- No results recorded yet")
+    for result in summary["recent_results"][:5]:
+        opportunity = session.get(Opportunity, result.opportunity_id)
+        lines.append(f"- {opportunity.title if opportunity else 'Opportunity'}: {result.status}")
+    return Screen(text="\n".join(lines), reply_markup=opportunity_command_menu())
+
+
+def render_creator_watchlist_page(session: Session) -> Screen:
+    creators = list_creator_watches(session, active_only=True, limit=20)
+    lines = ["Creator Watchlist", "", "Creators worth watching. Human review only.", ""]
+    buttons: list[tuple[str, str]] = []
+    if not creators:
+        lines.append("No creators watched yet.")
+    for creator in creators:
+        chatter = creator.assigned_chatter
+        model = creator.assigned_model
+        lines.append(f"{creator.id}. {creator.creator_name} (@{creator.creator_username})")
+        lines.append(f"   Platform: {creator.platform} | Priority: {creator.priority} | Niche: {creator.niche or 'not set'}")
+        lines.append(f"   Model: {model.display_name if model else 'Unassigned'} | Chatter: {_identity(chatter)}")
+        buttons.append((f"{creator.id}. {creator.creator_name[:34]}", f"nav:creator:{creator.id}"))
+    return Screen(text="\n".join(lines), reply_markup=creator_watch_menu(buttons))
+
+
+def render_creator_watch_detail_page(session: Session, creator_id: int) -> Screen:
+    creator = get_creator_watch(session, creator_id)
+    if creator is None:
+        return Screen(text="Creator watch item not found.", reply_markup=page_menu(back_to="opportunities:creators"))
+    lines = [
+        "Creator Watch",
+        "",
+        f"Name: {creator.creator_name}",
+        f"Username: @{creator.creator_username}",
+        f"Platform: {creator.platform}",
+        f"Priority: {creator.priority}",
+        f"Niche: {creator.niche or 'Not set'}",
+        f"Profile: {creator.profile_url or 'Not set'}",
+        f"Assigned Model: {creator.assigned_model.display_name if creator.assigned_model else 'Unassigned'}",
+        f"Assigned Chatter: {_identity(creator.assigned_chatter)}",
+        f"Team ID: {creator.assigned_team_id or 'Unassigned'}",
+        f"Active: {creator.is_active}",
+        f"Notes: {creator.notes or 'None'}",
+        "",
+        "Use this to focus human attention. No platform actions are automated.",
+    ]
+    return Screen(text="\n".join(lines), reply_markup=creator_watch_detail_menu(creator.id))
+
+
+def render_post_watch_page(session: Session, *, status: str | None = None) -> Screen:
+    posts = list_post_watches(session, status=status, limit=20)
+    title = "Own Post Watch" if status is None else "Own Post Watch - Attention Needed"
+    lines = [title, "", "Track important posts that may need human attention.", ""]
+    buttons: list[tuple[str, str]] = []
+    if not posts:
+        lines.append("No watched posts yet.")
+    for post in posts:
+        model = post.model_brand
+        lines.append(f"{post.id}. {post.post_reference}")
+        lines.append(f"   Platform: {post.platform} | Type: {post.post_type} | Status: {post.status}")
+        lines.append(f"   Model: {model.display_name if model else 'Unknown'} | Notes: {post.notes or 'None'}")
+        buttons.append((f"{post.id}. {post.post_reference[:34]}", f"nav:post:{post.id}"))
+    return Screen(text="\n".join(lines), reply_markup=post_watch_menu(buttons))
+
+
+def render_post_watch_detail_page(session: Session, post_id: int) -> Screen:
+    post = get_post_watch(session, post_id)
+    if post is None:
+        return Screen(text="Post watch item not found.", reply_markup=page_menu(back_to="opportunities:posts"))
+    lines = [
+        "Own Post Watch",
+        "",
+        f"Post: {post.post_reference}",
+        f"Platform: {post.platform}",
+        f"Type: {post.post_type}",
+        f"Status: {post.status}",
+        f"Model/Brand: {post.model_brand.display_name if post.model_brand else 'Unknown'}",
+        f"Account ID: {post.account_id or 'None'}",
+        f"Notes: {post.notes or 'None'}",
+    ]
+    return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="opportunities:posts"))
 
 
 def render_automations_home(session: Session | None = None, user: User | None = None) -> Screen:
@@ -2113,6 +2248,7 @@ def render_opportunity_detail_page(session: Session, opportunity_id: int) -> Scr
         return Screen(text="Opportunity not found.", reply_markup=page_menu(back_to="opportunities:list"))
     assignee = session.get(User, opportunity.assigned_to_user_id) if opportunity.assigned_to_user_id else None
     model = session.get(ModelBrand, opportunity.model_brand_id) if opportunity.model_brand_id else None
+    strategies = comment_strategies_for_opportunity(session, opportunity)[:2]
     lines = [
         "Opportunity",
         "",
@@ -2127,9 +2263,177 @@ def render_opportunity_detail_page(session: Session, opportunity_id: int) -> Scr
         f"Reason: {opportunity.reason or 'None'}",
         f"Suggested Angle: {opportunity.suggested_angle or 'None'}",
         "",
-        "Safety: posting remains manual and human-approved.",
+        "Suggested Strategies:",
     ]
+    if not strategies:
+        lines.append("- No strategy suggestions yet.")
+    for strategy in strategies:
+        lines.append(f"- {strategy.angle.title()} | Risk: {strategy.risk_score}/100 | Engagement: {strategy.engagement_score}/100")
+    lines.extend(
+        [
+            "",
+            "Safety: posting remains manual and human-approved.",
+        ]
+    )
     return Screen(text="\n".join(lines), reply_markup=opportunity_detail_menu(opportunity.id))
+
+
+def render_opportunity_strategies_page(session: Session, opportunity_id: int) -> Screen:
+    opportunity = get_opportunity(session, opportunity_id)
+    if opportunity is None:
+        return Screen(text="Opportunity not found.", reply_markup=page_menu(back_to="opportunities:list"))
+    strategies = comment_strategies_for_opportunity(session, opportunity)
+    lines = [
+        "Suggested Strategies",
+        "",
+        f"Opportunity: {opportunity.title}",
+        "These are human review prompts, not automated comments.",
+        "",
+    ]
+    if not strategies:
+        lines.append("No strategies generated yet.")
+    for strategy in strategies:
+        lines.append(f"{strategy.angle.title()} ({strategy.tone})")
+        lines.append(
+            f"   Curiosity: {strategy.curiosity_score}/100 | Engagement: {strategy.engagement_score}/100 | Risk: {strategy.risk_score}/100"
+        )
+        lines.append(f"   Why: {strategy.reasoning or 'Suggested for human review.'}")
+    return Screen(text="\n".join(lines), reply_markup=page_menu(back_to=f"opportunity:{opportunity.id}"))
+
+
+def render_manager_opportunity_page(session: Session) -> Screen:
+    view = manager_opportunity_view(session)
+    counts = view["counts"]
+    lines = [
+        "Manager Opportunity View",
+        "",
+        f"Team Opportunities: {counts['assigned']}",
+        f"Unassigned Opportunities: {len(view['unassigned'])}",
+        f"High Priority: {len(view['high_priority'])}",
+        "",
+        "Top Performing Angles:",
+    ]
+    if not view["top_angles"]:
+        lines.append("- Not enough results yet")
+    for angle, count in view["top_angles"]:
+        lines.append(f"- {angle}: {count} win(s)")
+    lines.append("")
+    lines.append("Most Active Chatters:")
+    if not view["most_active_chatters"]:
+        lines.append("- Not enough activity yet")
+    for chatter, count in view["most_active_chatters"]:
+        lines.append(f"- {chatter}: {count} result(s)")
+    lines.append("")
+    lines.append("Unassigned Opportunities:")
+    if not view["unassigned"]:
+        lines.append("- None")
+    for opportunity in view["unassigned"][:5]:
+        lines.append(f"- {opportunity.title} | {opportunity.score}/100")
+    return Screen(text="\n".join(lines), reply_markup=opportunities_menu())
+
+
+def render_opportunity_learning_v2_page(session: Session) -> Screen:
+    summary = opportunity_learning_overview(session)
+    lines = ["Opportunity Learning", "", "What Agency OS is learning from human-recorded outcomes.", ""]
+    lines.append("Best Niches:")
+    if not summary["best_niches"]:
+        lines.append("- No opportunity outcomes yet.")
+    for niche, stats in summary["best_niches"][:5]:
+        lines.append(f"- {niche}: {stats['success']}/{stats['total']} positive")
+    lines.append("")
+    lines.append("Best Angles:")
+    if not summary["best_angles"]:
+        lines.append("- No angles recorded yet.")
+    for angle, stats in summary["best_angles"][:5]:
+        lines.append(f"- {angle}: {stats['success']}/{stats['total']} positive")
+    lines.append("")
+    lines.append("Most Successful Teams:")
+    if not summary["most_successful_teams"]:
+        lines.append("- Not enough team results yet.")
+    for team, count in summary["most_successful_teams"][:5]:
+        lines.append(f"- {team}: {count} win(s)")
+    return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="opportunities"))
+
+
+def render_chatter_workspace_page(session: Session, user: User) -> Screen:
+    workspace = chatter_workspace(session, user)
+    lines = [
+        "Chatter Workspace",
+        "",
+        "Today's Opportunities:",
+    ]
+    if not workspace["today_opportunities"]:
+        lines.append("- No opportunities assigned today.")
+    for opportunity in workspace["today_opportunities"]:
+        lines.append(f"- {opportunity.title} | {opportunity.score}/100 | {opportunity.status}")
+    lines.append("")
+    lines.append("Assigned Models:")
+    if not workspace["assigned_models"]:
+        lines.append("- No models assigned yet.")
+    for model in workspace["assigned_models"]:
+        lines.append(f"- {_model_identity(model)}")
+    lines.append("")
+    lines.append("Assigned Tasks:")
+    if not workspace["assigned_tasks"]:
+        lines.append("- No open tasks assigned.")
+    for task in workspace["assigned_tasks"]:
+        lines.append(f"- {task.title} | {task.status} | {task.priority}")
+    lines.append("")
+    lines.append("Recent Results:")
+    if not workspace["recent_results"]:
+        lines.append("- No results recorded yet.")
+    for result in workspace["recent_results"]:
+        lines.append(f"- Opportunity {result.opportunity_id}: {result.status}")
+    lines.extend(["", "Recommended Next Action:", workspace["recommended_next_action"]])
+    return Screen(text="\n".join(lines), reply_markup=chatter_workspace_menu())
+
+
+def render_help_copilot_page(session: Session, user: User | None = None, *, question: str | None = None) -> Screen:
+    prompts = {
+        "opportunity": "How do I complete an opportunity?",
+        "where": "Where do I go?",
+        "availability": "How does Availability work?",
+    }
+    if question:
+        result = help_copilot_answer(session, user, question=prompts.get(question, question), current_page="help")
+        lines = [
+            "Help Copilot",
+            "",
+            f"Role Context: {result['role']}",
+            "",
+            result["answer"],
+            "",
+            f"Next Action: {result['next_action']}",
+        ]
+    else:
+        lines = [
+            "Help Copilot",
+            "",
+            "Ask simple workflow questions like:",
+            "- What does this mean?",
+            "- How do I complete an opportunity?",
+            "- Where do I go?",
+            "",
+            "Choose a prompt below for a role-aware answer.",
+        ]
+    return Screen(text="\n".join(lines), reply_markup=help_copilot_menu())
+
+
+def render_team_activation_page(session: Session) -> Screen:
+    summaries = team_activation_summary(session)
+    lines = ["Team Activation", "", "Friendly rollout readiness. Not punitive.", ""]
+    buttons: list[tuple[str, str]] = []
+    if not summaries:
+        lines.append("No active users yet.")
+    for item in summaries[:20]:
+        user = item["user"]
+        checks = item["checks"]
+        lines.append(f"{user.id}. {_identity(user)}")
+        lines.append(f"   Activation Score: {item['score']}%")
+        missing = [label.replace("_", " ") for label, done in checks.items() if not done]
+        lines.append(f"   Needs: {', '.join(missing[:3]) if missing else 'ready'}")
+        buttons.append((f"{user.id}. {_identity(user)[:32]}", f"nav:user:{user.id}"))
+    return Screen(text="\n".join(lines), reply_markup=team_activation_menu(buttons))
 
 
 def render_opportunity_results_page(session: Session) -> Screen:
@@ -3008,6 +3312,12 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_help_center_page(user)
     if page.startswith("help:"):
         return render_help_topic_page(page.split(":", 1)[1], user)
+    if page == "help_copilot" and session is not None:
+        return render_help_copilot_page(session, user)
+    if page.startswith("help_copilot:") and session is not None:
+        return render_help_copilot_page(session, user, question=page.split(":", 1)[1])
+    if page == "chatter_workspace" and session is not None and user is not None:
+        return render_chatter_workspace_page(session, user)
     if page == "my_models" and session is not None and user is not None:
         return render_my_models_page(session, user)
     if page == "my_accounts" and session is not None and user is not None:
@@ -3024,6 +3334,8 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_my_team_page(session, user)
     if page == "team_qa" and session is not None:
         return render_team_qa_page(session)
+    if page == "team_activation" and session is not None:
+        return render_team_activation_page(session)
     if page.startswith("team_qa:") and session is not None:
         parts = page.split(":")
         if len(parts) >= 2 and parts[1].isdigit():
@@ -3324,13 +3636,35 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
             return render_playbook_detail_page(session, int(parts[1]))
     if page == "opportunities" and session is not None:
         return render_opportunities_home(session)
+    if page == "opportunities:command" and session is not None:
+        return render_opportunity_command_center_page(session, user=user)
     if page == "opportunities:list" and session is not None:
         return render_opportunity_list_page(session)
+    if page == "opportunities:creators" and session is not None:
+        return render_creator_watchlist_page(session)
+    if page == "opportunities:posts" and session is not None:
+        return render_post_watch_page(session)
+    if page == "opportunities:posts:attention" and session is not None:
+        return render_post_watch_page(session, status="attention_needed")
+    if page == "opportunities:manager" and session is not None:
+        return render_manager_opportunity_page(session)
+    if page == "opportunities:learning" and session is not None:
+        return render_opportunity_learning_v2_page(session)
     if page == "opportunities:results" and session is not None:
         return render_opportunity_results_page(session)
+    if page.startswith("creator:") and session is not None:
+        parts = page.split(":")
+        if len(parts) >= 2 and parts[1].isdigit():
+            return render_creator_watch_detail_page(session, int(parts[1]))
+    if page.startswith("post:") and session is not None:
+        parts = page.split(":")
+        if len(parts) >= 2 and parts[1].isdigit():
+            return render_post_watch_detail_page(session, int(parts[1]))
     if page.startswith("opportunity:") and session is not None:
         parts = page.split(":")
         if len(parts) >= 2 and parts[1].isdigit():
+            if len(parts) >= 3 and parts[2] == "strategies":
+                return render_opportunity_strategies_page(session, int(parts[1]))
             return render_opportunity_detail_page(session, int(parts[1]))
     if page == "users" and session is not None:
         return render_users_page(session)

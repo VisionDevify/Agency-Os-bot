@@ -766,6 +766,8 @@ def capture_opportunity_result(
         outcome = "failure"
     elif result.status == "skipped":
         outcome = "partial"
+    elif result.status == "rejected":
+        outcome = "ignored"
     else:
         outcome = "unknown"
     event = create_learning_event(

@@ -1,6 +1,6 @@
 # Notification Routing
 
-Sprint 9 introduces safe notification routing without spamming real groups or exposing Telegram chat IDs. Sprint 10 adds durable delivery-attempt records for actual send attempts. Sprint 11 adds availability-aware routing and Daily Digest delivery attempts. Sprint 12 adds critical intelligence signal routing through the same safe delivery-attempt path. Sprint 16 adds Notification Digest Mode for bundling low-priority updates.
+Sprint 9 introduces safe notification routing without spamming real groups or exposing Telegram chat IDs. Sprint 10 adds durable delivery-attempt records for actual send attempts. Sprint 11 adds availability-aware routing and Daily Digest delivery attempts. Sprint 12 adds critical intelligence signal routing through the same safe delivery-attempt path. Sprint 16 adds Notification Digest Mode for bundling low-priority updates. Sprint 17 adds opportunity and creator-watch routing keys.
 
 ## Goals
 
@@ -32,6 +32,10 @@ Sprint 9 introduces safe notification routing without spamming real groups or ex
 - Escalated Task -> operations + owner.
 - Escalated Incident -> owner + incidents.
 - Critical Intelligence Signal -> owner + incidents + operations.
+- Creator Watch Created -> operations.
+- Opportunity Assigned -> operations.
+- High Priority Opportunity -> owner + operations.
+- Opportunity Digest -> operations.
 - Low-priority updates -> notification digest bundle when immediate delivery is not required.
 
 ## Smart Routing Inputs

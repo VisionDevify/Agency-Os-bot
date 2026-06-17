@@ -100,12 +100,17 @@ from app.services.recommendations import get_recommendation, update_recommendati
 from app.services.intelligence import run_full_intelligence_scan, run_intelligence_analysis
 from app.services.learning import create_playbook_run, get_playbook, record_feedback, seed_default_playbooks
 from app.services.opportunities import (
+    assign_creator_watch,
     assign_opportunity,
+    create_default_creator_watch,
     create_default_opportunity,
+    create_default_post_watch,
+    get_creator_watch,
     get_opportunity,
     record_opportunity_result,
     run_opportunity_scoring,
     score_opportunity,
+    set_creator_watch_active,
 )
 from app.services.permissions import PermissionPrincipal, require_permission
 from app.services.team_operations import set_availability
@@ -167,9 +172,18 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         return None
     if page.startswith("onboarding"):
         return None
-    if page == "help" or page.startswith("help:"):
+    if page == "help" or page.startswith("help:") or page == "help_copilot" or page.startswith("help_copilot:"):
         return None
-    if page in {"daily_experience", "performance", "my_models", "client_dashboard", "my_reports", "my_team", "uploads"}:
+    if page in {
+        "daily_experience",
+        "performance",
+        "my_models",
+        "client_dashboard",
+        "my_reports",
+        "my_team",
+        "uploads",
+        "chatter_workspace",
+    }:
         return ("view_dashboard",)
     if page == "my_accounts":
         return ("manage_accounts", "upload_content", "view_dashboard")
@@ -177,6 +191,8 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         return ("view_chatter_dashboard", "manage_tasks", "manage_reports", "view_dashboard")
     if page.startswith("team_qa"):
         return ("manage_users",)
+    if page == "team_activation":
+        return ("manage_users", "manage_reports")
     if page.startswith("notification_digest"):
         return ("manage_reports", "view_dashboard")
     if page.startswith("recommendation:"):
@@ -185,8 +201,12 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         return ("manage_reports", "view_dashboard")
     if page.startswith("playbook:"):
         return ("manage_reports", "view_dashboard")
+    if page in {"opportunities:creators:add", "opportunities:posts:add", "opportunities:manager"}:
+        return ("manage_reports", "manage_tasks", "manage_chatter_team")
+    if page.startswith("creator:") or page.startswith("post:"):
+        return ("manage_reports", "manage_tasks", "manage_chatter_team")
     if page.startswith("opportunities") or page.startswith("opportunity:"):
-        return ("manage_reports", "manage_tasks")
+        return ("manage_reports", "manage_tasks", "view_chatter_dashboard", "view_dashboard")
     if (
         page.startswith("automations:")
         or page.startswith("automation:")
@@ -391,6 +411,35 @@ def _perform_admin_action(
         }:
             run_intelligence_analysis(session, actor=actor, run_type=run_type)
             return "intelligence:runs"
+    if page == "opportunities:creators:add":
+        try:
+            creator = create_default_creator_watch(session, actor=actor)
+            return f"creator:{creator.id}"
+        except PermissionError:
+            return "opportunities:creators"
+    if page == "opportunities:posts:add":
+        try:
+            post = create_default_post_watch(session, actor=actor)
+            return f"post:{post.id}"
+        except PermissionError:
+            return "opportunities:posts"
+    if len(parts) >= 3 and parts[0] == "creator" and parts[1].isdigit():
+        creator = get_creator_watch(session, int(parts[1]))
+        if creator is None:
+            return "opportunities:creators"
+        action = parts[2]
+        try:
+            if action == "assign_me":
+                assign_creator_watch(session, creator, actor=actor, chatter=actor)
+                return f"creator:{creator.id}"
+            if action == "disable":
+                set_creator_watch_active(session, creator, actor=actor, is_active=False, action="creator_watch.disabled")
+                return f"creator:{creator.id}"
+            if action == "archive":
+                set_creator_watch_active(session, creator, actor=actor, is_active=False, action="creator_watch.archived")
+                return f"creator:{creator.id}"
+        except PermissionError:
+            return f"creator:{creator.id}"
     if page == "opportunities:add":
         opportunity = create_default_opportunity(session, actor=actor)
         return f"opportunity:{opportunity.id}"
@@ -415,6 +464,15 @@ def _perform_admin_action(
                 actor=actor,
                 status="posted",
                 notes="Manual result recorded from Telegram.",
+            )
+            return f"opportunity:{opportunity.id}"
+        if action == "reject":
+            record_opportunity_result(
+                session,
+                opportunity,
+                actor=actor,
+                status="rejected",
+                notes="Manual rejection recorded from Telegram.",
             )
             return f"opportunity:{opportunity.id}"
     if page == "tasks:create":
@@ -790,6 +848,8 @@ def screen_for_page(
         or normalized.startswith("playbook:")
         or normalized.startswith("opportunities")
         or normalized.startswith("opportunity:")
+        or normalized.startswith("creator:")
+        or normalized.startswith("post:")
         or normalized.startswith("automations:")
         or normalized.startswith("automation:")
         or normalized.startswith("automation_run:")
@@ -814,14 +874,18 @@ def screen_for_page(
             "my_models",
             "my_accounts",
             "my_opportunities",
+            "chatter_workspace",
             "uploads",
             "client_dashboard",
             "my_reports",
             "my_team",
             "team_qa",
+            "team_activation",
+            "help_copilot",
             "notification_digest",
         }
         or normalized.startswith("help:")
+        or normalized.startswith("help_copilot:")
         or normalized.startswith("team_qa:")
         or normalized.startswith("notification_digest:")
     ):

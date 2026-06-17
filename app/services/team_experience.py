@@ -129,12 +129,15 @@ def role_home_items(user: User | None) -> list[tuple[str, str]]:
             ("Tasks", "tasks"),
             ("Incidents", "incidents"),
             ("Models", "models"),
+            ("Opportunities", "opportunities:manager"),
             ("Operations Dashboard", "reports:operations"),
             ("Reports", "reports"),
+            ("Team Activation", "team_activation"),
             ("Team QA", "team_qa"),
         ]
     if role in {"Senior Chatter", "Chatter"}:
         return [
+            ("Chatter Workspace", "chatter_workspace"),
             ("My Models", "my_models"),
             ("My Tasks", "tasks:my"),
             ("My Opportunities", "my_opportunities"),

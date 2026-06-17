@@ -1,6 +1,6 @@
 # Event Architecture
 
-Agency OS should become event-driven over time. Audit logs remain the operator-facing safety record. Sprint 8 added `event_logs` as the first lightweight durable event feed for reports, notifications, automations, self-healing, and future AI operations. Sprint 9 adds notification routing events, durable automation simulation events, recommendations, and heartbeat state changes. Sprint 11 adds operations activation events for task ownership, incident timelines, localization, availability, smart notification routing, daily digest delivery, and duplicate polling protection. Sprint 12 adds deterministic intelligence events for signals, patterns, trends, workload, executive insights, intelligence runs, recommendations, and manual opportunities. Sprint 15 adds learning events, outcome memory, playbook runs, confidence changes, and feedback events. Sprint 16 adds team rollout, notification digest, and scheduled automation execution events.
+Agency OS should become event-driven over time. Audit logs remain the operator-facing safety record. Sprint 8 added `event_logs` as the first lightweight durable event feed for reports, notifications, automations, self-healing, and future AI operations. Sprint 9 adds notification routing events, durable automation simulation events, recommendations, and heartbeat state changes. Sprint 11 adds operations activation events for task ownership, incident timelines, localization, availability, smart notification routing, daily digest delivery, and duplicate polling protection. Sprint 12 adds deterministic intelligence events for signals, patterns, trends, workload, executive insights, intelligence runs, recommendations, and manual opportunities. Sprint 15 adds learning events, outcome memory, playbook runs, confidence changes, and feedback events. Sprint 16 adds team rollout, notification digest, and scheduled automation execution events. Sprint 17 adds creator watch, own post watch, comment strategy, Help Copilot, activation, and opportunity routing events.
 
 ## Principle
 
@@ -138,8 +138,17 @@ This avoids over-engineering while preserving a clean upgrade path.
 - `opportunity.created`: manual opportunity created.
 - `opportunity.scored`: deterministic opportunity score updated.
 - `opportunity.assigned`: opportunity assigned to a user.
+- `opportunity.high_priority`: high-priority opportunity alert routing key.
+- `opportunity.digest`: opportunity digest routing key.
 - `opportunity.result_recorded`: manual opportunity result recorded.
 - `opportunity_scoring.completed`: deterministic opportunity scoring run completed.
+- `creator_watch.created`: creator watch record created.
+- `creator_watch.assigned`: creator watch record assigned to a chatter/model/team.
+- `creator_watch.disabled`: creator watch record disabled.
+- `creator_watch.archived`: creator watch record archived from active view.
+- `post_watch.created`: own post watch record created.
+- `comment_strategy.generated`: deterministic human-review strategy prompts generated for an opportunity.
+- `help_copilot.answered`: Help Copilot returned a role-aware explanation.
 - `learning.event.created`: safe learning event captured from an operational outcome.
 - `playbook.suggested`: playbook was recommended or suggested to an operator.
 - `playbook.run.created`: playbook run or use record was created.
@@ -251,6 +260,14 @@ Unsafe metadata remains forbidden:
 Critical intelligence signals may create notification delivery attempts through the existing purpose-based routing rules. The delivery attempt should summarize the signal and route to owner/HQ, incidents, or operations targets when active. It should not send raw diagnostic dumps.
 
 Opportunity events are manual-only. They must not imply automatic scraping, posting, commenting, liking, following, or platform automation. Future AI opportunity discovery must remain human-approved and should prefer official APIs where available.
+
+## Sprint 17 Opportunity Activation Notes
+
+Creator Watch and Own Post Watch are internal tracking records. Safe metadata can include platform, priority, niche, model/brand ID, assigned chatter ID, status, and count summaries. It must not include scraped content, platform credentials, passwords, tokens, raw session data, or private messages.
+
+Comment strategy events are guidance-only. They can include strategy counts, score ranges, and `posting: manual_only`, but must not imply that Agency OS posted, commented, liked, followed, or messaged anyone.
+
+Help Copilot events can include the question category and next action. They should not include secrets, raw chat IDs, raw private messages, or diagnostic dumps.
 
 ## Automation Builder Event Notes
 

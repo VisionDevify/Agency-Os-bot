@@ -14,7 +14,7 @@ from app.models.incident import Incident, IncidentTimeline
 from app.models.intelligence import ExecutiveInsight, IntelligenceRun, IntelligenceSignal, IssuePattern, TrendSnapshot, WorkloadSnapshot
 from app.models.learning import ConfidenceRecord, LearningEvent, OutcomeMemory, Playbook, PlaybookRun
 from app.models.model_brand import ModelBrand, ModelBrandMember
-from app.models.opportunity import Opportunity, OpportunityResult, OpportunitySource
+from app.models.opportunity import CommentStrategy, CreatorWatch, Opportunity, OpportunityResult, OpportunitySource, PostWatch
 from app.models.permissions import Permission, Role, RolePermission, UserRole
 from app.models.proxy import Proxy, ProxyRotationHistory
 from app.models.recommendation import Recommendation
@@ -37,6 +37,8 @@ __all__ = [
     "AutomationRunStep",
     "AutomationSchedule",
     "AutomationSimulationRun",
+    "CommentStrategy",
+    "CreatorWatch",
     "DailyBriefing",
     "EventLog",
     "ExecutiveInsight",
@@ -59,6 +61,7 @@ __all__ = [
     "Permission",
     "Playbook",
     "PlaybookRun",
+    "PostWatch",
     "Proxy",
     "ProxyRotationHistory",
     "Recommendation",

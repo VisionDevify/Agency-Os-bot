@@ -11,7 +11,9 @@ def test_model_tables_are_registered() -> None:
         AutomationRunStep,
         AutomationSchedule,
         AutomationSimulationRun,
+        CommentStrategy,
         ConfidenceRecord,
+        CreatorWatch,
         Incident,
         AccountAuthSession,
         AccountVerificationCode,
@@ -32,6 +34,7 @@ def test_model_tables_are_registered() -> None:
         OutcomeMemory,
         Playbook,
         PlaybookRun,
+        PostWatch,
         Proxy,
         ProxyRotationHistory,
         Recommendation,
@@ -58,6 +61,8 @@ def test_model_tables_are_registered() -> None:
         "automation_run_steps",
         "automation_schedules",
         "automation_simulation_runs",
+        "comment_strategies",
+        "creator_watches",
         "daily_briefings",
         "event_logs",
         "executive_insights",
@@ -77,6 +82,7 @@ def test_model_tables_are_registered() -> None:
         "outcome_memory",
         "playbook_runs",
         "playbooks",
+        "post_watches",
         "proxies",
         "proxy_rotation_history",
         "recommendations",
@@ -138,4 +144,7 @@ def test_model_tables_are_registered() -> None:
     assert OpportunitySource.__tablename__ == "opportunity_sources"
     assert Opportunity.__tablename__ == "opportunities"
     assert OpportunityResult.__tablename__ == "opportunity_results"
+    assert CreatorWatch.__tablename__ == "creator_watches"
+    assert PostWatch.__tablename__ == "post_watches"
+    assert CommentStrategy.__tablename__ == "comment_strategies"
     assert TeamOnboardingChecklist.__tablename__ == "team_onboarding_checklists"

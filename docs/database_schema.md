@@ -1,6 +1,6 @@
 # Database Schema
 
-This document describes the current schema as of Sprint 16 and the planned direction. PostgreSQL is the production database, SQLAlchemy owns the models, and Alembic owns migrations.
+This document describes the current schema as of Sprint 17 and the planned direction. PostgreSQL is the production database, SQLAlchemy owns the models, and Alembic owns migrations.
 
 ## Current Tables
 
@@ -1002,10 +1002,93 @@ Columns:
 - `id`: primary key.
 - `opportunity_id`: foreign key to `opportunities.id`, cascade delete.
 - `posted_by_user_id`: nullable foreign key to `users.id`.
-- `status`: `not_posted`, `posted`, `skipped`, or `failed`.
+- `status`: `not_posted`, `posted`, `skipped`, `failed`, or `rejected`.
 - `clicks`, `conversions`: nullable manual result counts.
 - `notes`: safe operator notes.
 - `created_at`, `updated_at`: timestamps.
+
+### creator_watches
+
+Manual creator watch records for human review.
+
+Columns:
+
+- `id`: primary key.
+- `platform`: `x`, `instagram`, or `other`.
+- `creator_name`: display name.
+- `creator_username`: platform username or handle label.
+- `profile_url`: optional profile URL.
+- `niche`: optional niche label.
+- `priority`: `low`, `normal`, `high`, or `critical`.
+- `assigned_model_id`: nullable foreign key to `model_brands.id`.
+- `assigned_team_id`: nullable placeholder for future team records.
+- `assigned_chatter_id`: nullable foreign key to `users.id`.
+- `notes`: safe operator notes.
+- `is_active`: active/disabled flag.
+- `created_at`, `updated_at`: timestamps.
+
+Indexes and constraints:
+
+- `ck_creator_watches_platform`.
+- `ck_creator_watches_priority`.
+- `ix_creator_watches_platform`.
+- `ix_creator_watches_creator_username`.
+- `ix_creator_watches_niche`.
+- `ix_creator_watches_priority`.
+- `ix_creator_watches_assigned_model_id`.
+- `ix_creator_watches_assigned_team_id`.
+- `ix_creator_watches_assigned_chatter_id`.
+- `ix_creator_watches_is_active`.
+
+### post_watches
+
+Manual tracking records for important owned posts.
+
+Columns:
+
+- `id`: primary key.
+- `model_brand_id`: foreign key to `model_brands.id`, cascade delete.
+- `platform`: `x`, `instagram`, or `other`.
+- `account_id`: nullable foreign key to `accounts.id`.
+- `post_reference`: safe manual reference such as URL, slug, or internal label.
+- `post_type`: safe type label such as post, reel, thread, or story.
+- `status`: `recent`, `attention_needed`, `assigned`, or `archived`.
+- `notes`: safe operator notes.
+- `created_at`, `updated_at`: timestamps.
+
+Indexes and constraints:
+
+- `ck_post_watches_platform`.
+- `ck_post_watches_status`.
+- `ix_post_watches_model_brand_id`.
+- `ix_post_watches_account_id`.
+- `ix_post_watches_platform`.
+- `ix_post_watches_status`.
+- `ix_post_watches_created_at`.
+
+### comment_strategies
+
+Deterministic human-review strategy prompts for opportunities. These are not automated comments.
+
+Columns:
+
+- `id`: primary key.
+- `opportunity_id`: nullable foreign key to `opportunities.id`, cascade delete.
+- `angle`: `curiosity`, `question`, `agreement`, `story`, `authority`, `contrarian`, or `educational`.
+- `tone`: short human-readable tone label.
+- `curiosity_score`: 0-100.
+- `engagement_score`: 0-100.
+- `risk_score`: 0-100.
+- `reasoning`: safe explanation for the suggestion.
+- `created_at`, `updated_at`: timestamps.
+
+Indexes and constraints:
+
+- `ck_comment_strategies_angle`.
+- score range checks for curiosity, engagement, and risk.
+- `ix_comment_strategies_opportunity_id`.
+- `ix_comment_strategies_angle`.
+- `ix_comment_strategies_risk_score`.
 
 ## Relationships
 
@@ -1042,6 +1125,9 @@ Columns:
 - Opportunity sources can have many opportunities through `opportunities.source_id`.
 - Opportunities can attach to a model/brand and assigned user.
 - Opportunity results belong to an opportunity and may reference the user who manually posted or recorded the result.
+- Creator watch records can attach to a model/brand and assigned chatter.
+- Post watch records attach to a model/brand and may attach to an account.
+- Comment strategies can attach to an opportunity and are deleted with that opportunity.
 
 ## Status Strategy
 
@@ -1300,6 +1386,9 @@ Indexes and constraints:
 - Automation simulation runs are history records and should not be deleted during normal operations.
 - Recommendations should move through status instead of hard deletion.
 - Intelligence signals, patterns, insights, runs, opportunities, and opportunity results should move through status instead of hard deletion.
+- Creator watch records use `is_active` for disabled/archived active-view filtering.
+- Post watch records use `status` for recent, attention-needed, assigned, and archived states.
+- Comment strategies are derived guidance and can be deleted with the parent opportunity.
 - Learning events, playbook runs, outcome memory, and confidence records should not be hard deleted during normal operations.
 - Playbooks should move to `needs_review` or `retired` instead of deletion.
 - System heartbeat rows are updated in place by service name; state changes are still emitted to audit/event logs.
@@ -1317,3 +1406,5 @@ Indexes and constraints:
 - `repair_attempts`: self-healing attempts and outcomes.
 - `ai_recommendations`: AI operations suggestions, confidence, and operator disposition.
 - `opportunity_campaigns`: grouped opportunity batches once manual results need campaign-level attribution.
+- `teams`: first-class team records to replace the placeholder `creator_watches.assigned_team_id`.
+- `creator_watch_history`: optional creator-watch change history if the audit/event feed becomes too broad for manager views.
