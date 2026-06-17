@@ -26,6 +26,8 @@ Reports -> Daily Digest supports:
 - Schedule Digest placeholder.
 - Delivery History.
 
+Sprint 16 separately adds Notification Digest Mode under Settings. Daily Digest is an operator/reporting summary. Notification Digest Mode is a spam-reduction bundle for low-priority notification updates.
+
 ## Delivery Semantics
 
 `digest.sent` means Agency OS created durable delivery-attempt records for active targets matching the requested purpose. It does not mean Telegram accepted the message. Actual Telegram delivery is represented by:

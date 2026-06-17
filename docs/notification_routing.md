@@ -1,6 +1,6 @@
 # Notification Routing
 
-Sprint 9 introduces safe notification routing without spamming real groups or exposing Telegram chat IDs. Sprint 10 adds durable delivery-attempt records for actual send attempts. Sprint 11 adds availability-aware routing and Daily Digest delivery attempts. Sprint 12 adds critical intelligence signal routing through the same safe delivery-attempt path.
+Sprint 9 introduces safe notification routing without spamming real groups or exposing Telegram chat IDs. Sprint 10 adds durable delivery-attempt records for actual send attempts. Sprint 11 adds availability-aware routing and Daily Digest delivery attempts. Sprint 12 adds critical intelligence signal routing through the same safe delivery-attempt path. Sprint 16 adds Notification Digest Mode for bundling low-priority updates.
 
 ## Goals
 
@@ -32,6 +32,7 @@ Sprint 9 introduces safe notification routing without spamming real groups or ex
 - Escalated Task -> operations + owner.
 - Escalated Incident -> owner + incidents.
 - Critical Intelligence Signal -> owner + incidents + operations.
+- Low-priority updates -> notification digest bundle when immediate delivery is not required.
 
 ## Smart Routing Inputs
 
@@ -59,6 +60,7 @@ Settings -> Notification Targets supports:
 - Send Test Notification to active testing targets only.
 - Recent delivery attempts on target detail.
 - Daily Digest delivery history.
+- Notification Digest Mode for bundled low-priority updates.
 
 ## Safety Rules
 
@@ -118,3 +120,22 @@ Suggested routing:
 Low-risk run details should be grouped into run history instead of sent as separate chat messages. Telegram notifications should link operators back to the relevant automation rule, simulation, run, or incident screen when possible.
 
 Delivery attempts must still be recorded for every real send. Metadata should include only safe IDs, event type, purpose, status, and coarse error messages.
+
+## Notification Digest Mode
+
+Notification Digest Mode stores bundled updates in `notification_digests`.
+
+Use it for:
+
+- skipped low-priority delivery attempts.
+- pending non-critical updates.
+- grouped operational noise.
+
+Do not use it for:
+
+- critical incidents.
+- owner approval gates.
+- production outage alerts.
+- security-sensitive events.
+
+Digest items store safe references only. They must not include message bodies, secrets, raw chat IDs, platform credentials, 2FA codes, or proxy passwords.

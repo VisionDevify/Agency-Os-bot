@@ -109,6 +109,7 @@ from app.services.opportunities import (
 )
 from app.services.permissions import PermissionPrincipal, require_permission
 from app.services.team_operations import set_availability
+from app.services.team_experience import update_onboarding_checklist
 
 PAGE_PERMISSIONS: dict[str, str] = {
     "dashboard": "view_dashboard",
@@ -124,6 +125,9 @@ PAGE_PERMISSIONS: dict[str, str] = {
     "settings": "manage_roles",
     "audit_logs": "view_audit_logs",
     "production_status": "manage_roles",
+    "daily_experience": "view_dashboard",
+    "performance": "view_dashboard",
+    "team_qa": "manage_users",
 }
 
 
@@ -163,6 +167,18 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         return None
     if page.startswith("onboarding"):
         return None
+    if page == "help" or page.startswith("help:"):
+        return None
+    if page in {"daily_experience", "performance", "my_models", "client_dashboard", "my_reports", "my_team", "uploads"}:
+        return ("view_dashboard",)
+    if page == "my_accounts":
+        return ("manage_accounts", "upload_content", "view_dashboard")
+    if page == "my_opportunities":
+        return ("view_chatter_dashboard", "manage_tasks", "manage_reports", "view_dashboard")
+    if page.startswith("team_qa"):
+        return ("manage_users",)
+    if page.startswith("notification_digest"):
+        return ("manage_reports", "view_dashboard")
     if page.startswith("recommendation:"):
         return ("manage_reports", "view_dashboard")
     if page.startswith("intelligence"):
@@ -221,6 +237,16 @@ def _perform_admin_action(
         except ValueError:
             return "availability"
         return "availability"
+    if len(parts) >= 3 and parts[0] == "team_qa" and parts[1].isdigit():
+        target = get_user_by_id(session, int(parts[1]))
+        if target is None:
+            return "team_qa"
+        if len(parts) >= 3:
+            try:
+                update_onboarding_checklist(session, target, actor=actor, field=parts[2], value=True)
+            except (PermissionError, ValueError):
+                pass
+            return f"team_qa:{target.id}"
     if page == "automations:templates":
         seed_builtin_automation_templates(session, actor=actor)
         return "automations:templates"
@@ -672,7 +698,7 @@ def screen_for_page(
                 resource_type="telegram_menu",
                 details={"telegram_id_masked": mask_telegram_id(principal.telegram_id)},
             )
-        return render_main_menu()
+        return render_main_menu(session=session, user=user)
 
     permissions = permissions_for_page(normalized)
     if permissions is not None:
@@ -747,7 +773,7 @@ def screen_for_page(
         )
 
     if normalized == "dashboard":
-        return render_dashboard(session=session)
+        return render_dashboard(session=session, user=user)
     if (
         normalized in PAGE_TITLES
         or normalized == "audit_logs"
@@ -781,6 +807,23 @@ def screen_for_page(
         or normalized == "production_status"
         or normalized.startswith("availability")
         or normalized.startswith("onboarding")
+        or normalized in {
+            "daily_experience",
+            "performance",
+            "help",
+            "my_models",
+            "my_accounts",
+            "my_opportunities",
+            "uploads",
+            "client_dashboard",
+            "my_reports",
+            "my_team",
+            "team_qa",
+            "notification_digest",
+        }
+        or normalized.startswith("help:")
+        or normalized.startswith("team_qa:")
+        or normalized.startswith("notification_digest:")
     ):
         return render_page(normalized, session=session, user=user)
-    return render_main_menu()
+    return render_main_menu(session=session, user=user)

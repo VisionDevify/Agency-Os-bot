@@ -1,6 +1,6 @@
 # Database Schema
 
-This document describes the current schema as of Sprint 15 and the planned direction. PostgreSQL is the production database, SQLAlchemy owns the models, and Alembic owns migrations.
+This document describes the current schema as of Sprint 16 and the planned direction. PostgreSQL is the production database, SQLAlchemy owns the models, and Alembic owns migrations.
 
 ## Current Tables
 
@@ -62,6 +62,30 @@ Indexes and constraints:
 - `ix_user_availability_user_id`.
 - `ix_user_availability_status`.
 - `ix_user_availability_timezone`.
+
+### team_onboarding_checklists
+
+Tracks human rollout readiness for each user.
+
+Columns:
+
+- `id`: primary key.
+- `user_id`: unique foreign key to `users.id`, cascade delete.
+- `onboarded`: whether the admin has marked the user ready.
+- `role_assigned`: role assignment confirmed.
+- `timezone_confirmed`: timezone confirmed.
+- `availability_configured`: availability setup confirmed.
+- `help_center_viewed`: Help Center viewed.
+- `readiness_score`: 0-100 readiness summary.
+- `updated_by_user_id`: nullable foreign key to the admin who last changed the checklist.
+- `created_at`, `updated_at`: timestamps.
+
+Indexes and constraints:
+
+- Unique index on `user_id`.
+- `ck_team_onboarding_checklists_readiness_score`.
+- `ix_team_onboarding_checklists_readiness_score`.
+- `ix_team_onboarding_checklists_onboarded`.
 
 ### roles
 
@@ -168,6 +192,34 @@ Indexes and constraints:
 - `ix_event_logs_actor_user_id`.
 - `ix_event_logs_entity` on `entity_type`, `entity_id`.
 - `ix_event_logs_created_at`.
+
+### notification_digests
+
+Bundles low-priority notification updates to reduce chat noise.
+
+Columns:
+
+- `id`: primary key.
+- `user_id`: nullable user who owns or generated the digest.
+- `purpose`: routing purpose such as `operations`.
+- `status`: one of `open`, `sent`, or `archived`.
+- `priority`: one of `low`, `normal`, or `critical`.
+- `title`: digest title.
+- `summary`: human-readable summary.
+- `items_json`: safe list of update references.
+- `item_count`: item count.
+- `sent_at`: optional sent timestamp.
+- `created_at`, `updated_at`: timestamps.
+
+Indexes and constraints:
+
+- `ck_notification_digests_status`.
+- `ck_notification_digests_priority`.
+- `ix_notification_digests_user_id`.
+- `ix_notification_digests_purpose`.
+- `ix_notification_digests_status`.
+- `ix_notification_digests_priority`.
+- `ix_notification_digests_created_at`.
 
 ### model_brands
 

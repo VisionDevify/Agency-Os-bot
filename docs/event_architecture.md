@@ -1,6 +1,6 @@
 # Event Architecture
 
-Agency OS should become event-driven over time. Audit logs remain the operator-facing safety record. Sprint 8 added `event_logs` as the first lightweight durable event feed for reports, notifications, automations, self-healing, and future AI operations. Sprint 9 adds notification routing events, durable automation simulation events, recommendations, and heartbeat state changes. Sprint 11 adds operations activation events for task ownership, incident timelines, localization, availability, smart notification routing, daily digest delivery, and duplicate polling protection. Sprint 12 adds deterministic intelligence events for signals, patterns, trends, workload, executive insights, intelligence runs, recommendations, and manual opportunities. Sprint 15 adds learning events, outcome memory, playbook runs, confidence changes, and feedback events.
+Agency OS should become event-driven over time. Audit logs remain the operator-facing safety record. Sprint 8 added `event_logs` as the first lightweight durable event feed for reports, notifications, automations, self-healing, and future AI operations. Sprint 9 adds notification routing events, durable automation simulation events, recommendations, and heartbeat state changes. Sprint 11 adds operations activation events for task ownership, incident timelines, localization, availability, smart notification routing, daily digest delivery, and duplicate polling protection. Sprint 12 adds deterministic intelligence events for signals, patterns, trends, workload, executive insights, intelligence runs, recommendations, and manual opportunities. Sprint 15 adds learning events, outcome memory, playbook runs, confidence changes, and feedback events. Sprint 16 adds team rollout, notification digest, and scheduled automation execution events.
 
 ## Principle
 
@@ -111,6 +111,11 @@ This avoids over-engineering while preserving a clean upgrade path.
 - `notification_target.disabled`: notification target disabled.
 - `notification_target.tested`: operator requested a safe target test.
 - `notification.routed`: routing service selected delivery targets for an event.
+- `notification.digest_created`: low-priority notification updates were bundled into a digest.
+- `team.onboarding_checklist_updated`: manager/admin updated a user's rollout readiness checklist.
+- `automation.schedule_updated`: automation schedule timing or active state changed.
+- `automation.scheduled_run.skipped`: scheduler skipped a due automation because a safety gate blocked it.
+- `automation.scheduled_runs_processed`: scheduler processed due automation schedules.
 - `access.denied`: user attempted a restricted or blocked action.
 - `owner.protection_triggered`: lockout protection blocked a risky action.
 - `automation.simulated`: automation dry-run completed without mutating production records.
@@ -218,6 +223,14 @@ Automation simulation events are first-class safety records. They should include
 Recommendation events are deterministic and safe. They should identify recommendation type, severity, entity type, and entity ID when present. Recommendation metadata must not include credentials, tokens, chat IDs, proxy passwords, verification codes, or raw session data.
 
 Heartbeat events are emitted only when a service status changes. Routine heartbeat refreshes should update `system_heartbeats` without filling the audit log with noise.
+
+## Sprint 16 Event Notes
+
+Role-specific homes do not need an event for every view beyond normal dashboard/report view events. Team QA updates are auditable because they affect rollout readiness.
+
+Notification digest events should include item counts and purpose only. They must not include raw Telegram chat IDs, message bodies, tokens, credentials, or private content.
+
+Scheduled automation execution is conservative. Low-risk rules can run automatically after simulation/approval gates are satisfied. High-risk or owner-gated rules should create skipped run records instead of silently doing nothing.
 
 ## Intelligence Event Notes
 

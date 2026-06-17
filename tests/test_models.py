@@ -24,6 +24,7 @@ def test_model_tables_are_registered() -> None:
         LearningEvent,
         ModelBrand,
         ModelBrandMember,
+        NotificationDigest,
         NotificationTarget,
         Opportunity,
         OpportunityResult,
@@ -38,6 +39,7 @@ def test_model_tables_are_registered() -> None:
         Role,
         SystemHeartbeat,
         Task,
+        TeamOnboardingChecklist,
         TrendSnapshot,
         User,
         WorkloadSnapshot,
@@ -68,6 +70,7 @@ def test_model_tables_are_registered() -> None:
         "model_brand_members",
         "model_brands",
         "notification_targets",
+        "notification_digests",
         "opportunities",
         "opportunity_results",
         "opportunity_sources",
@@ -81,6 +84,7 @@ def test_model_tables_are_registered() -> None:
         "roles",
         "system_heartbeats",
         "tasks",
+        "team_onboarding_checklists",
         "trend_snapshots",
         "user_roles",
         "users",
@@ -96,6 +100,7 @@ def test_model_tables_are_registered() -> None:
     assert DailyBriefing.__tablename__ == "daily_briefings"
     assert AccountabilitySnapshot.__tablename__ == "accountability_snapshots"
     assert NotificationTarget.__tablename__ == "notification_targets"
+    assert NotificationDigest.__tablename__ == "notification_digests"
     assert Account.__tablename__ == "accounts"
     assert AccountAuthSession.__tablename__ == "account_auth_sessions"
     assert AccountVerificationCode.__tablename__ == "account_verification_codes"
@@ -133,3 +138,4 @@ def test_model_tables_are_registered() -> None:
     assert OpportunitySource.__tablename__ == "opportunity_sources"
     assert Opportunity.__tablename__ == "opportunities"
     assert OpportunityResult.__tablename__ == "opportunity_results"
+    assert TeamOnboardingChecklist.__tablename__ == "team_onboarding_checklists"

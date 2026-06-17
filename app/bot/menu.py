@@ -21,16 +21,21 @@ def callback_for(page: str) -> str:
     return f"nav:{page}"
 
 
-def main_menu() -> InlineKeyboardMarkup:
+def main_menu(items: tuple[tuple[str, str], ...] | list[tuple[str, str]] | None = None) -> InlineKeyboardMarkup:
+    menu_items = tuple(items or MENU_ITEMS)
     rows: list[list[InlineKeyboardButton]] = []
-    for index in range(0, len(MENU_ITEMS), 2):
+    for index in range(0, len(menu_items), 2):
         rows.append(
             [
                 InlineKeyboardButton(text=label, callback_data=callback_for(page))
-                for label, page in MENU_ITEMS[index : index + 2]
+                for label, page in menu_items[index : index + 2]
             ]
         )
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def role_home_menu(items: list[tuple[str, str]] | tuple[tuple[str, str], ...]) -> InlineKeyboardMarkup:
+    return main_menu(items)
 
 
 def page_controls(*, back_to: str = "menu", include_refresh: bool = False) -> list[list[InlineKeyboardButton]]:
@@ -58,6 +63,93 @@ def dashboard_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="Back", callback_data=callback_for("menu")),
                 InlineKeyboardButton(text="Main Menu", callback_data=callback_for("menu")),
             ],
+        ]
+    )
+
+
+def personalized_dashboard_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Today", callback_data=callback_for("daily_experience"))],
+            [
+                InlineKeyboardButton(text="My Tasks", callback_data=callback_for("tasks:my")),
+                InlineKeyboardButton(text="Availability", callback_data=callback_for("availability")),
+            ],
+            [
+                InlineKeyboardButton(text="Performance", callback_data=callback_for("performance")),
+                InlineKeyboardButton(text="Help", callback_data=callback_for("help")),
+            ],
+            *page_controls(back_to="menu"),
+        ]
+    )
+
+
+def daily_experience_menu(quick_actions: list[tuple[str, str]] | None = None) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(text=label, callback_data=callback_for(page))]
+        for label, page in (quick_actions or [])[:4]
+    ]
+    rows.extend(page_controls(back_to="menu"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def performance_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="My Tasks", callback_data=callback_for("tasks:my")),
+                InlineKeyboardButton(text="Availability", callback_data=callback_for("availability")),
+            ],
+            *page_controls(back_to="menu"),
+        ]
+    )
+
+
+def help_center_menu(topic_buttons: list[tuple[str, str]] | None = None) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in (topic_buttons or [])]
+    rows.extend(page_controls(back_to="menu"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def notification_digest_mode_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Bundle Updates", callback_data=callback_for("notification_digest:generate"))],
+            [InlineKeyboardButton(text="Refresh", callback_data=callback_for("notification_digest"))],
+            *page_controls(back_to="settings"),
+        ]
+    )
+
+
+def team_qa_menu(user_buttons: list[tuple[str, str]] | None = None) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in (user_buttons or [])]
+    rows.extend(page_controls(back_to="users"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def team_qa_detail_menu(user_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Role Assigned", callback_data=f"nav:team_qa:{user_id}:role_assigned"),
+                InlineKeyboardButton(text="Timezone Confirmed", callback_data=f"nav:team_qa:{user_id}:timezone_confirmed"),
+            ],
+            [
+                InlineKeyboardButton(text="Availability Set", callback_data=f"nav:team_qa:{user_id}:availability_configured"),
+                InlineKeyboardButton(text="Help Viewed", callback_data=f"nav:team_qa:{user_id}:help_center_viewed"),
+            ],
+            [InlineKeyboardButton(text="Mark Onboarded", callback_data=f"nav:team_qa:{user_id}:onboarded")],
+            *page_controls(back_to="team_qa"),
+        ]
+    )
+
+
+def scheduled_automations_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Run Due Safe Automations", callback_data=callback_for("automations:scheduled:run_due"))],
+            [InlineKeyboardButton(text="Automation Health", callback_data=callback_for("automations:health"))],
+            *page_controls(back_to="automations"),
         ]
     )
 
@@ -379,8 +471,8 @@ def intelligence_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Intelligence Briefing", callback_data=callback_for("reports:intelligence"))],
             [InlineKeyboardButton(text="Run Analysis", callback_data=callback_for("intelligence:runs"))],
             [
-                InlineKeyboardButton(text="Signals", callback_data=callback_for("intelligence:signals")),
-                InlineKeyboardButton(text="Patterns", callback_data=callback_for("intelligence:patterns")),
+                InlineKeyboardButton(text="Things To Watch", callback_data=callback_for("intelligence:signals")),
+                InlineKeyboardButton(text="Recurring Problems", callback_data=callback_for("intelligence:patterns")),
             ],
             [
                 InlineKeyboardButton(text="Trends", callback_data=callback_for("intelligence:trends")),
@@ -419,8 +511,8 @@ def intelligence_briefing_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Generate Intelligence Briefing", callback_data=callback_for("reports:intelligence:generate"))],
             [InlineKeyboardButton(text="View Latest", callback_data=callback_for("reports:intelligence:latest"))],
             [
-                InlineKeyboardButton(text="View Signals", callback_data=callback_for("intelligence:signals")),
-                InlineKeyboardButton(text="View Patterns", callback_data=callback_for("intelligence:patterns")),
+                InlineKeyboardButton(text="Things To Watch", callback_data=callback_for("intelligence:signals")),
+                InlineKeyboardButton(text="Recurring Problems", callback_data=callback_for("intelligence:patterns")),
             ],
             [
                 InlineKeyboardButton(text="View Trends", callback_data=callback_for("intelligence:trends")),
@@ -439,7 +531,7 @@ def learning_center_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Playbooks", callback_data=callback_for("intelligence:learning:playbooks"))],
             [InlineKeyboardButton(text="Recommended Playbooks", callback_data=callback_for("intelligence:learning:recommended"))],
             [
-                InlineKeyboardButton(text="Outcome Memory", callback_data=callback_for("intelligence:learning:outcome_memory")),
+                InlineKeyboardButton(text="What We've Learned", callback_data=callback_for("intelligence:learning:outcome_memory")),
                 InlineKeyboardButton(text="Confidence Changes", callback_data=callback_for("intelligence:learning:confidence")),
             ],
             [
@@ -548,6 +640,7 @@ def automations_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="Run History", callback_data=callback_for("automations:runs")),
                 InlineKeyboardButton(text="Automation Health", callback_data=callback_for("automations:health")),
             ],
+            [InlineKeyboardButton(text="Scheduled Runs", callback_data=callback_for("automations:scheduled"))],
             *page_controls(back_to="menu"),
         ]
     )
@@ -846,6 +939,7 @@ def settings_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Production Status", callback_data=callback_for("production_status"))],
             [InlineKeyboardButton(text="My Availability", callback_data=callback_for("availability"))],
             [InlineKeyboardButton(text="Team Availability", callback_data=callback_for("availability:team"))],
+            [InlineKeyboardButton(text="Notification Digest Mode", callback_data=callback_for("notification_digest"))],
             [InlineKeyboardButton(text="View Audit Logs", callback_data=callback_for("audit_logs"))],
             [InlineKeyboardButton(text="Notification Targets", callback_data=callback_for("notification_targets"))],
             [

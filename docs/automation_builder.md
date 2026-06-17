@@ -1,6 +1,7 @@
 # Automation Builder
 
 Sprint 14 turns Automations from simulation-only placeholders into a no-code operations builder.
+Sprint 16 activates conservative scheduling for safe, low-risk automations.
 
 ## Lifecycle
 
@@ -100,3 +101,25 @@ Sprint 15 connects automation run outcomes to the learning engine.
 - Successful repeated operation can support future recommendations to activate safe manual rules.
 
 Automation learning does not bypass simulation, approval, owner gates, or rollback limitations.
+
+## Scheduled Execution
+
+Automation schedules are stored in `automation_schedules`.
+
+Supported schedule types:
+
+- manual
+- hourly
+- daily
+- weekly
+- event_based
+
+Sprint 16 scheduler rules:
+
+- only low-risk automations auto-run initially.
+- high-risk and owner-gated rules are skipped with durable run records.
+- rules must still be active.
+- rules must still have a valid simulation.
+- skipped runs are visible in automation health.
+
+Scheduled execution should never become a shortcut around approval gates.

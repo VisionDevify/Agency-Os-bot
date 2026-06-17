@@ -23,8 +23,10 @@ from app.bot.menu import (
     briefing_menu,
     bot_status_menu,
     dashboard_menu,
+    daily_experience_menu,
     daily_digest_menu,
     executive_dashboard_menu,
+    help_center_menu,
     incident_detail_menu,
     incident_list_menu,
     incident_user_choice_menu,
@@ -44,6 +46,7 @@ from app.bot.menu import (
     models_menu,
     notification_target_detail_menu,
     notification_target_purpose_menu,
+    notification_digest_mode_menu,
     notification_targets_menu,
     onboarding_country_menu,
     onboarding_language_menu,
@@ -54,6 +57,7 @@ from app.bot.menu import (
     opportunities_menu,
     opportunity_detail_menu,
     page_menu,
+    performance_menu,
     platform_filter_menu,
     playbook_detail_menu,
     permission_choice_menu,
@@ -66,13 +70,17 @@ from app.bot.menu import (
     recommendations_menu,
     role_choice_menu,
     role_detail_menu,
+    role_home_menu,
     roles_menu,
+    scheduled_automations_menu,
     settings_menu,
     simulation_run_detail_menu,
     simulation_runs_menu,
     task_detail_menu,
     task_list_menu,
     task_user_choice_menu,
+    team_qa_detail_menu,
+    team_qa_menu,
     tasks_menu,
     user_detail_menu,
     users_menu,
@@ -160,6 +168,22 @@ from app.services.team_operations import (
     onboarding_next_step,
     timezone_suggestions_for_country,
 )
+from app.services.team_experience import (
+    create_notification_digest,
+    daily_experience,
+    help_text,
+    help_topics_for_role,
+    human_term,
+    list_notification_digests,
+    list_onboarding_checklists,
+    personalized_dashboard,
+    primary_role,
+    role_home_items,
+    role_intro,
+    role_performance_snapshot,
+    run_due_scheduled_automations,
+    scheduled_automation_summary,
+)
 from app.services.notifications import (
     latest_delivery_attempts_for_target,
     list_notification_targets,
@@ -238,11 +262,35 @@ PAGE_TITLES: dict[str, str] = {
 }
 
 
-def render_main_menu() -> Screen:
-    return Screen(text="Agency OS\nSelect an area.", reply_markup=main_menu())
+def render_main_menu(session: Session | None = None, user: User | None = None) -> Screen:
+    if session is None or user is None:
+        return Screen(text="Agency OS\nSelect an area.", reply_markup=main_menu())
+    details = personalized_dashboard(session, user)
+    items = role_home_items(user)
+    lines = [
+        f"Welcome back, {details['display_name']}",
+        "",
+        f"Role: {details['role']}",
+        f"Availability: {_status_marker(details['availability_status'])} {details['availability_status'].replace('_', ' ')}",
+        f"Tasks Due Today: {details['tasks_due_today']}",
+        f"Overdue Items: {details['overdue_items']}",
+        f"Assigned Models: {details['assigned_models']}",
+        "",
+        "Recommended Action:",
+        details["recommended_action"],
+        "",
+        role_intro(details["role"]),
+    ]
+    return Screen(text="\n".join(lines), reply_markup=role_home_menu(items))
 
 
-def render_dashboard(stats: DashboardStats | None = None, session: Session | None = None) -> Screen:
+def render_dashboard(
+    stats: DashboardStats | None = None,
+    session: Session | None = None,
+    user: User | None = None,
+) -> Screen:
+    if session is not None and user is not None and primary_role(user) not in {"Owner", "Admin", "Manager"}:
+        return render_personalized_dashboard_page(session, user)
     current = stats or (dashboard_stats(session) if session is not None else placeholder_dashboard_stats())
     lines = [
         "Dashboard",
@@ -306,6 +354,122 @@ def render_dashboard(stats: DashboardStats | None = None, session: Session | Non
     return Screen(text=text, reply_markup=dashboard_menu())
 
 
+def render_personalized_dashboard_page(session: Session, user: User) -> Screen:
+    details = personalized_dashboard(session, user)
+    performance = details["performance"]
+    lines = [
+        f"Welcome Back, {details['display_name']}",
+        "",
+        f"Role: {details['role']}",
+        f"Availability: {_status_marker(details['availability_status'])} {details['availability_status'].replace('_', ' ')}",
+        f"Tasks Due Today: {details['tasks_due_today']}",
+        f"Overdue Items: {details['overdue_items']}",
+        f"Assigned Models: {details['assigned_models']}",
+        "",
+        "Recommended Action:",
+        details["recommended_action"],
+        "",
+        "Performance Snapshot:",
+        f"Tasks Completed Today: {performance['tasks_completed']}",
+        f"Overdue Items: {performance['overdue_items']}",
+        f"Open Incidents: {performance['open_incidents']}",
+        f"Accountability Score: {performance['accountability_score']}",
+        "",
+        "Recent Activity:",
+    ]
+    lines.extend(f"- {item}" for item in details["recent_activity"][:3])
+    if not details["recent_activity"]:
+        lines.append("- No recent activity yet")
+    return Screen(text="\n".join(lines), reply_markup=personalized_dashboard_menu())
+
+
+def render_daily_experience_page(session: Session, user: User) -> Screen:
+    details = daily_experience(session, user)
+    lines = [
+        f"{details['greeting']}, {details['display_name']}",
+        "",
+        f"Role: {details['role']}",
+        f"Today: {details['today']}",
+        f"Availability: {_status_marker(details['availability_status'])} {details['availability_status'].replace('_', ' ')}",
+        "",
+        "Today's Priorities:",
+    ]
+    lines.extend(f"- {item}" for item in details["priorities"])
+    lines.extend(
+        [
+            "",
+            f"Tasks Due: {details['tasks_due_today']}",
+            f"Open Incidents: {details['open_incidents']}",
+            f"Recommendations: {details['recommended_action']}",
+            "",
+            "Quick Actions:",
+        ]
+    )
+    lines.extend(f"- {label}" for label, _ in details["quick_actions"])
+    return Screen(text="\n".join(lines), reply_markup=daily_experience_menu(details["quick_actions"]))
+
+
+def render_performance_page(session: Session, user: User) -> Screen:
+    role = primary_role(user)
+    stats = role_performance_snapshot(session, user)
+    lines = ["Performance Snapshot", "", f"Role: {role}", ""]
+    if role in {"Senior Chatter", "Chatter"}:
+        lines.extend(
+            [
+                f"Tasks Completed: {stats['tasks_completed']}",
+                f"Opportunities Handled: {stats['opportunities_handled']}",
+                f"Accountability Score: {stats['accountability_score']}",
+            ]
+        )
+    elif role == "VA":
+        lines.extend(
+            [
+                f"Tasks Completed: {stats['tasks_completed']}",
+                f"Accounts Maintained: {stats['accounts_maintained']}",
+                f"Overdue Items: {stats['overdue_items']}",
+            ]
+        )
+    elif role in {"Manager", "Chatter Manager", "Owner", "Admin"}:
+        metrics = manager_command_metrics(session)
+        lines.extend(
+            [
+                f"Team Health: {_status_marker('healthy' if metrics['overdue_tasks'] == 0 else 'warning')}",
+                f"Open Incidents: {metrics['open_incidents']}",
+                f"Overdue Tasks: {metrics['overdue_tasks']}",
+                f"People On Shift: {len(metrics['on_shift'])}",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                f"Tasks Completed: {stats['tasks_completed']}",
+                f"Overdue Items: {stats['overdue_items']}",
+                f"Accountability Score: {stats['accountability_score']}",
+            ]
+        )
+    lines.extend(["", "This is for visibility and support, not punishment."])
+    return Screen(text="\n".join(lines), reply_markup=performance_menu())
+
+
+def render_help_center_page(user: User | None = None) -> Screen:
+    buttons = [(label, f"nav:help:{topic}") for topic, label in help_topics_for_role(user)]
+    lines = [
+        "Help Center",
+        "",
+        "Quick answers for day-to-day work.",
+        "Pick a topic when you need a reminder or a clean next step.",
+    ]
+    return Screen(text="\n".join(lines), reply_markup=help_center_menu(buttons))
+
+
+def render_help_topic_page(topic: str, user: User | None = None) -> Screen:
+    title = dict(help_topics_for_role(user)).get(topic, topic.replace("_", " ").title())
+    return Screen(
+        text=f"{title}\n\n{help_text(topic, user)}",
+        reply_markup=page_menu(back_to="help"),
+    )
+
+
 def render_models_home() -> Screen:
     return Screen(text="Models\nCommand center.", reply_markup=models_menu())
 
@@ -333,23 +497,23 @@ def render_reports_home() -> Screen:
 def render_intelligence_home(session: Session | None = None) -> Screen:
     lines = ["Intelligence Command Center", ""]
     if session is None:
-        lines.append("Signals, patterns, trends, and workload intelligence.")
+        lines.append("Things to watch, recurring problems, trends, and workload intelligence.")
     else:
         status = command_center_intelligence_status(session)
         learning = learning_center_metrics(session)
         lines.extend(
             [
                 f"Status: {status['status']}",
-                f"Open Signals: {status['open_signals']}",
-                f"Critical Signals: {status['critical_signals']}",
-                f"Active Patterns: {status['active_patterns']}",
+                f"Things To Watch: {status['open_signals']}",
+                f"Critical Watch Items: {status['critical_signals']}",
+                f"Recurring Problems: {status['active_patterns']}",
                 f"Negative Trends: {status['negative_trends']}",
                 f"Overloaded Users: {status['overloaded_users']}",
-                f"Open Executive Insights: {status['open_executive_insights']}",
+                f"Management Insights: {status['open_executive_insights']}",
                 f"Learning Events: {learning['total_learning_events']}",
                 f"Active Playbooks: {learning['active_playbooks']}",
                 "",
-                "Run analysis or drill into signals, patterns, trends, and workload.",
+                "Run analysis or drill into watch items, recurring problems, trends, and workload.",
             ]
         )
     return Screen(text="\n".join(lines), reply_markup=intelligence_menu())
@@ -2145,6 +2309,8 @@ def render_onboarding_page(session: Session, user: User, *, step: str | None = N
             text=f"Timezone: {user.timezone}\n\nStep 4: Select your time format.",
             reply_markup=onboarding_time_format_menu(),
         )
+    role = primary_role(user)
+    intro = role_intro(role)
     return Screen(
         text=(
             "Access pending approval.\n\n"
@@ -2152,6 +2318,7 @@ def render_onboarding_page(session: Session, user: User, *, step: str | None = N
             f"Country: {user.country or 'Not set'}\n"
             f"Timezone: {user.timezone}\n"
             f"Time Format: {user.time_format}\n\n"
+            f"Role Intro: {intro}\n\n"
             "Your profile is saved. An admin can approve access."
         ),
         reply_markup=onboarding_pending_menu(),
@@ -2642,7 +2809,233 @@ def render_denied() -> Screen:
     return Screen(text="Access denied.", reply_markup=main_menu())
 
 
+def render_my_models_page(session: Session, user: User) -> Screen:
+    model_ids = select(ModelBrandMember.model_brand_id).where(ModelBrandMember.user_id == user.id)
+    models = list(session.scalars(select(ModelBrand).where(ModelBrand.id.in_(model_ids)).order_by(ModelBrand.display_name)).all())
+    lines = ["My Models", ""]
+    buttons: list[tuple[str, str]] = []
+    if not models:
+        lines.append("No models are assigned yet.")
+    for model_brand in models[:15]:
+        lines.append(f"{model_brand.id}. {_model_identity(model_brand)}")
+        lines.append(f"   Status: {model_brand.status}")
+        buttons.append((model_brand.display_name[:40], f"nav:model:{model_brand.id}"))
+    return Screen(text="\n".join(lines), reply_markup=model_list_menu(buttons))
+
+
+def render_my_accounts_page(session: Session, user: User) -> Screen:
+    model_ids = select(ModelBrandMember.model_brand_id).where(ModelBrandMember.user_id == user.id)
+    accounts = list(
+        session.scalars(
+            select(Account)
+            .where(Account.model_brand_id.in_(model_ids))
+            .options(selectinload(Account.model_brand))
+            .order_by(Account.platform, Account.username)
+        ).all()
+    )
+    return render_account_list_page(session, accounts=accounts, title="My Accounts", back_to="menu")
+
+
+def render_my_opportunities_page(session: Session, user: User) -> Screen:
+    opportunities = list(
+        session.scalars(
+            select(Opportunity)
+            .where(Opportunity.assigned_to_user_id == user.id)
+            .order_by(desc(Opportunity.updated_at), desc(Opportunity.id))
+            .limit(20)
+        ).all()
+    )
+    lines = ["My Opportunities", ""]
+    buttons: list[tuple[str, str]] = []
+    if not opportunities:
+        lines.append("No opportunities assigned yet.")
+    for opportunity in opportunities:
+        lines.append(f"{opportunity.id}. {opportunity.title}")
+        lines.append(f"   Score: {opportunity.score}/100 | Status: {opportunity.status}")
+        buttons.append((f"{opportunity.id}. {opportunity.title[:36]}", f"nav:opportunity:{opportunity.id}"))
+    return Screen(text="\n".join(lines), reply_markup=opportunities_menu(buttons))
+
+
+def render_client_dashboard_page(session: Session, user: User) -> Screen:
+    details = personalized_dashboard(session, user)
+    lines = [
+        "My Dashboard",
+        "",
+        f"Assigned Models: {details['assigned_models']}",
+        f"Tasks Due Today: {details['tasks_due_today']}",
+        f"Open Incidents: {details['open_incidents']}",
+        "",
+        "Reports and team visibility are kept simple here.",
+    ]
+    return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="menu"))
+
+
+def render_my_reports_page(session: Session, user: User) -> Screen:
+    details = personalized_dashboard(session, user)
+    lines = [
+        "My Reports",
+        "",
+        f"Role: {details['role']}",
+        f"Assigned Models: {details['assigned_models']}",
+        f"Performance Score: {details['performance']['accountability_score']}",
+        "",
+        "Full agency reports stay with managers and owners.",
+    ]
+    return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="menu"))
+
+
+def render_my_team_page(session: Session, user: User) -> Screen:
+    members = list(
+        session.scalars(
+            select(User)
+            .join(ModelBrandMember, ModelBrandMember.user_id == User.id)
+            .where(
+                ModelBrandMember.model_brand_id.in_(
+                    select(ModelBrandMember.model_brand_id).where(ModelBrandMember.user_id == user.id)
+                )
+            )
+            .options(selectinload(User.roles))
+            .distinct()
+            .order_by(User.display_name)
+        ).all()
+    )
+    lines = ["My Team", ""]
+    if not members:
+        lines.append("No team members are visible yet.")
+    for member in members[:15]:
+        roles = ", ".join(role.name for role in member.roles) or "No role"
+        lines.append(f"- {_identity(member)} | {roles}")
+    return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="menu"))
+
+
+def render_uploads_placeholder_page() -> Screen:
+    lines = [
+        "Uploads",
+        "",
+        "Upload workflows are prepared as a placeholder.",
+        "For now, use Tasks and Availability to coordinate upload work.",
+    ]
+    return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="menu"))
+
+
+def render_team_qa_page(session: Session) -> Screen:
+    checklists = list_onboarding_checklists(session)
+    lines = ["Team QA", "", "Rollout readiness checklist.", ""]
+    buttons: list[tuple[str, str]] = []
+    if not checklists:
+        lines.append("No users yet.")
+    for checklist in checklists[:20]:
+        user = checklist.user
+        lines.append(f"{user.id}. {_identity(user)}")
+        lines.append(f"   Readiness: {checklist.readiness_score}% | Onboarded: {checklist.onboarded}")
+        buttons.append((f"{user.id}. {_identity(user)[:32]}", f"nav:team_qa:{user.id}"))
+    return Screen(text="\n".join(lines), reply_markup=team_qa_menu(buttons))
+
+
+def render_team_qa_detail_page(session: Session, user_id: int) -> Screen:
+    target = session.scalar(
+        select(User).where(User.id == user_id).options(selectinload(User.roles), selectinload(User.availability))
+    )
+    if target is None:
+        return Screen(text="User not found.", reply_markup=page_menu(back_to="team_qa"))
+    checklist = list_onboarding_checklists(session)
+    current = next(item for item in checklist if item.user_id == target.id)
+    lines = [
+        "Team QA Detail",
+        "",
+        f"User: {_identity(target)}",
+        f"Roles: {', '.join(role.name for role in target.roles) or 'No roles'}",
+        f"Readiness Score: {current.readiness_score}%",
+        "",
+        f"Role Assigned: {current.role_assigned}",
+        f"Timezone Confirmed: {current.timezone_confirmed}",
+        f"Availability Configured: {current.availability_configured}",
+        f"Help Center Viewed: {current.help_center_viewed}",
+        f"Onboarded: {current.onboarded}",
+    ]
+    return Screen(text="\n".join(lines), reply_markup=team_qa_detail_menu(target.id))
+
+
+def render_notification_digest_mode_page(session: Session, user: User | None = None, *, generate: bool = False) -> Screen:
+    if generate:
+        create_notification_digest(session, actor=user, user=user, purpose="operations")
+    digests = list_notification_digests(session)
+    lines = [
+        "Notification Digest Mode",
+        "",
+        "Low-priority updates are bundled here so the team is not flooded with alerts.",
+        "Critical alerts still route immediately.",
+        "",
+    ]
+    if not digests:
+        lines.append("No digests yet.")
+    for digest in digests[:10]:
+        lines.append(f"{digest.id}. {digest.title} | {digest.status} | {digest.item_count} update(s)")
+        lines.append(f"   {digest.summary}")
+    return Screen(text="\n".join(lines), reply_markup=notification_digest_mode_menu())
+
+
+def render_scheduled_automations_page(session: Session, user: User | None = None, *, run_due: bool = False) -> Screen:
+    results = run_due_scheduled_automations(session, actor=user) if run_due else []
+    summary = scheduled_automation_summary(session)
+    lines = [
+        "Scheduled Automations",
+        "",
+        "Only low-risk automations auto-run initially.",
+        "High-risk work still requires review and approval.",
+        "",
+        f"Schedules: {summary['total']}",
+        f"Active Schedules: {summary['active']}",
+        f"Successful Runs: {summary['successful']}",
+        f"Failed Runs: {summary['failed']}",
+        f"Skipped Runs: {summary['skipped']}",
+    ]
+    if run_due:
+        lines.extend(["", "Run Results:"])
+        if not results:
+            lines.append("- No due safe automations.")
+        for result in results:
+            lines.append(f"- {result.rule_name}: {result.status} ({result.reason})")
+    return Screen(text="\n".join(lines), reply_markup=scheduled_automations_menu())
+
+
 def render_page(page: str, session: Session | None = None, user: User | None = None) -> Screen:
+    if page == "daily_experience" and session is not None and user is not None:
+        return render_daily_experience_page(session, user)
+    if page == "performance" and session is not None and user is not None:
+        return render_performance_page(session, user)
+    if page == "help":
+        return render_help_center_page(user)
+    if page.startswith("help:"):
+        return render_help_topic_page(page.split(":", 1)[1], user)
+    if page == "my_models" and session is not None and user is not None:
+        return render_my_models_page(session, user)
+    if page == "my_accounts" and session is not None and user is not None:
+        return render_my_accounts_page(session, user)
+    if page == "my_opportunities" and session is not None and user is not None:
+        return render_my_opportunities_page(session, user)
+    if page == "uploads":
+        return render_uploads_placeholder_page()
+    if page == "client_dashboard" and session is not None and user is not None:
+        return render_client_dashboard_page(session, user)
+    if page == "my_reports" and session is not None and user is not None:
+        return render_my_reports_page(session, user)
+    if page == "my_team" and session is not None and user is not None:
+        return render_my_team_page(session, user)
+    if page == "team_qa" and session is not None:
+        return render_team_qa_page(session)
+    if page.startswith("team_qa:") and session is not None:
+        parts = page.split(":")
+        if len(parts) >= 2 and parts[1].isdigit():
+            return render_team_qa_detail_page(session, int(parts[1]))
+    if page == "notification_digest" and session is not None:
+        return render_notification_digest_mode_page(session, user=user)
+    if page == "notification_digest:generate" and session is not None:
+        return render_notification_digest_mode_page(session, user=user, generate=True)
+    if page == "automations:scheduled" and session is not None:
+        return render_scheduled_automations_page(session, user=user)
+    if page == "automations:scheduled:run_due" and session is not None:
+        return render_scheduled_automations_page(session, user=user, run_due=True)
     if page == "proxies":
         return render_proxies_home()
     if page == "proxies:list" and session is not None:

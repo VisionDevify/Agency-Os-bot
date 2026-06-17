@@ -21,6 +21,7 @@ from app.models.recommendation import Recommendation
 from app.models.reporting import AccountabilitySnapshot, DailyBriefing, NotificationDeliveryAttempt, NotificationTarget
 from app.models.system import SystemHeartbeat
 from app.models.task import Task
+from app.models.team_rollout import NotificationDigest, TeamOnboardingChecklist
 from app.models.user import User, UserAvailability
 
 __all__ = [
@@ -50,6 +51,7 @@ __all__ = [
     "ModelBrandMember",
     "NotificationTarget",
     "NotificationDeliveryAttempt",
+    "NotificationDigest",
     "Opportunity",
     "OpportunityResult",
     "OpportunitySource",
@@ -65,6 +67,7 @@ __all__ = [
     "RolePermission",
     "SystemHeartbeat",
     "Task",
+    "TeamOnboardingChecklist",
     "TrendSnapshot",
     "User",
     "UserAvailability",

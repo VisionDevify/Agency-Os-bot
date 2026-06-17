@@ -23,11 +23,11 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Sprint 12: Agency Intelligence Brain V1 with deterministic signals, issue patterns, trend snapshots, workload snapshots, executive insights, no-code intelligence runs, Recommendation V2 metadata, critical-signal routing, and manual opportunity intelligence foundation.
 - Sprint 14: Automation Builder and Simulation Engine with durable rules, triggers, conditions, actions, simulation runs, approval workflow, execution records, step records, rollback plans, built-in templates, metrics, and Telegram automation management.
 - Sprint 15: Agency Learning Engine and Playbook Memory with learning events, outcome memory, seeded recovery playbooks, playbook runs, confidence records, feedback loops, automation learning, opportunity learning, and executive memory briefing.
+- Sprint 16: Team Rollout and Human Experience Layer with role-specific homes, personalized dashboards, Daily Experience, Help Center, Team QA readiness, notification digest mode, human-friendly terminology, and low-risk scheduled automation execution.
 
 ## Roadmap
 
-- Sprint 13: Team rollout hardening, richer task/incident creation forms, notification group activation, and operational QA with real agency users.
-- Sprint 16: Team rollout hardening, scheduled automation execution, richer rule creation forms, learning-driven operator QA, and rollout readiness for real agency users.
+- Sprint 17: richer task/incident creation forms, notification group activation, team training workflows, and operational QA with real agency users.
 - Future: AI Operations Brain for natural-language summaries, anomaly explanations, and operator-approved next actions.
 
 ## Core Modules
@@ -46,6 +46,8 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Daily Digest: operator-approved generated digest and delivery-attempt flow for HQ and Operations.
 - Notifications: encrypted Telegram notification targets, purpose-based routing rules, masked chat IDs, testing-only safe sends, and durable delivery-attempt records.
 - Availability: user language, country, timezone, time format, shift state, and quiet-hours foundation for smart routing.
+- Team Experience: role-specific home screens, personalized dashboard summaries, Daily Experience, Help Center, Team QA readiness checklist, and performance snapshots designed for adoption.
+- Notification Digest Mode: bundled low-priority updates through `notification_digests` while critical alerts continue to route immediately.
 - Automations: no-code automation builder with safe triggers, conditions, actions, simulations, approval gates, execution records, rollback planning, built-in templates, and success/failure metrics.
 - Recommendations: deterministic operational recommendations generated from database state.
 - Intelligence Brain: deterministic signals, issue patterns, trends, workload analysis, executive insights, and run history for no-code scans.
@@ -203,6 +205,11 @@ Important actions should use stable event-style names, such as:
 - `notification.delivery_attempted`
 - `notification.delivery_succeeded`
 - `notification.delivery_failed`
+- `notification.digest_created`
+- `team.onboarding_checklist_updated`
+- `automation.schedule_updated`
+- `automation.scheduled_run.skipped`
+- `automation.scheduled_runs_processed`
 - `automation.simulated`
 - `automation.simulation.approved`
 - `automation.simulation.rejected`
@@ -240,6 +247,9 @@ Telegram is the operator console, so navigation should be calm and predictable:
 - Avoid sending new messages for menu movement.
 - Denied, pending, and disabled states should show short human-readable messages.
 - Pending users can complete localization onboarding but cannot open operational screens until approved.
+- Role-specific homes should hide irrelevant systems from staff by default.
+- Use human-facing terms in Telegram: Things To Watch, Recurring Problems, What We've Learned, and Management Insights.
+- Low-priority notifications should be bundled where possible; critical alerts bypass digest mode.
 
 ## Agency Operations Activation
 
