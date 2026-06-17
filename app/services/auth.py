@@ -3,7 +3,6 @@ from collections.abc import Iterable
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.core.config import settings
 from app.models.audit import AuditLog
 from app.models.permissions import Permission, Role
 from app.models.user import User
@@ -13,6 +12,7 @@ from app.services.permissions import ROLE_PERMISSIONS, RoleName
 USER_STATUS_ACTIVE = "active"
 USER_STATUS_PENDING = "pending"
 USER_STATUS_DISABLED = "disabled"
+USER_STATUS_DENIED = "denied"
 
 DEFAULT_PERMISSION_DESCRIPTIONS: dict[str, str] = {
     "view_dashboard": "View the main dashboard.",
@@ -80,6 +80,7 @@ def get_or_create_telegram_user(
     session: Session,
     *,
     telegram_user_id: int,
+    display_name: str | None = None,
     username: str | None = None,
     owner_telegram_id: int | None = None,
 ) -> User:
@@ -89,6 +90,7 @@ def get_or_create_telegram_user(
     if user is None:
         user = User(
             telegram_id=telegram_user_id,
+            display_name=display_name,
             username=username,
             is_owner=owner_match,
             is_active=owner_match,
@@ -97,6 +99,7 @@ def get_or_create_telegram_user(
         session.add(user)
         session.flush()
     else:
+        user.display_name = display_name or user.display_name
         user.username = username or user.username
         if owner_match:
             user.is_owner = True
@@ -106,17 +109,79 @@ def get_or_create_telegram_user(
     return user
 
 
-def assign_role_to_user(session: Session, user: User, role_name: RoleName | str) -> None:
+def _count_owner_users(session: Session) -> int:
+    users = session.scalars(select(User).options(selectinload(User.roles))).all()
+    return sum(1 for user in users if is_owner(user) and user.status == USER_STATUS_ACTIVE)
+
+
+def _get_role(session: Session, role_name: RoleName | str) -> Role:
     role_value = role_name.value if isinstance(role_name, RoleName) else role_name
     role = session.scalar(select(Role).where(Role.name == role_value))
     if role is None:
         raise ValueError(f"Role does not exist: {role_value}")
+    return role
+
+
+def _require_actor_permission(actor: User | None, permission_key: str) -> None:
+    if not user_has_permission(actor, permission_key):
+        raise PermissionError(f"Missing permission: {permission_key}")
+
+
+def assign_role_to_user(
+    session: Session,
+    user: User,
+    role_name: RoleName | str,
+    *,
+    actor: User | None = None,
+) -> None:
+    role = _get_role(session, role_name)
+    if actor is not None:
+        _require_actor_permission(actor, "manage_roles")
+        if actor.id == user.id and not is_owner(actor):
+            raise PermissionError("Users cannot edit their own roles")
+        if role.name == RoleName.OWNER.value and not is_owner(actor):
+            raise PermissionError("Only Owner can assign Owner role")
     if role not in user.roles:
         user.roles.append(role)
         if role.name == RoleName.OWNER.value:
             user.is_owner = True
             user.is_active = True
             user.status = USER_STATUS_ACTIVE
+        audit_action(
+            session,
+            actor=actor,
+            action="role.assigned",
+            resource_type="user",
+            resource_id=str(user.id),
+            details={"role": role.name},
+        )
+
+
+def remove_role_from_user(
+    session: Session,
+    user: User,
+    role_name: RoleName | str,
+    *,
+    actor: User | None,
+) -> None:
+    _require_actor_permission(actor, "manage_roles")
+    if actor and actor.id == user.id and not is_owner(actor):
+        raise PermissionError("Users cannot edit their own roles")
+    role = _get_role(session, role_name)
+    if role.name == RoleName.OWNER.value and role in user.roles and _count_owner_users(session) <= 1:
+        raise PermissionError("Cannot remove final Owner")
+    if role in user.roles:
+        user.roles.remove(role)
+        if role.name == RoleName.OWNER.value:
+            user.is_owner = False
+        audit_action(
+            session,
+            actor=actor,
+            action="role.removed",
+            resource_type="user",
+            resource_id=str(user.id),
+            details={"role": role.name},
+        )
 
 
 def is_owner(user: User | None) -> bool:
@@ -139,6 +204,8 @@ def require_permission(user: User, permission_key: str) -> None:
 
 
 def disable_user(session: Session, user: User, *, actor: User | None = None) -> None:
+    if actor is not None:
+        _require_actor_permission(actor, "manage_users")
     if is_owner(user):
         raise PermissionError("Owner user cannot be disabled")
     user.is_active = False
@@ -152,6 +219,111 @@ def disable_user(session: Session, user: User, *, actor: User | None = None) -> 
         status="success",
         details={"telegram_id": user.telegram_id},
     )
+
+
+def approve_user(session: Session, user: User, *, actor: User) -> None:
+    _require_actor_permission(actor, "manage_users")
+    user.is_active = True
+    user.status = USER_STATUS_ACTIVE
+    audit_action(
+        session,
+        actor=actor,
+        action="user.approved",
+        resource_type="user",
+        resource_id=str(user.id),
+        details={"telegram_id": user.telegram_id},
+    )
+
+
+def deny_user(session: Session, user: User, *, actor: User) -> None:
+    _require_actor_permission(actor, "manage_users")
+    if is_owner(user):
+        raise PermissionError("Owner user cannot be denied")
+    user.is_active = False
+    user.status = USER_STATUS_DENIED
+    audit_action(
+        session,
+        actor=actor,
+        action="user.denied",
+        resource_type="user",
+        resource_id=str(user.id),
+        details={"telegram_id": user.telegram_id},
+    )
+
+
+def reactivate_user(session: Session, user: User, *, actor: User) -> None:
+    _require_actor_permission(actor, "manage_users")
+    user.is_active = True
+    user.status = USER_STATUS_ACTIVE
+    audit_action(
+        session,
+        actor=actor,
+        action="user.reactivated",
+        resource_type="user",
+        resource_id=str(user.id),
+        details={"telegram_id": user.telegram_id},
+    )
+
+
+def get_user_by_id(session: Session, user_id: int) -> User | None:
+    return session.scalar(
+        select(User)
+        .where(User.id == user_id)
+        .options(selectinload(User.roles).selectinload(Role.permissions))
+    )
+
+
+def add_permission_to_role(
+    session: Session,
+    role: Role,
+    permission_key: str,
+    *,
+    actor: User,
+) -> None:
+    _require_actor_permission(actor, "manage_roles")
+    permission = session.scalar(select(Permission).where(Permission.key == permission_key))
+    if permission is None:
+        raise ValueError(f"Permission does not exist: {permission_key}")
+    if permission not in role.permissions:
+        role.permissions.append(permission)
+        audit_action(
+            session,
+            actor=actor,
+            action="role_permission.added",
+            resource_type="role",
+            resource_id=str(role.id),
+            details={"role": role.name, "permission": permission.key},
+        )
+
+
+def remove_permission_from_role(
+    session: Session,
+    role: Role,
+    permission_key: str,
+    *,
+    actor: User,
+) -> None:
+    _require_actor_permission(actor, "manage_roles")
+    if role.name == RoleName.OWNER.value:
+        raise PermissionError("Owner role permissions cannot be removed")
+    permission = session.scalar(select(Permission).where(Permission.key == permission_key))
+    if permission and permission in role.permissions:
+        role.permissions.remove(permission)
+        audit_action(
+            session,
+            actor=actor,
+            action="role_permission.removed",
+            resource_type="role",
+            resource_id=str(role.id),
+            details={"role": role.name, "permission": permission.key},
+        )
+
+
+def delete_role(session: Session, role: Role, *, actor: User) -> None:
+    _require_actor_permission(actor, "manage_roles")
+    if role.name == RoleName.OWNER.value:
+        raise PermissionError("Owner role cannot be deleted")
+    session.delete(role)
 
 
 def audit_action(
@@ -181,6 +353,7 @@ def setup_owner_if_needed(
     session: Session,
     *,
     telegram_user_id: int,
+    display_name: str | None = None,
     username: str | None = None,
     owner_telegram_id: int | None = None,
 ) -> User:
@@ -191,6 +364,7 @@ def setup_owner_if_needed(
     user = get_or_create_telegram_user(
         session,
         telegram_user_id=telegram_user_id,
+        display_name=display_name or username,
         username=username,
         owner_telegram_id=owner_telegram_id,
     )

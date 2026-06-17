@@ -4,10 +4,22 @@ from aiogram.types import InlineKeyboardMarkup
 from sqlalchemy import desc, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.bot.menu import dashboard_menu, main_menu, page_menu, settings_menu
+from app.bot.menu import (
+    dashboard_menu,
+    main_menu,
+    page_menu,
+    permission_choice_menu,
+    role_choice_menu,
+    role_detail_menu,
+    roles_menu,
+    settings_menu,
+    user_detail_menu,
+    users_menu,
+)
 from app.models.audit import AuditLog
-from app.models.permissions import Role
+from app.models.permissions import Permission, Role
 from app.models.user import User
+from app.services.auth import DEFAULT_PERMISSION_DESCRIPTIONS
 from app.services.dashboard import DashboardStats, placeholder_dashboard_stats
 
 
@@ -55,16 +67,128 @@ def render_users_page(session: Session) -> Screen:
     users = session.scalars(
         select(User).options(selectinload(User.roles)).order_by(User.id).limit(10)
     ).all()
-    lines = ["Users", ""]
+    pending_count = sum(1 for user in users if user.status == "pending")
+    lines = ["Users", "", f"Pending: {pending_count}", ""]
     if not users:
         lines.append("No users yet.")
+    buttons: list[tuple[str, str]] = []
     for user in users:
         role_names = ", ".join(role.name for role in user.roles) or "No roles"
-        username = f"@{user.username}" if user.username else f"telegram:{user.telegram_id}"
+        username = f"@{user.username}" if user.username else (user.display_name or f"User {user.id}")
         lines.append(f"{user.id}. {username}")
         lines.append(f"   Status: {user.status} | Roles: {role_names}")
-    lines.extend(["", "Disable user and assign role flows are ready for Sprint 3 actions."])
-    return Screen(text="\n".join(lines), reply_markup=page_menu())
+        buttons.append((f"{user.id}. {username} ({user.status})", f"nav:user:{user.id}"))
+    return Screen(text="\n".join(lines), reply_markup=users_menu(buttons))
+
+
+def _masked_telegram_id(value: int) -> str:
+    raw = str(value)
+    if len(raw) <= 4:
+        return "hidden"
+    return f"{raw[:2]}...{raw[-2:]}"
+
+
+def render_user_detail_page(session: Session, user_id: int) -> Screen:
+    user = session.scalar(
+        select(User)
+        .where(User.id == user_id)
+        .options(selectinload(User.roles), selectinload(User.roles).selectinload(Role.permissions))
+    )
+    if user is None:
+        return Screen(text="User not found.", reply_markup=page_menu(back_to="users"))
+
+    role_names = ", ".join(role.name for role in user.roles) or "No roles"
+    logs = session.scalars(
+        select(AuditLog)
+        .where(AuditLog.resource_type == "user", AuditLog.resource_id == str(user.id))
+        .order_by(desc(AuditLog.created_at), desc(AuditLog.id))
+        .limit(5)
+    ).all()
+    recent = [f"- {log.action} ({log.status})" for log in logs] or ["- No recent user actions"]
+    username = f"@{user.username}" if user.username else "Not set"
+    created_at = user.created_at.isoformat() if user.created_at else "pending timestamp"
+    last_seen = user.last_seen.isoformat() if user.last_seen else "Not seen yet"
+    lines = [
+        "User Detail",
+        "",
+        f"Display Name: {user.display_name or 'Unknown'}",
+        f"Username: {username}",
+        f"Telegram ID: {_masked_telegram_id(user.telegram_id)}",
+        f"Status: {user.status}",
+        f"Roles: {role_names}",
+        f"Created: {created_at}",
+        f"Last Seen: {last_seen}",
+        "",
+        "Recent Audit Actions:",
+        *recent,
+    ]
+    return Screen(text="\n".join(lines), reply_markup=user_detail_menu(user.id, user.status))
+
+
+def render_role_assignment_page(session: Session, user_id: int, action: str) -> Screen:
+    user = session.get(User, user_id)
+    if user is None:
+        return Screen(text="User not found.", reply_markup=page_menu(back_to="users"))
+    role_names = session.scalars(select(Role.name).order_by(Role.name)).all()
+    title = "Assign Role" if action == "assign_role" else "Remove Role"
+    return Screen(
+        text=f"{title}\n\nUser: {user.display_name or user.username or user.id}",
+        reply_markup=role_choice_menu(user_id, action, list(role_names)),
+    )
+
+
+def render_roles_page(session: Session) -> Screen:
+    roles = session.scalars(
+        select(Role).options(selectinload(Role.permissions)).order_by(Role.name)
+    ).all()
+    lines = ["Roles", ""]
+    buttons: list[tuple[str, str]] = []
+    for role in roles:
+        lines.append(f"{role.id}. {role.name} ({len(role.permissions)} permissions)")
+        buttons.append((role.name, f"nav:role:{role.id}"))
+    return Screen(text="\n".join(lines), reply_markup=roles_menu(buttons))
+
+
+def render_role_detail_page(session: Session, role_id: int) -> Screen:
+    role = session.scalar(
+        select(Role).where(Role.id == role_id).options(selectinload(Role.permissions))
+    )
+    if role is None:
+        return Screen(text="Role not found.", reply_markup=page_menu(back_to="roles"))
+    permissions = "\n".join(f"- {permission.key}" for permission in sorted(role.permissions, key=lambda p: p.key))
+    if not permissions:
+        permissions = "- No permissions"
+    return Screen(
+        text=f"Role\n\nName: {role.name}\nPermissions:\n{permissions}",
+        reply_markup=role_detail_menu(role.id),
+    )
+
+
+def render_permission_list_page(session: Session, role_id: int, action: str) -> Screen:
+    role = session.scalar(
+        select(Role).where(Role.id == role_id).options(selectinload(Role.permissions))
+    )
+    if role is None:
+        return Screen(text="Role not found.", reply_markup=page_menu(back_to="roles"))
+    role_keys = {permission.key for permission in role.permissions}
+    if action == "add_permission":
+        permission_keys = [key for key in DEFAULT_PERMISSION_DESCRIPTIONS if key not in role_keys]
+        title = "Add Permission"
+    else:
+        permission_keys = sorted(role_keys)
+        title = "Remove Permission"
+    if not permission_keys:
+        return Screen(text=f"{title}\n\nNo permissions available.", reply_markup=page_menu(back_to=f"role:{role.id}"))
+    return Screen(
+        text=f"{title}\n\nRole: {role.name}",
+        reply_markup=permission_choice_menu(role.id, action, permission_keys),
+    )
+
+
+def render_default_permissions_page() -> Screen:
+    lines = ["Default Permissions", ""]
+    lines.extend(f"- {key}" for key in DEFAULT_PERMISSION_DESCRIPTIONS)
+    return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="roles"))
 
 
 def render_audit_logs_page(session: Session) -> Screen:
@@ -87,18 +211,38 @@ def render_audit_logs_page(session: Session) -> Screen:
 
 def render_access_pending() -> Screen:
     return Screen(
-        text="Access pending. Contact an admin to activate your account.",
+        text="Access pending approval.",
         reply_markup=main_menu(),
     )
 
 
 def render_disabled() -> Screen:
-    return Screen(text="Your access is disabled. Contact an admin.", reply_markup=main_menu())
+    return Screen(text="Account disabled.", reply_markup=main_menu())
+
+
+def render_denied() -> Screen:
+    return Screen(text="Access denied.", reply_markup=main_menu())
 
 
 def render_page(page: str, session: Session | None = None) -> Screen:
     if page == "users" and session is not None:
         return render_users_page(session)
+    if page.startswith("user:") and session is not None:
+        parts = page.split(":")
+        if len(parts) >= 2 and parts[1].isdigit():
+            if len(parts) >= 3 and parts[2] in {"assign_role", "remove_role"}:
+                return render_role_assignment_page(session, int(parts[1]), parts[2])
+            return render_user_detail_page(session, int(parts[1]))
+    if page == "roles" and session is not None:
+        return render_roles_page(session)
+    if page.startswith("role:") and session is not None:
+        parts = page.split(":")
+        if len(parts) >= 2 and parts[1].isdigit():
+            if len(parts) >= 3 and parts[2] in {"add_permission", "remove_permission"}:
+                return render_permission_list_page(session, int(parts[1]), parts[2])
+            return render_role_detail_page(session, int(parts[1]))
+    if page == "permissions":
+        return render_default_permissions_page()
     if page == "audit_logs" and session is not None:
         return render_audit_logs_page(session)
     if page == "settings":

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import UTC, datetime
 
 from aiogram import Bot, Dispatcher
 from aiogram import F
@@ -7,13 +8,14 @@ from aiogram.filters import CommandStart
 from aiogram.types import CallbackQuery, Message
 
 from app.bot.navigation import screen_for_page
-from app.bot.screens import render_access_pending, render_disabled, render_main_menu
+from app.bot.screens import render_access_pending, render_denied, render_disabled, render_main_menu
 from app.core.config import settings
 from app.core.logging import configure_logging
 from app.db.session import SessionLocal
 from app.models.user import User
 from app.services.auth import (
     USER_STATUS_DISABLED,
+    USER_STATUS_DENIED,
     USER_STATUS_PENDING,
     get_or_create_telegram_user,
     setup_owner_if_needed,
@@ -33,6 +35,13 @@ def _username_from_message_user(user) -> str | None:
     return user.username if user and user.username else None
 
 
+def _display_name_from_message_user(user) -> str | None:
+    if user is None:
+        return None
+    parts = [getattr(user, "first_name", None), getattr(user, "last_name", None)]
+    return " ".join(part for part in parts if part) or getattr(user, "username", None)
+
+
 @dp.message(CommandStart())
 async def start(message: Message) -> None:
     if message.from_user is None or SessionLocal is None:
@@ -45,9 +54,11 @@ async def start(message: Message) -> None:
             user = setup_owner_if_needed(
                 session,
                 telegram_user_id=telegram_id,
+                display_name=_display_name_from_message_user(message.from_user),
                 username=_username_from_message_user(message.from_user),
                 owner_telegram_id=settings.owner_telegram_id,
             )
+            user.last_seen = datetime.now(UTC)
             session.commit()
             principal = _principal_from_user(user)
             require_owner(principal, settings.owner_telegram_id)
@@ -58,13 +69,18 @@ async def start(message: Message) -> None:
         user = get_or_create_telegram_user(
             session,
             telegram_user_id=telegram_id,
+            display_name=_display_name_from_message_user(message.from_user),
             username=_username_from_message_user(message.from_user),
             owner_telegram_id=settings.owner_telegram_id,
         )
+        user.last_seen = datetime.now(UTC)
         session.commit()
 
     if user.status == USER_STATUS_DISABLED:
         screen = render_disabled()
+        await message.answer(screen.text, reply_markup=screen.reply_markup)
+    elif user.status == USER_STATUS_DENIED:
+        screen = render_denied()
         await message.answer(screen.text, reply_markup=screen.reply_markup)
     else:
         screen = render_access_pending()
@@ -86,14 +102,22 @@ async def navigate(callback: CallbackQuery) -> None:
         user = get_or_create_telegram_user(
             session,
             telegram_user_id=callback.from_user.id,
+            display_name=_display_name_from_message_user(callback.from_user),
             username=_username_from_message_user(callback.from_user),
             owner_telegram_id=settings.owner_telegram_id,
         )
+        user.last_seen = datetime.now(UTC)
         principal = _principal_from_user(user)
         if user.status == USER_STATUS_DISABLED:
             screen = render_disabled()
             await callback.message.edit_text(screen.text, reply_markup=screen.reply_markup)
             await callback.answer("Access disabled.", show_alert=True)
+            session.commit()
+            return
+        if user.status == USER_STATUS_DENIED:
+            screen = render_denied()
+            await callback.message.edit_text(screen.text, reply_markup=screen.reply_markup)
+            await callback.answer("Access denied.", show_alert=True)
             session.commit()
             return
         if user.status == USER_STATUS_PENDING:

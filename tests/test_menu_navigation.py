@@ -4,7 +4,9 @@ from app.bot.menu import MENU_ITEMS, dashboard_menu, main_menu
 from app.bot.navigation import screen_for_page
 from app.bot.screens import render_dashboard
 from app.services.audit import AuditRecorder
+from app.services.auth import USER_STATUS_PENDING, get_or_create_telegram_user, setup_owner_if_needed
 from app.services.permissions import PermissionPrincipal, RoleName
+from tests.utils import session_scope
 
 
 def callback_data(markup) -> list[str]:
@@ -55,3 +57,21 @@ def test_restricted_navigation_records_audit_event() -> None:
 
     assert recorder.events[-1]["action"] == "restricted_page.accessed"
     assert recorder.events[-1]["resource_id"] == "users"
+
+
+def test_dynamic_user_detail_navigation_renders_user_screen() -> None:
+    with session_scope() as session:
+        owner = setup_owner_if_needed(session, telegram_user_id=1, owner_telegram_id=1)
+        pending = get_or_create_telegram_user(
+            session,
+            telegram_user_id=2,
+            display_name="Pending Person",
+            username="pending_person",
+        )
+        assert pending.status == USER_STATUS_PENDING
+        principal = PermissionPrincipal(telegram_id=owner.telegram_id, is_owner=True, role=RoleName.OWNER)
+
+        screen = screen_for_page(f"user:{pending.id}", principal, session=session, user=owner)
+
+        assert "User Detail" in screen.text
+        assert "Pending Person" in screen.text
