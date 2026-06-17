@@ -17,6 +17,7 @@ from app.bot.screens import (
 )
 from app.core.config import settings
 from app.core.logging import configure_logging
+from app.db.migrations import run_migrations
 from app.db.session import SessionLocal
 from app.models.account import AccountAuthSession
 from app.models.user import User
@@ -352,6 +353,7 @@ async def main() -> None:
     bot = Bot(token=token)
     logger.info("Starting Telegram bot")
     if SessionLocal is not None:
+        run_migrations()
         with SessionLocal() as session:
             record_heartbeat(session, service_name="bot", status="healthy", metadata={"source": "startup"})
             session.commit()
