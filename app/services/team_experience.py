@@ -123,6 +123,7 @@ def role_home_items(user: User | None) -> list[tuple[str, str]]:
             ("Reports", "reports"),
             ("Automation", "automations"),
             ("Settings", "settings"),
+            ("Help", "help"),
         ]
     if role in {"Manager", "Chatter Manager"}:
         return [
@@ -135,6 +136,7 @@ def role_home_items(user: User | None) -> list[tuple[str, str]]:
             ("Reports", "reports"),
             ("Team Activation", "team_activation"),
             ("Team QA", "team_qa"),
+            ("Help", "help"),
         ]
     if role in {"Senior Chatter", "Chatter"}:
         return [
