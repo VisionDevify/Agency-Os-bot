@@ -34,6 +34,7 @@ NOTIFICATION_ROUTING_RULES: dict[str, tuple[str, ...]] = {
     "proxy.repair.succeeded": ("automation_logs",),
     "deployment.event": ("testing", "owner"),
     "automation.simulated": ("automation_logs",),
+    "intelligence.signal.critical": ("owner", "incidents", "operations"),
 }
 
 

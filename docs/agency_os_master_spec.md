@@ -20,12 +20,13 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Sprint 9: Production activation preparation, notification routing V1, automation simulation run records, deterministic recommendations, system heartbeats, Bot Status, and Executive Command Center upgrades.
 - Sprint 10: Production launch approval boundaries, Railway trial-credit blocker documentation, notification delivery attempt persistence, production status upgrades, and production smoke-test documentation.
 - Sprint 11: Agency operations activation layer with task ownership/escalation, incident timelines, shift/availability and localization onboarding, smart notification routing, Daily Digest delivery, Manager Command View, and duplicate bot polling protection.
+- Sprint 12: Agency Intelligence Brain V1 with deterministic signals, issue patterns, trend snapshots, workload snapshots, executive insights, no-code intelligence runs, Recommendation V2 metadata, critical-signal routing, and manual opportunity intelligence foundation.
 
 ## Roadmap
 
-- Sprint 12: Team rollout hardening, richer task/incident creation forms, notification group activation, and operational QA with real agency users.
-- Sprint 13: Self-healing playbooks, repair approval gates, and richer repair event tracking.
-- Sprint 12: AI Operations Brain for summaries, anomaly explanations, and recommended next actions.
+- Sprint 13: Team rollout hardening, richer task/incident creation forms, notification group activation, and operational QA with real agency users.
+- Sprint 14: Self-healing playbooks, repair approval gates, and richer repair event tracking.
+- Future: AI Operations Brain for natural-language summaries, anomaly explanations, and operator-approved next actions.
 
 ## Core Modules
 
@@ -45,6 +46,8 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Availability: user language, country, timezone, time format, shift state, and quiet-hours foundation for smart routing.
 - Automations: placeholder resource model plus durable simulation runs for preview/approve workflows.
 - Recommendations: deterministic operational recommendations generated from database state.
+- Intelligence Brain: deterministic signals, issue patterns, trends, workload analysis, executive insights, and run history for no-code scans.
+- Opportunities: manual, human-approved opportunity records for future funnel intelligence without scraping or automatic posting.
 - System Status: service heartbeats for API, bot, db, redis, and Railway deployment state.
 - Settings: administrative utilities including audit log access, Bot Status, and Notification Targets.
 
@@ -200,6 +203,20 @@ Important actions should use stable event-style names, such as:
 - `recommendation.dismissed`
 - `recommendation.resolved`
 - `recommendation.status_changed`
+- `intelligence.signal.created`
+- `intelligence.pattern.detected`
+- `intelligence.trend.recorded`
+- `workload.analysis.completed`
+- `executive_insight.created`
+- `executive_intelligence_briefing.generated`
+- `intelligence_run.started`
+- `intelligence_run.succeeded`
+- `intelligence_run.failed`
+- `opportunity.created`
+- `opportunity.scored`
+- `opportunity.assigned`
+- `opportunity.result_recorded`
+- `opportunity_scoring.completed`
 - `heartbeat.status_changed`
 - `access.denied`
 - `owner.protection_triggered`
@@ -241,6 +258,29 @@ Sprint 11 turns the production bot into a usable day-to-day operations console.
 - Simulation Mode: dry-run execution that records intended changes without performing risky actions.
 - Self-Healing: playbooks that detect failures, attempt safe repairs, and emit repair events.
 - AI Operations Brain: contextual summaries, anomaly explanations, and recommended actions based on events and current state.
+
+## Agency Intelligence Brain V1
+
+Sprint 12 starts the intelligence layer without requiring an LLM and without touching real IG/X/OnlyFans integrations.
+
+Persistent intelligence records:
+
+- `intelligence_signals`: current operational observations with severity, confidence, entity reference, occurrence count, status, and safe metadata.
+- `issue_patterns`: recurring issues detected from EventLog, AuditLog, tasks, incidents, accounts, proxies, notification delivery attempts, and heartbeats.
+- `trend_snapshots`: daily/weekly/monthly metric values with direction and percent change.
+- `workload_snapshots`: per-user workload, availability, assigned work, critical incidents, score, and overload status.
+- `executive_insights`: concise executive-level insight records generated from signals, patterns, trends, and workload.
+- `intelligence_runs`: no-code run history for pattern detection, trend analysis, workload analysis, recommendation generation, executive briefing, and opportunity scoring.
+
+Deterministic pattern detection currently looks for recurring proxy failures, repeated proxy location mismatches, account health degradation, model health decline, repeated overdue tasks, recurring incidents, notification delivery failure clusters, and production heartbeat degradation.
+
+Trend analysis currently tracks agency health score, model/account/proxy health score, open incidents, critical incidents, overdue tasks, completed tasks, notification failures, and open recommendations. Negative trends create signals when movement is materially worse.
+
+Workload intelligence scores active users using open tasks, overdue tasks, open incidents, critical incidents, completed work, resolved incidents, and availability. It creates recommendations to reassign work or review team availability when a user is overloaded or off shift with active assignments.
+
+Recommendation V2 adds explanation metadata: reason, confidence score, source signal IDs, optional source pattern ID, related entity, and suggested action. Telegram exposes this through "Why am I seeing this?"
+
+Opportunity Intelligence is intentionally manual. Operators can add, score, assign, and record results for opportunities, but the system does not scrape, post, comment, or automate external platforms. Future AI target discovery and funnel intelligence should remain human-approved and should prefer official APIs/OAuth where applicable.
 
 ## Model/Brand Command Center
 

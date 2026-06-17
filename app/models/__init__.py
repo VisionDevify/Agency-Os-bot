@@ -4,7 +4,9 @@ from app.models.automation import AutomationRule, AutomationSimulationRun
 from app.models.core import Automation, Report
 from app.models.event_log import EventLog
 from app.models.incident import Incident, IncidentTimeline
+from app.models.intelligence import ExecutiveInsight, IntelligenceRun, IntelligenceSignal, IssuePattern, TrendSnapshot, WorkloadSnapshot
 from app.models.model_brand import ModelBrand, ModelBrandMember
+from app.models.opportunity import Opportunity, OpportunityResult, OpportunitySource
 from app.models.permissions import Permission, Role, RolePermission, UserRole
 from app.models.proxy import Proxy, ProxyRotationHistory
 from app.models.recommendation import Recommendation
@@ -24,12 +26,19 @@ __all__ = [
     "AutomationSimulationRun",
     "DailyBriefing",
     "EventLog",
+    "ExecutiveInsight",
     "Incident",
     "IncidentTimeline",
+    "IntelligenceRun",
+    "IntelligenceSignal",
+    "IssuePattern",
     "ModelBrand",
     "ModelBrandMember",
     "NotificationTarget",
     "NotificationDeliveryAttempt",
+    "Opportunity",
+    "OpportunityResult",
+    "OpportunitySource",
     "Permission",
     "Proxy",
     "ProxyRotationHistory",
@@ -39,7 +48,9 @@ __all__ = [
     "RolePermission",
     "SystemHeartbeat",
     "Task",
+    "TrendSnapshot",
     "User",
     "UserAvailability",
     "UserRole",
+    "WorkloadSnapshot",
 ]

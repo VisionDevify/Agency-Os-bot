@@ -12,9 +12,16 @@ def test_model_tables_are_registered() -> None:
         AccountVerificationCode,
         DailyBriefing,
         EventLog,
+        ExecutiveInsight,
+        IntelligenceRun,
+        IntelligenceSignal,
+        IssuePattern,
         ModelBrand,
         ModelBrandMember,
         NotificationTarget,
+        Opportunity,
+        OpportunityResult,
+        OpportunitySource,
         Proxy,
         ProxyRotationHistory,
         Recommendation,
@@ -22,7 +29,9 @@ def test_model_tables_are_registered() -> None:
         Role,
         SystemHeartbeat,
         Task,
+        TrendSnapshot,
         User,
+        WorkloadSnapshot,
     )
 
     expected = {
@@ -36,10 +45,17 @@ def test_model_tables_are_registered() -> None:
         "automation_simulation_runs",
         "daily_briefings",
         "event_logs",
+        "executive_insights",
         "incidents",
+        "intelligence_runs",
+        "intelligence_signals",
+        "issue_patterns",
         "model_brand_members",
         "model_brands",
         "notification_targets",
+        "opportunities",
+        "opportunity_results",
+        "opportunity_sources",
         "proxies",
         "proxy_rotation_history",
         "recommendations",
@@ -47,8 +63,10 @@ def test_model_tables_are_registered() -> None:
         "roles",
         "system_heartbeats",
         "tasks",
+        "trend_snapshots",
         "user_roles",
         "users",
+        "workload_snapshots",
     }
 
     assert expected.issubset(Base.metadata.tables)
@@ -79,3 +97,12 @@ def test_model_tables_are_registered() -> None:
     assert AutomationSimulationRun.__tablename__ == "automation_simulation_runs"
     assert Recommendation.__tablename__ == "recommendations"
     assert SystemHeartbeat.__tablename__ == "system_heartbeats"
+    assert IntelligenceSignal.__tablename__ == "intelligence_signals"
+    assert IssuePattern.__tablename__ == "issue_patterns"
+    assert TrendSnapshot.__tablename__ == "trend_snapshots"
+    assert WorkloadSnapshot.__tablename__ == "workload_snapshots"
+    assert ExecutiveInsight.__tablename__ == "executive_insights"
+    assert IntelligenceRun.__tablename__ == "intelligence_runs"
+    assert OpportunitySource.__tablename__ == "opportunity_sources"
+    assert Opportunity.__tablename__ == "opportunities"
+    assert OpportunityResult.__tablename__ == "opportunity_results"

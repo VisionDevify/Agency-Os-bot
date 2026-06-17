@@ -1,6 +1,6 @@
 # Event Architecture
 
-Agency OS should become event-driven over time. Audit logs remain the operator-facing safety record. Sprint 8 added `event_logs` as the first lightweight durable event feed for reports, notifications, automations, self-healing, and future AI operations. Sprint 9 adds notification routing events, durable automation simulation events, recommendations, and heartbeat state changes. Sprint 11 adds operations activation events for task ownership, incident timelines, localization, availability, smart notification routing, daily digest delivery, and duplicate polling protection.
+Agency OS should become event-driven over time. Audit logs remain the operator-facing safety record. Sprint 8 added `event_logs` as the first lightweight durable event feed for reports, notifications, automations, self-healing, and future AI operations. Sprint 9 adds notification routing events, durable automation simulation events, recommendations, and heartbeat state changes. Sprint 11 adds operations activation events for task ownership, incident timelines, localization, availability, smart notification routing, daily digest delivery, and duplicate polling protection. Sprint 12 adds deterministic intelligence events for signals, patterns, trends, workload, executive insights, intelligence runs, recommendations, and manual opportunities.
 
 ## Principle
 
@@ -120,6 +120,20 @@ This avoids over-engineering while preserving a clean upgrade path.
 - `recommendation.dismissed`: operator dismissed a recommendation.
 - `recommendation.resolved`: operator marked a recommendation resolved.
 - `recommendation.status_changed`: recommendation status changed.
+- `intelligence.signal.created`: deterministic intelligence signal created.
+- `intelligence.pattern.detected`: recurring issue pattern created.
+- `intelligence.trend.recorded`: trend snapshot persisted.
+- `workload.analysis.completed`: workload analysis pass completed.
+- `executive_insight.created`: executive insight persisted.
+- `executive_intelligence_briefing.generated`: executive intelligence briefing generated.
+- `intelligence_run.started`: no-code intelligence run started.
+- `intelligence_run.succeeded`: no-code intelligence run succeeded.
+- `intelligence_run.failed`: no-code intelligence run failed.
+- `opportunity.created`: manual opportunity created.
+- `opportunity.scored`: deterministic opportunity score updated.
+- `opportunity.assigned`: opportunity assigned to a user.
+- `opportunity.result_recorded`: manual opportunity result recorded.
+- `opportunity_scoring.completed`: deterministic opportunity scoring run completed.
 - `heartbeat.status_changed`: service heartbeat status changed.
 - `repair.succeeded`: future self-healing repair succeeded.
 
@@ -193,3 +207,23 @@ Automation simulation events are first-class safety records. They should include
 Recommendation events are deterministic and safe. They should identify recommendation type, severity, entity type, and entity ID when present. Recommendation metadata must not include credentials, tokens, chat IDs, proxy passwords, verification codes, or raw session data.
 
 Heartbeat events are emitted only when a service status changes. Routine heartbeat refreshes should update `system_heartbeats` without filling the audit log with noise.
+
+## Intelligence Event Notes
+
+Sprint 12 intelligence is deterministic and internal-only. It reads existing Agency OS data and writes signals, patterns, trend snapshots, workload snapshots, executive insights, recommendations, and run records.
+
+Safe intelligence metadata can include:
+
+- signal type, severity, confidence score, entity type, and entity ID.
+- pattern type, occurrence count, source event IDs, and suggested action.
+- trend metric name, trend direction, percent change, and snapshot ID.
+- workload score, overload status, and availability status.
+- opportunity platform, score, status, niche, model/brand ID, and assigned user ID.
+
+Unsafe metadata remains forbidden:
+
+- bot tokens, passwords, encryption keys, proxy passwords, credentials, raw Telegram chat IDs, verification codes, code hashes, platform session data, or scraped content.
+
+Critical intelligence signals may create notification delivery attempts through the existing purpose-based routing rules. The delivery attempt should summarize the signal and route to owner/HQ, incidents, or operations targets when active. It should not send raw diagnostic dumps.
+
+Opportunity events are manual-only. They must not imply automatic scraping, posting, commenting, liking, following, or platform automation. Future AI opportunity discovery must remain human-approved and should prefer official APIs where available.

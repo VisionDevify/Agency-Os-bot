@@ -22,6 +22,9 @@ from app.bot.menu import (
     incident_list_menu,
     incident_user_choice_menu,
     incidents_menu,
+    intelligence_briefing_menu,
+    intelligence_menu,
+    intelligence_run_menu,
     main_menu,
     manager_command_menu,
     model_detail_menu,
@@ -39,6 +42,8 @@ from app.bot.menu import (
     onboarding_time_format_menu,
     onboarding_timezone_menu,
     operations_dashboard_menu,
+    opportunities_menu,
+    opportunity_detail_menu,
     page_menu,
     platform_filter_menu,
     permission_choice_menu,
@@ -65,7 +70,9 @@ from app.bot.menu import (
 from app.models.account import ACCOUNT_PLATFORMS, Account
 from app.models.audit import AuditLog
 from app.models.incident import Incident
+from app.models.intelligence import ExecutiveInsight, IntelligenceRun, IntelligenceSignal, IssuePattern, TrendSnapshot, WorkloadSnapshot
 from app.models.model_brand import MODEL_BRAND_RELATIONSHIP_TYPES, ModelBrand, ModelBrandMember
+from app.models.opportunity import Opportunity, OpportunityResult
 from app.models.permissions import Permission, Role
 from app.models.proxy import Proxy
 from app.models.automation import AutomationSimulationRun
@@ -156,6 +163,22 @@ from app.services.tasks import (
     tasks_for_model,
 )
 from app.services.recommendations import generate_recommendations, list_recommendations
+from app.services.intelligence import (
+    command_center_intelligence_status,
+    generate_executive_intelligence_briefing,
+    list_executive_insights,
+    list_intelligence_runs,
+    list_patterns,
+    list_signals,
+    list_trends,
+    list_workload_snapshots,
+    recommendation_why,
+)
+from app.services.opportunities import (
+    get_opportunity,
+    list_opportunities,
+    opportunity_results,
+)
 
 
 @dataclass(frozen=True)
@@ -173,6 +196,8 @@ PAGE_TITLES: dict[str, str] = {
     "tasks": "Tasks",
     "incidents": "Incidents",
     "reports": "Reports",
+    "intelligence": "Intelligence",
+    "opportunities": "Opportunities",
     "automations": "Automations",
     "settings": "Settings",
 }
@@ -268,6 +293,41 @@ def render_incidents_home() -> Screen:
 
 def render_reports_home() -> Screen:
     return Screen(text="Reports\nBriefings, dashboards, and accountability.", reply_markup=reports_menu())
+
+
+def render_intelligence_home(session: Session | None = None) -> Screen:
+    lines = ["Intelligence Command Center", ""]
+    if session is None:
+        lines.append("Signals, patterns, trends, and workload intelligence.")
+    else:
+        status = command_center_intelligence_status(session)
+        lines.extend(
+            [
+                f"Status: {status['status']}",
+                f"Open Signals: {status['open_signals']}",
+                f"Critical Signals: {status['critical_signals']}",
+                f"Active Patterns: {status['active_patterns']}",
+                f"Negative Trends: {status['negative_trends']}",
+                f"Overloaded Users: {status['overloaded_users']}",
+                f"Open Executive Insights: {status['open_executive_insights']}",
+                "",
+                "Run analysis or drill into signals, patterns, trends, and workload.",
+            ]
+        )
+    return Screen(text="\n".join(lines), reply_markup=intelligence_menu())
+
+
+def render_opportunities_home(session: Session | None = None) -> Screen:
+    opportunities = list_opportunities(session, limit=5) if session is not None else []
+    lines = ["Opportunities", "", "Manual, human-approved opportunity intelligence foundation.", ""]
+    buttons: list[tuple[str, str]] = []
+    if not opportunities:
+        lines.append("No opportunities yet.")
+    for opportunity in opportunities:
+        lines.append(f"{opportunity.id}. {opportunity.title}")
+        lines.append(f"   Platform: {opportunity.platform} | Score: {opportunity.score} | Status: {opportunity.status}")
+        buttons.append((f"{opportunity.id}. {opportunity.title[:36]}", f"nav:opportunity:{opportunity.id}"))
+    return Screen(text="\n".join(lines), reply_markup=opportunities_menu(buttons))
 
 
 def render_automations_home() -> Screen:
@@ -1176,6 +1236,256 @@ def render_recommendation_detail_page(session: Session, recommendation_id: int) 
     return Screen(text="\n".join(lines), reply_markup=recommendation_detail_menu(recommendation.id))
 
 
+def render_recommendation_why_page(session: Session, recommendation_id: int) -> Screen:
+    recommendation = session.get(Recommendation, recommendation_id)
+    if recommendation is None:
+        return Screen(text="Recommendation not found.", reply_markup=page_menu(back_to="reports:executive:recommendations"))
+    why = recommendation_why(recommendation)
+    source_signals = ", ".join(str(signal_id) for signal_id in why["source_signal_ids"]) or "None"
+    lines = [
+        "Why This Recommendation",
+        "",
+        f"Title: {recommendation.title}",
+        f"Reason: {why['reason']}",
+        f"Confidence: {why['confidence_score'] if why['confidence_score'] is not None else 'Not scored'}",
+        f"Related Entity: {why['related_entity']}",
+        f"Source Signals: {source_signals}",
+        f"Source Pattern: {why['source_pattern_id'] or 'None'}",
+        "",
+        "Suggested Next Action:",
+        why["suggested_action"],
+    ]
+    return Screen(text="\n".join(lines), reply_markup=page_menu(back_to=f"recommendation:{recommendation.id}"))
+
+
+def render_intelligence_briefing_page(
+    session: Session,
+    user: User | None = None,
+    *,
+    mode: str = "generate",
+) -> Screen:
+    if mode == "latest":
+        latest = list_executive_insights(session, limit=1)
+        if not latest:
+            return Screen(
+                text="Executive Intelligence Briefing\n\nNo intelligence briefing has been generated yet.",
+                reply_markup=intelligence_briefing_menu(),
+            )
+        insight = latest[0]
+        lines = [
+            "Executive Intelligence Briefing",
+            "",
+            f"Insight ID: {insight.id}",
+            f"Severity: {_status_marker(insight.severity)} {insight.severity}",
+            f"Confidence: {insight.confidence_score}",
+            f"Summary: {insight.body}",
+            "",
+            "Recommended Action:",
+            insight.recommended_action,
+        ]
+        return Screen(text="\n".join(lines), reply_markup=intelligence_briefing_menu())
+    if mode == "send_hq":
+        lines = [
+            "Executive Intelligence Briefing",
+            "",
+            "Send to HQ is a safe placeholder until notification targets are explicitly approved.",
+        ]
+        return Screen(text="\n".join(lines), reply_markup=intelligence_briefing_menu())
+    briefing = generate_executive_intelligence_briefing(session, actor=user)
+    lines = [
+        "Executive Intelligence Briefing",
+        "",
+        f"Insight ID: {briefing['insight_id']}",
+        f"Agency Health Score: {briefing['agency_health_score']}/100",
+        f"Summary: {briefing['summary_text']}",
+        "",
+        "Top Risks:",
+    ]
+    lines.extend(f"- {item}" for item in briefing["top_risks"][:3])
+    if not briefing["top_risks"]:
+        lines.append("- No top risks detected")
+    lines.extend(["", "Top Improvements:"])
+    lines.extend(f"- {item}" for item in briefing["top_improvements"][:3])
+    if not briefing["top_improvements"]:
+        lines.append("- No improvement recommendations yet")
+    lines.extend(["", "Patterns Detected:"])
+    lines.extend(f"- {item}" for item in briefing["patterns_detected"][:5])
+    if not briefing["patterns_detected"]:
+        lines.append("- No active patterns")
+    lines.extend(["", "Negative Trends:"])
+    lines.extend(f"- {item}" for item in briefing["negative_trends"][:5])
+    if not briefing["negative_trends"]:
+        lines.append("- No significant negative trends")
+    lines.extend(["", "Overloaded Users:"])
+    lines.extend(f"- {item}" for item in briefing["overloaded_users"][:5])
+    if not briefing["overloaded_users"]:
+        lines.append("- None")
+    lines.extend(["", "Confidence Notes:", briefing["confidence_notes"]])
+    return Screen(text="\n".join(lines), reply_markup=intelligence_briefing_menu())
+
+
+def render_intelligence_runs_page(session: Session) -> Screen:
+    runs = list_intelligence_runs(session, limit=10)
+    lines = ["Intelligence Runs", ""]
+    buttons: list[tuple[str, str]] = []
+    if not runs:
+        lines.append("No intelligence runs yet.")
+    for run in runs:
+        finished = run.finished_at.isoformat() if run.finished_at else "running"
+        lines.append(f"{run.id}. {run.run_type}")
+        lines.append(f"   Status: {run.status} | Finished: {finished}")
+        buttons.append((f"{run.id}. {run.run_type}", f"nav:intelligence:run_detail:{run.id}"))
+    return Screen(text="\n".join(lines), reply_markup=intelligence_run_menu(buttons))
+
+
+def render_intelligence_run_detail_page(session: Session, run_id: int) -> Screen:
+    run = session.get(IntelligenceRun, run_id)
+    if run is None:
+        return Screen(text="Intelligence run not found.", reply_markup=page_menu(back_to="intelligence:runs"))
+    lines = [
+        "Intelligence Run",
+        "",
+        f"ID: {run.id}",
+        f"Type: {run.run_type}",
+        f"Status: {run.status}",
+        f"Started: {run.started_at.isoformat() if run.started_at else 'unknown'}",
+        f"Finished: {run.finished_at.isoformat() if run.finished_at else 'not finished'}",
+        f"Error: {run.error_message or 'None'}",
+        "",
+        "Summary:",
+    ]
+    for key, value in sorted((run.summary_json or {}).items()):
+        lines.append(f"- {key}: {value}")
+    if not run.summary_json:
+        lines.append("- Empty")
+    return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="intelligence:runs"))
+
+
+def render_intelligence_signals_page(session: Session) -> Screen:
+    signals = list_signals(session, status="open", limit=20)
+    lines = ["Intelligence Signals", ""]
+    if not signals:
+        lines.append("No open intelligence signals.")
+    for signal in signals:
+        lines.append(f"{signal.id}. {_status_marker(signal.severity)} {signal.title}")
+        lines.append(f"   Type: {signal.signal_type} | Confidence: {signal.confidence_score}")
+        lines.append(f"   Entity: {signal.entity_type or 'general'}:{signal.entity_id or 'n/a'}")
+        lines.append(f"   Seen: {signal.occurrence_count} | Last: {signal.last_seen_at.isoformat() if signal.last_seen_at else 'unknown'}")
+    return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="intelligence"))
+
+
+def render_intelligence_patterns_page(session: Session) -> Screen:
+    patterns = list_patterns(session, status="active", limit=20)
+    lines = ["Issue Patterns", ""]
+    if not patterns:
+        lines.append("No active issue patterns.")
+    for pattern in patterns:
+        lines.append(f"{pattern.id}. {_status_marker(pattern.severity)} {pattern.title}")
+        lines.append(f"   Type: {pattern.pattern_type} | Confidence: {pattern.confidence_score}")
+        lines.append(f"   Entity: {pattern.entity_type or 'general'}:{pattern.entity_id or 'n/a'}")
+        lines.append(f"   Occurrences: {pattern.occurrence_count}")
+        lines.append(f"   Action: {pattern.suggested_action}")
+    return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="intelligence"))
+
+
+def render_intelligence_trends_page(session: Session) -> Screen:
+    trends = list_trends(session, limit=20)
+    lines = ["Trend Analysis", ""]
+    if not trends:
+        lines.append("No trend snapshots yet.")
+    for trend in trends:
+        change = f"{trend.percent_change}%" if trend.percent_change is not None else "baseline"
+        lines.append(f"{trend.id}. {trend.metric_name}: {trend.value_numeric}")
+        lines.append(f"   Direction: {trend.trend_direction} | Change: {change}")
+        lines.append(f"   Window: {trend.comparison_window} | Date: {trend.snapshot_date.isoformat()}")
+    return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="intelligence"))
+
+
+def render_workload_intelligence_page(session: Session, user: User | None = None) -> Screen:
+    snapshots = list_workload_snapshots(session, limit=30)
+    if not snapshots:
+        from app.services.intelligence import analyze_workload
+
+        snapshots = analyze_workload(session, actor=user)
+    lines = ["Workload Intelligence", ""]
+    overloaded = [snapshot for snapshot in snapshots if snapshot.overload_status in {"overloaded", "critical"}]
+    off_shift = [snapshot for snapshot in snapshots if snapshot.availability_status != "on_shift"]
+    overdue = [snapshot for snapshot in snapshots if snapshot.overdue_tasks > 0]
+    critical = [snapshot for snapshot in snapshots if snapshot.critical_incidents > 0]
+    lines.extend(
+        [
+            f"Overloaded Users: {len(overloaded)}",
+            f"Users Off Shift: {len(off_shift)}",
+            f"Users With Overdue Tasks: {len(overdue)}",
+            f"Users With Critical Incidents: {len(critical)}",
+            "",
+            "Suggested Reassignments:",
+        ]
+    )
+    if not overloaded and not overdue:
+        lines.append("- None right now")
+    for snapshot in (overloaded + overdue)[:10]:
+        user_obj = session.get(User, snapshot.user_id)
+        lines.append(
+            f"- {_identity(user_obj)}: {snapshot.overload_status}, score {snapshot.workload_score}, "
+            f"overdue {snapshot.overdue_tasks}"
+        )
+    return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="reports"))
+
+
+def render_opportunity_list_page(session: Session) -> Screen:
+    opportunities = list_opportunities(session, limit=20)
+    lines = ["Opportunities", ""]
+    buttons: list[tuple[str, str]] = []
+    if not opportunities:
+        lines.append("No opportunities yet.")
+    for opportunity in opportunities:
+        lines.append(f"{opportunity.id}. {opportunity.title}")
+        lines.append(f"   Platform: {opportunity.platform} | Score: {opportunity.score} | Status: {opportunity.status}")
+        lines.append(f"   Niche: {opportunity.niche or 'not set'}")
+        buttons.append((f"{opportunity.id}. {opportunity.title[:36]}", f"nav:opportunity:{opportunity.id}"))
+    return Screen(text="\n".join(lines), reply_markup=opportunities_menu(buttons))
+
+
+def render_opportunity_detail_page(session: Session, opportunity_id: int) -> Screen:
+    opportunity = get_opportunity(session, opportunity_id)
+    if opportunity is None:
+        return Screen(text="Opportunity not found.", reply_markup=page_menu(back_to="opportunities:list"))
+    assignee = session.get(User, opportunity.assigned_to_user_id) if opportunity.assigned_to_user_id else None
+    model = session.get(ModelBrand, opportunity.model_brand_id) if opportunity.model_brand_id else None
+    lines = [
+        "Opportunity",
+        "",
+        f"Title: {opportunity.title}",
+        f"Platform: {opportunity.platform}",
+        f"Status: {opportunity.status}",
+        f"Score: {opportunity.score}/100",
+        f"Niche: {opportunity.niche or 'Not set'}",
+        f"Model/Brand: {model.display_name if model else 'Unassigned'}",
+        f"Assigned To: {_identity(assignee)}",
+        f"URL: {opportunity.url or 'Not set'}",
+        f"Reason: {opportunity.reason or 'None'}",
+        f"Suggested Angle: {opportunity.suggested_angle or 'None'}",
+        "",
+        "Safety: posting remains manual and human-approved.",
+    ]
+    return Screen(text="\n".join(lines), reply_markup=opportunity_detail_menu(opportunity.id))
+
+
+def render_opportunity_results_page(session: Session) -> Screen:
+    results = opportunity_results(session, limit=20)
+    lines = ["Opportunity Results", ""]
+    if not results:
+        lines.append("No opportunity results yet.")
+    for result in results:
+        opportunity = session.get(Opportunity, result.opportunity_id)
+        posted_by = session.get(User, result.posted_by_user_id) if result.posted_by_user_id else None
+        lines.append(f"{result.id}. {opportunity.title if opportunity else 'Opportunity'}")
+        lines.append(f"   Status: {result.status} | Posted By: {_identity(posted_by)}")
+        lines.append(f"   Clicks: {result.clicks or 0} | Conversions: {result.conversions or 0}")
+    return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="opportunities"))
+
+
 def render_simulation_runs_page(session: Session) -> Screen:
     runs = list_simulation_runs(session)
     lines = ["Automation Simulation Runs", ""]
@@ -2036,6 +2346,14 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_daily_briefing_page(session, user=user, mode="latest")
     if page == "reports:accountability" and session is not None:
         return render_accountability_page(session, user=user)
+    if page in {"reports:intelligence", "reports:intelligence:generate"} and session is not None:
+        return render_intelligence_briefing_page(session, user=user)
+    if page == "reports:intelligence:latest" and session is not None:
+        return render_intelligence_briefing_page(session, user=user, mode="latest")
+    if page == "reports:intelligence:send_hq" and session is not None:
+        return render_intelligence_briefing_page(session, user=user, mode="send_hq")
+    if page == "reports:workload" and session is not None:
+        return render_workload_intelligence_page(session, user=user)
     if page == "reports:digest" and session is not None:
         return render_daily_digest_page(session, user=user)
     if page == "reports:digest:generate" and session is not None:
@@ -2057,6 +2375,8 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
     if page.startswith("recommendation:") and session is not None:
         parts = page.split(":")
         if len(parts) >= 2 and parts[1].isdigit():
+            if len(parts) >= 3 and parts[2] == "why":
+                return render_recommendation_why_page(session, int(parts[1]))
             return render_recommendation_detail_page(session, int(parts[1]))
     if page == "reports:operations" and session is not None:
         return render_operations_dashboard_page(session, user=user)
@@ -2066,6 +2386,30 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_chatter_dashboard_page(session, user=user)
     if page == "reports:va" and session is not None:
         return render_va_dashboard_page(session, user=user)
+    if page == "intelligence" and session is not None:
+        return render_intelligence_home(session)
+    if page == "intelligence:runs" and session is not None:
+        return render_intelligence_runs_page(session)
+    if page.startswith("intelligence:run_detail:") and session is not None:
+        parts = page.split(":")
+        if len(parts) >= 3 and parts[2].isdigit():
+            return render_intelligence_run_detail_page(session, int(parts[2]))
+    if page == "intelligence:signals" and session is not None:
+        return render_intelligence_signals_page(session)
+    if page == "intelligence:patterns" and session is not None:
+        return render_intelligence_patterns_page(session)
+    if page == "intelligence:trends" and session is not None:
+        return render_intelligence_trends_page(session)
+    if page == "opportunities" and session is not None:
+        return render_opportunities_home(session)
+    if page == "opportunities:list" and session is not None:
+        return render_opportunity_list_page(session)
+    if page == "opportunities:results" and session is not None:
+        return render_opportunity_results_page(session)
+    if page.startswith("opportunity:") and session is not None:
+        parts = page.split(":")
+        if len(parts) >= 2 and parts[1].isdigit():
+            return render_opportunity_detail_page(session, int(parts[1]))
     if page == "users" and session is not None:
         return render_users_page(session)
     if page == "users:pending" and session is not None:

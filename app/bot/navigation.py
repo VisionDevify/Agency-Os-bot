@@ -81,6 +81,15 @@ from app.services.automations import (
     update_simulation_status,
 )
 from app.services.recommendations import get_recommendation, update_recommendation_status
+from app.services.intelligence import run_full_intelligence_scan, run_intelligence_analysis
+from app.services.opportunities import (
+    assign_opportunity,
+    create_default_opportunity,
+    get_opportunity,
+    record_opportunity_result,
+    run_opportunity_scoring,
+    score_opportunity,
+)
 from app.services.permissions import PermissionPrincipal, require_permission
 from app.services.team_operations import set_availability
 
@@ -139,6 +148,10 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         return None
     if page.startswith("recommendation:"):
         return ("manage_reports", "view_dashboard")
+    if page.startswith("intelligence"):
+        return ("manage_reports", "view_dashboard")
+    if page.startswith("opportunities") or page.startswith("opportunity:"):
+        return ("manage_reports", "manage_tasks")
     if page.startswith("automations:") or page.startswith("simulation:"):
         return ("manage_automations",)
     if page.startswith("accounts:"):
@@ -218,6 +231,49 @@ def _perform_admin_action(
             if recommendation.entity_type == "model_brand" and recommendation.entity_id:
                 return f"model:{recommendation.entity_id}"
             return "reports:executive:recommendations"
+        if action == "why":
+            return f"recommendation:{recommendation.id}:why"
+    if page == "intelligence:run:full":
+        run_full_intelligence_scan(session, actor=actor)
+        return "intelligence:runs"
+    if len(parts) >= 3 and parts[0] == "intelligence" and parts[1] == "run":
+        run_type = parts[2]
+        if run_type in {
+            "pattern_detection",
+            "trend_analysis",
+            "workload_analysis",
+            "recommendation_generation",
+            "executive_briefing",
+            "opportunity_scoring",
+        }:
+            run_intelligence_analysis(session, actor=actor, run_type=run_type)
+            return "intelligence:runs"
+    if page == "opportunities:add":
+        opportunity = create_default_opportunity(session, actor=actor)
+        return f"opportunity:{opportunity.id}"
+    if page == "opportunities:score":
+        run_opportunity_scoring(session, actor=actor)
+        return "opportunities:list"
+    if len(parts) >= 3 and parts[0] == "opportunity" and parts[1].isdigit():
+        opportunity = get_opportunity(session, int(parts[1]))
+        if opportunity is None:
+            return "opportunities:list"
+        action = parts[2]
+        if action == "score":
+            score_opportunity(session, opportunity, actor=actor)
+            return f"opportunity:{opportunity.id}"
+        if action == "assign_me":
+            assign_opportunity(session, opportunity, actor, actor=actor)
+            return f"opportunity:{opportunity.id}"
+        if action in {"mark_posted", "record_result"}:
+            record_opportunity_result(
+                session,
+                opportunity,
+                actor=actor,
+                status="posted",
+                notes="Manual result recorded from Telegram.",
+            )
+            return f"opportunity:{opportunity.id}"
     if page == "tasks:create":
         task = create_default_task(session, actor=actor)
         return f"task:{task.id}"
@@ -587,6 +643,9 @@ def screen_for_page(
         or normalized.startswith("incident:")
         or normalized.startswith("reports:")
         or normalized.startswith("recommendation:")
+        or normalized.startswith("intelligence")
+        or normalized.startswith("opportunities")
+        or normalized.startswith("opportunity:")
         or normalized.startswith("automations:")
         or normalized.startswith("simulation:")
         or normalized.startswith("models:")

@@ -10,6 +10,8 @@ MENU_ITEMS: tuple[tuple[str, str], ...] = (
     ("Tasks", "tasks"),
     ("Incidents", "incidents"),
     ("Reports", "reports"),
+    ("Intelligence", "intelligence"),
+    ("Opportunities", "opportunities"),
     ("Automations", "automations"),
     ("Settings", "settings"),
 )
@@ -261,6 +263,8 @@ def reports_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Daily Briefing", callback_data=callback_for("reports:daily"))],
             [InlineKeyboardButton(text="Daily Digest", callback_data=callback_for("reports:digest"))],
             [InlineKeyboardButton(text="Team Accountability", callback_data=callback_for("reports:accountability"))],
+            [InlineKeyboardButton(text="Executive Intelligence Briefing", callback_data=callback_for("reports:intelligence"))],
+            [InlineKeyboardButton(text="Workload Intelligence", callback_data=callback_for("reports:workload"))],
             [InlineKeyboardButton(text="Executive Dashboard", callback_data=callback_for("reports:executive"))],
             [InlineKeyboardButton(text="Manager Command View", callback_data=callback_for("reports:manager"))],
             [InlineKeyboardButton(text="Operations Dashboard", callback_data=callback_for("reports:operations"))],
@@ -312,6 +316,8 @@ def executive_dashboard_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="Recommendations", callback_data=callback_for("reports:executive:recommendations"))],
+            [InlineKeyboardButton(text="Intelligence Briefing", callback_data=callback_for("reports:intelligence"))],
+            [InlineKeyboardButton(text="Signals / Patterns", callback_data=callback_for("intelligence"))],
             [
                 InlineKeyboardButton(text="Daily Briefing", callback_data=callback_for("reports:daily:latest")),
                 InlineKeyboardButton(text="Accountability", callback_data=callback_for("reports:accountability")),
@@ -343,7 +349,92 @@ def recommendation_detail_menu(recommendation_id: int) -> InlineKeyboardMarkup:
             ],
             [InlineKeyboardButton(text="Mark Resolved", callback_data=f"nav:recommendation:{recommendation_id}:resolve")],
             [InlineKeyboardButton(text="Jump to Related Entity", callback_data=f"nav:recommendation:{recommendation_id}:jump")],
+            [InlineKeyboardButton(text="Why am I seeing this?", callback_data=f"nav:recommendation:{recommendation_id}:why")],
             *page_controls(back_to="reports:executive:recommendations"),
+        ]
+    )
+
+
+def intelligence_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Intelligence Briefing", callback_data=callback_for("reports:intelligence"))],
+            [InlineKeyboardButton(text="Run Analysis", callback_data=callback_for("intelligence:runs"))],
+            [
+                InlineKeyboardButton(text="Signals", callback_data=callback_for("intelligence:signals")),
+                InlineKeyboardButton(text="Patterns", callback_data=callback_for("intelligence:patterns")),
+            ],
+            [
+                InlineKeyboardButton(text="Trends", callback_data=callback_for("intelligence:trends")),
+                InlineKeyboardButton(text="Workload", callback_data=callback_for("reports:workload")),
+            ],
+            [
+                InlineKeyboardButton(text="Recommendations", callback_data=callback_for("reports:executive:recommendations")),
+                InlineKeyboardButton(text="Opportunities", callback_data=callback_for("opportunities")),
+            ],
+            [InlineKeyboardButton(text="Production Status", callback_data=callback_for("production_status"))],
+            *page_controls(back_to="menu"),
+        ]
+    )
+
+
+def intelligence_run_menu(run_buttons: list[tuple[str, str]]) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in run_buttons]
+    rows.extend(
+        [
+            [InlineKeyboardButton(text="Run Full Intelligence Scan", callback_data=callback_for("intelligence:run:full"))],
+            [InlineKeyboardButton(text="Run Pattern Detection", callback_data=callback_for("intelligence:run:pattern_detection"))],
+            [InlineKeyboardButton(text="Run Trend Analysis", callback_data=callback_for("intelligence:run:trend_analysis"))],
+            [InlineKeyboardButton(text="Run Workload Analysis", callback_data=callback_for("intelligence:run:workload_analysis"))],
+            [InlineKeyboardButton(text="Run Recommendations", callback_data=callback_for("intelligence:run:recommendation_generation"))],
+            [InlineKeyboardButton(text="Run Opportunity Scoring", callback_data=callback_for("intelligence:run:opportunity_scoring"))],
+        ]
+    )
+    rows.extend(page_controls(back_to="intelligence"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def intelligence_briefing_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Generate Intelligence Briefing", callback_data=callback_for("reports:intelligence:generate"))],
+            [InlineKeyboardButton(text="View Latest", callback_data=callback_for("reports:intelligence:latest"))],
+            [
+                InlineKeyboardButton(text="View Signals", callback_data=callback_for("intelligence:signals")),
+                InlineKeyboardButton(text="View Patterns", callback_data=callback_for("intelligence:patterns")),
+            ],
+            [
+                InlineKeyboardButton(text="View Trends", callback_data=callback_for("intelligence:trends")),
+                InlineKeyboardButton(text="View Workload", callback_data=callback_for("reports:workload")),
+            ],
+            [InlineKeyboardButton(text="Send to HQ", callback_data=callback_for("reports:intelligence:send_hq"))],
+            *page_controls(back_to="reports"),
+        ]
+    )
+
+
+def opportunities_menu(opportunity_buttons: list[tuple[str, str]] | None = None) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in (opportunity_buttons or [])]
+    rows.extend(
+        [
+            [InlineKeyboardButton(text="View Opportunities", callback_data=callback_for("opportunities:list"))],
+            [InlineKeyboardButton(text="Add Opportunity Manually", callback_data=callback_for("opportunities:add"))],
+            [InlineKeyboardButton(text="Score Opportunities", callback_data=callback_for("opportunities:score"))],
+            [InlineKeyboardButton(text="Opportunity Results", callback_data=callback_for("opportunities:results"))],
+        ]
+    )
+    rows.extend(page_controls(back_to="menu"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def opportunity_detail_menu(opportunity_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Score Opportunity", callback_data=f"nav:opportunity:{opportunity_id}:score")],
+            [InlineKeyboardButton(text="Assign to Me", callback_data=f"nav:opportunity:{opportunity_id}:assign_me")],
+            [InlineKeyboardButton(text="Mark Posted", callback_data=f"nav:opportunity:{opportunity_id}:mark_posted")],
+            [InlineKeyboardButton(text="Record Result", callback_data=f"nav:opportunity:{opportunity_id}:record_result")],
+            *page_controls(back_to="opportunities:list"),
         ]
     )
 

@@ -2,6 +2,7 @@
 
 Sprint 9 prepared Agency OS for production activation while stopping before billing-impacting or destructive actions. Sprint 10 added delivery-attempt tracking. Owner approval was later granted for Railway production activation.
 Sprint 11 adds a Redis-backed bot polling guard and operator-facing production status controls.
+Sprint 12 adds deterministic intelligence scans, executive intelligence briefings, workload intelligence, and manual opportunity intelligence.
 
 ## Current Production State
 
@@ -111,8 +112,25 @@ Repeated failures create a warning recommendation for the affected Notification 
 Daily agency usage should start from:
 
 - Reports -> Manager Command View.
+- Reports -> Executive Intelligence Briefing.
+- Reports -> Workload Intelligence.
+- Intelligence -> Run Analysis.
 - Reports -> Daily Digest.
 - Tasks -> My Tasks and Team Tasks.
 - Incidents -> Open Incidents and Critical Incidents.
 - Settings -> My Availability.
 - Settings -> Production Status.
+
+## Intelligence Operations
+
+The Intelligence Command Center is safe to run in production because Sprint 12 scans are deterministic reads plus safe writes to Agency OS tables. They do not scrape external platforms, post content, rotate proxies, repair infrastructure, or mutate risky production resources without an explicit operator workflow.
+
+Recommended daily flow:
+
+1. Open Reports -> Executive Intelligence Briefing.
+2. Run Intelligence -> Run Full Intelligence Scan if fresh analysis is needed.
+3. Review Signals, Patterns, Trends, and Workload Intelligence.
+4. Open Recommendations and use "Why am I seeing this?" before assigning work.
+5. Use Opportunities only for manual, human-approved opportunity records.
+
+Critical signals can create notification delivery attempts for configured owner/incidents/operations targets. Delivery attempts remain durable records and must not include secrets or raw chat IDs.

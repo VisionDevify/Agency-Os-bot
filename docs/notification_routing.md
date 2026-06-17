@@ -1,6 +1,6 @@
 # Notification Routing
 
-Sprint 9 introduces safe notification routing without spamming real groups or exposing Telegram chat IDs. Sprint 10 adds durable delivery-attempt records for actual send attempts. Sprint 11 adds availability-aware routing and Daily Digest delivery attempts.
+Sprint 9 introduces safe notification routing without spamming real groups or exposing Telegram chat IDs. Sprint 10 adds durable delivery-attempt records for actual send attempts. Sprint 11 adds availability-aware routing and Daily Digest delivery attempts. Sprint 12 adds critical intelligence signal routing through the same safe delivery-attempt path.
 
 ## Goals
 
@@ -31,6 +31,7 @@ Sprint 9 introduces safe notification routing without spamming real groups or ex
 - Overdue Task -> operations.
 - Escalated Task -> operations + owner.
 - Escalated Incident -> owner + incidents.
+- Critical Intelligence Signal -> owner + incidents + operations.
 
 ## Smart Routing Inputs
 
@@ -83,6 +84,17 @@ Settings -> Notification Targets supports:
 The service creates an audit record for every attempted send. Successful and failed outcomes also emit EventLog rows. Repeated failed deliveries generate a warning recommendation so operators can repair the target.
 
 The Telegram UI still masks chat IDs. Failure text is deliberately coarse and redacted if it looks like it might contain tokens, keys, passwords, credentials, or chat IDs.
+
+## Intelligence Signal Routing
+
+Critical intelligence signals summarize recurring or high-confidence risks, such as repeated proxy failures, production instability, recurring incidents, or overloaded users. When a critical signal is created, routing may create notification delivery attempts for active owner, incidents, and operations targets.
+
+Signal routing must stay digest-friendly:
+
+- summarize the signal title, severity, entity, and confidence.
+- avoid raw logs and raw Telegram chat IDs.
+- avoid credentials, proxy passwords, verification codes, tokens, session strings, or platform session data.
+- route repeated signals as records/operators can inspect, not chat spam.
 
 ## Future Work
 
