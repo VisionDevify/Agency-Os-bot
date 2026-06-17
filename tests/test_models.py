@@ -5,6 +5,8 @@ def test_model_tables_are_registered() -> None:
         AuditLog,
         Automation,
         Incident,
+        AccountAuthSession,
+        AccountVerificationCode,
         ModelBrand,
         ModelBrandMember,
         Proxy,
@@ -16,6 +18,8 @@ def test_model_tables_are_registered() -> None:
 
     expected = {
         "accounts",
+        "account_auth_sessions",
+        "account_verification_codes",
         "audit_logs",
         "automations",
         "incidents",
@@ -35,6 +39,9 @@ def test_model_tables_are_registered() -> None:
     assert AuditLog.__tablename__ == "audit_logs"
     assert "status" in AuditLog.__table__.columns
     assert Account.__tablename__ == "accounts"
+    assert AccountAuthSession.__tablename__ == "account_auth_sessions"
+    assert AccountVerificationCode.__tablename__ == "account_verification_codes"
+    assert "auth_status" in Account.__table__.columns
     assert Proxy.__tablename__ == "proxies"
     assert Task.__tablename__ == "tasks"
     assert Incident.__tablename__ == "incidents"

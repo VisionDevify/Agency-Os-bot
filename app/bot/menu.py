@@ -73,6 +73,76 @@ def users_menu(user_buttons: list[tuple[str, str]]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def accounts_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="View Accounts", callback_data=callback_for("accounts:list"))],
+            [InlineKeyboardButton(text="Add Account", callback_data=callback_for("accounts:add"))],
+            [InlineKeyboardButton(text="Accounts by Model", callback_data=callback_for("accounts:by_model"))],
+            [InlineKeyboardButton(text="Accounts by Platform", callback_data=callback_for("accounts:by_platform"))],
+            [InlineKeyboardButton(text="Accounts Needing Attention", callback_data=callback_for("accounts:attention"))],
+            *page_controls(back_to="menu"),
+        ]
+    )
+
+
+def account_list_menu(account_buttons: list[tuple[str, str]], *, back_to: str = "accounts") -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in account_buttons]
+    rows.extend(page_controls(back_to=back_to))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def account_model_choice_menu(model_buttons: list[tuple[str, str]]) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in model_buttons]
+    rows.extend(page_controls(back_to="accounts"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def account_platform_menu(model_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Instagram", callback_data=f"nav:accounts:add:model:{model_id}:platform:instagram")],
+            [InlineKeyboardButton(text="X", callback_data=f"nav:accounts:add:model:{model_id}:platform:x")],
+            [InlineKeyboardButton(text="OnlyFans", callback_data=f"nav:accounts:add:model:{model_id}:platform:onlyfans")],
+            [InlineKeyboardButton(text="Email", callback_data=f"nav:accounts:add:model:{model_id}:platform:email")],
+            [InlineKeyboardButton(text="Other", callback_data=f"nav:accounts:add:model:{model_id}:platform:other")],
+            *page_controls(back_to="accounts:add"),
+        ]
+    )
+
+
+def platform_filter_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Instagram", callback_data="nav:accounts:platform:instagram")],
+            [InlineKeyboardButton(text="X", callback_data="nav:accounts:platform:x")],
+            [InlineKeyboardButton(text="OnlyFans", callback_data="nav:accounts:platform:onlyfans")],
+            [InlineKeyboardButton(text="Email", callback_data="nav:accounts:platform:email")],
+            [InlineKeyboardButton(text="Other", callback_data="nav:accounts:platform:other")],
+            *page_controls(back_to="accounts"),
+        ]
+    )
+
+
+def account_detail_menu(account_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Start Login/Auth Session", callback_data=f"nav:account:{account_id}:auth:start")],
+            [InlineKeyboardButton(text="Enter 2FA Code", callback_data=f"nav:account:{account_id}:auth:enter")],
+            [
+                InlineKeyboardButton(text="Mark Connected", callback_data=f"nav:account:{account_id}:auth:connected"),
+                InlineKeyboardButton(text="Mark Needs Login", callback_data=f"nav:account:{account_id}:auth:needs_login"),
+            ],
+            [
+                InlineKeyboardButton(text="Disable Account", callback_data=f"nav:account:{account_id}:disable"),
+                InlineKeyboardButton(text="Archive Account", callback_data=f"nav:account:{account_id}:archive"),
+            ],
+            [InlineKeyboardButton(text="View Audit History", callback_data=f"nav:account:{account_id}:audit")],
+            *page_controls(back_to="accounts:list"),
+        ]
+    )
+
+
 def models_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[

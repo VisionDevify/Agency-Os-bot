@@ -1,6 +1,6 @@
 # Database Schema
 
-This document describes the current schema as of Sprint 4 and the planned direction. PostgreSQL is the production database, SQLAlchemy owns the models, and Alembic owns migrations.
+This document describes the current schema as of Sprint 5 and the planned direction. PostgreSQL is the production database, SQLAlchemy owns the models, and Alembic owns migrations.
 
 ## Current Tables
 
@@ -156,7 +156,86 @@ Indexes and constraints:
 - `ix_model_brand_members_user_id`.
 - `ix_model_brand_members_relationship_type`.
 
-### accounts, proxies, tasks, incidents, reports, automations
+### accounts
+
+Model/Brand-attached account inventory. Accounts track operational state and auth state but never store raw passwords, raw 2FA codes, or credential payloads.
+
+Columns:
+
+- `id`: primary key.
+- `name`: legacy nullable display field retained from Sprint 1 placeholder resources.
+- `metadata_json`: legacy safe metadata JSON retained for compatibility.
+- `model_brand_id`: nullable foreign key to `model_brands.id`, set null on model deletion.
+- `platform`: one of `instagram`, `x`, `onlyfans`, `email`, or `other`.
+- `username`: required platform username or identifier.
+- `display_name`: required operator-facing display name.
+- `account_url`: optional URL.
+- `status`: one of `healthy`, `warning`, `critical`, `disabled`, or `archived`.
+- `auth_status`: one of `not_connected`, `connected`, `needs_login`, `needs_2fa`, `expired`, or `locked`.
+- `credential_ref`: optional external secret reference only.
+- `connected_email_ref`: optional external email credential reference only.
+- `connected_phone_mask`: optional masked phone label.
+- `assigned_proxy_id`: nullable foreign key to `proxies.id`, set null on proxy deletion.
+- `notes`: optional operator notes.
+- `last_checked_at`: optional latest health/auth check timestamp.
+- `created_at`, `updated_at`: timestamps.
+
+Indexes and constraints:
+
+- `ck_accounts_platform`.
+- `ck_accounts_status`.
+- `ck_accounts_auth_status`.
+- `ix_accounts_model_brand_id`.
+- `ix_accounts_platform`.
+- `ix_accounts_status`.
+- `ix_accounts_auth_status`.
+- `ix_accounts_username`.
+
+### account_auth_sessions
+
+Short-lived login/auth workflow records. These are coordination records only; they do not store credentials or codes.
+
+Columns:
+
+- `id`: primary key.
+- `account_id`: foreign key to `accounts.id`, cascade delete.
+- `status`: one of `pending`, `waiting_for_code`, `submitted`, `success`, `failed`, `expired`, or `cancelled`.
+- `requested_by_user_id`: foreign key to `users.id`, set null if the user is removed.
+- `handled_by_user_id`: nullable foreign key to `users.id`, set null if the user is removed.
+- `expires_at`: auth-session expiry timestamp, currently ten minutes from creation.
+- `failure_reason`: optional safe failure reason.
+- `created_at`, `updated_at`: timestamps.
+
+Indexes and constraints:
+
+- `ck_account_auth_sessions_status`.
+- `ix_account_auth_sessions_account_id`.
+- `ix_account_auth_sessions_status`.
+- `ix_account_auth_sessions_expires_at`.
+- `ix_account_auth_sessions_requested_by_user_id`.
+
+### account_verification_codes
+
+Stores hashed verification-code submissions for short-lived auth sessions. The plaintext code is never persisted.
+
+Columns:
+
+- `id`: primary key.
+- `auth_session_id`: foreign key to `account_auth_sessions.id`, cascade delete.
+- `code_hash`: HMAC-SHA256 hash of the submitted code scoped to the auth session.
+- `code_type`: one of `email`, `sms`, `authenticator`, or `backup_code`.
+- `submitted_by_user_id`: foreign key to `users.id`, set null if the user is removed.
+- `expires_at`: code expiry timestamp, currently five minutes from submission.
+- `used_at`: nullable timestamp set by future real integrations after consuming the code.
+- `created_at`: timestamp.
+
+Indexes and constraints:
+
+- `ck_account_verification_codes_code_type`.
+- `ix_account_verification_codes_auth_session_id`.
+- `ix_account_verification_codes_expires_at`.
+
+### proxies, tasks, incidents, reports, automations
 
 Current placeholder resource tables.
 
@@ -178,6 +257,9 @@ These tables are intentionally minimal until their modules are implemented.
 - A permission can belong to many roles through `role_permissions`.
 - A model/brand can have many assigned users through `model_brand_members`.
 - A user can be assigned to many model/brands through `model_brand_members`.
+- A model/brand can have many accounts through `accounts.model_brand_id`.
+- An account can have many auth sessions through `account_auth_sessions.account_id`.
+- An auth session can have many hashed verification-code submissions through `account_verification_codes.auth_session_id`.
 - An audit log may reference an actor user through `actor_user_id`.
 
 ## Status Strategy
@@ -196,16 +278,33 @@ Model/Brand status:
 - `disabled`: operationally blocked without deleting history.
 - `archived`: hidden from default active lists while preserving history.
 
+Account status:
+
+- `healthy`: account record is operating normally.
+- `warning`: account needs operator attention but is not considered critical.
+- `critical`: account needs urgent attention.
+- `disabled`: account is intentionally disabled but kept for history.
+- `archived`: hidden from default active lists while preserving history.
+
+Account auth status:
+
+- `not_connected`: no confirmed active connection exists.
+- `connected`: account has been marked connected.
+- `needs_login`: operator login action is needed.
+- `needs_2fa`: verification code flow is needed.
+- `expired`: auth/session state expired.
+- `locked`: platform-side lockout or equivalent operator intervention required.
+
 Soft-delete strategy:
 
 - Users are not deleted during normal admin flows. Use `disabled` or `denied`.
 - Roles and permissions should not be deleted casually because they affect audit interpretation and historical access context.
 - Model/Brand records should use `disabled` or `archived` instead of hard deletion.
+- Account records should use `disabled` or `archived` instead of hard deletion.
 - Future business resources should prefer status-based archival before hard deletes.
 
 ## Future Planned Tables
 
-- `model_brand_accounts`: links between model/brand records and platform accounts if account ownership becomes many-to-many.
 - `account_credentials`: secret references only, not raw secrets.
 - `proxy_credentials`: secret references only, not raw secrets.
 - `proxy_health_checks`: proxy check results and failure reasons.

@@ -13,10 +13,10 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Sprint 2: persistent PostgreSQL-backed users, roles, permissions, owner setup, pending users, audit logs, and real permission checks.
 - Sprint 2.5/3: foundation hardening, living architecture docs, stricter audit naming, masked audit metadata, pending-user queue, user admin workflows, role assignment/removal, role permission editing, owner protection checks, and expanded tests.
 - Sprint 4: Models/Brands command center, team assignments, model health scoring, model-specific audit history, dashboard model metrics, and lightweight model event emission.
+- Sprint 5: Accounts foundation attached to Models/Brands, account status/auth tracking, secure auth-session records, hashed 2FA submission flow, account health, dashboard account metrics, and account audit history.
 
 ## Roadmap
 
-- Sprint 5: Accounts Foundation attached to Models/Brands.
 - Sprint 6: Proxy Vault and health-check model.
 - Sprint 7: Task and Incident operations workflows.
 - Sprint 8: Reports, metrics, and notification routing.
@@ -32,7 +32,7 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Roles: default and custom role records with permission memberships.
 - Permissions: named capability flags checked by services and Telegram navigation.
 - Audit Logs: append-only safety trail for important actions and denied attempts.
-- Accounts: placeholder resource model for future account inventory.
+- Accounts: Model/Brand-attached account inventory for Instagram, X, OnlyFans, Email, and Other, including auth-state tracking, credential references, short-lived auth sessions, and hashed verification-code submissions.
 - Proxies: placeholder resource model and session-string rotation placeholder.
 - Tasks: placeholder resource model for future work queues.
 - Incidents: placeholder resource model for future incident handling and repair tracking.
@@ -91,6 +91,10 @@ Model/Brand assignment changes require `manage_users` or `manage_accounts`. Mode
 - The final Owner cannot be disabled and cannot lose the Owner role.
 - Owner role deletion is blocked.
 - Owner role permissions are treated as lockout-sensitive and cannot be removed through normal editing.
+- Account credential values are never stored directly; account records may only keep credential references.
+- Plaintext passwords and plaintext 2FA codes must never be stored, logged, audited, or shown in Telegram.
+- Verification codes are hashed immediately, expire quickly, and the bot should try to delete Telegram messages that contain submitted codes.
+- Future real platform connections should prefer official APIs or OAuth where available.
 - Destructive repo or database cleanup requires explicit confirmation.
 
 ## Audit Philosophy
@@ -115,6 +119,17 @@ Important actions should use stable event-style names, such as:
 - `member.assigned`
 - `member.removed`
 - `model.health.changed`
+- `account.created`
+- `account.updated`
+- `account.disabled`
+- `account.archived`
+- `account.auth_session.started`
+- `account.auth_session.waiting_for_code`
+- `account.auth_code.submitted`
+- `account.auth_session.success`
+- `account.auth_session.failed`
+- `account.auth_session.expired`
+- `account.auth_status.changed`
 - `access.denied`
 - `owner.protection_triggered`
 
@@ -132,7 +147,7 @@ Telegram is the operator console, so navigation should be calm and predictable:
 ## Future Modules
 
 - Models/Brands: model and brand profiles, ownership, account grouping, and operating rules.
-- Accounts: account inventory, status, credentials references, and assignment workflows.
+- Accounts: account inventory, Model/Brand attachment, status, auth status, credential references, secure auth-session handling, and hashed verification-code workflows.
 - Proxy Vault: proxy records, health checks, rotation events, and credential-safe storage.
 - Tasks: assigned work, status movement, approvals, and SLA signals.
 - Incidents: incident creation, triage, severity, ownership, and resolution.
@@ -178,7 +193,31 @@ Current health score inputs:
 - unassigned manager
 - unassigned chatter team
 
-Accounts, Revenue, Proxy Assignments, Automation Rules, Daily Briefings, and AI Operations Brain integration are intentionally TODO hooks until those modules have real records.
+Accounts now attach directly to Model/Brand records. Revenue, Proxy Assignments, Automation Rules, Daily Briefings, and AI Operations Brain integration are intentionally TODO hooks until those modules have real records.
+
+## Accounts Foundation
+
+Accounts are operational records, not automation clients. Sprint 5 deliberately avoids scraping, bypassing security, or risky platform automation.
+
+Supported platforms:
+
+- `instagram`
+- `x`
+- `onlyfans`
+- `email`
+- `other`
+
+Current account state:
+
+- Status: `healthy`, `warning`, `critical`, `disabled`, or `archived`.
+- Auth status: `not_connected`, `connected`, `needs_login`, `needs_2fa`, `expired`, or `locked`.
+- Credential references: `credential_ref`, `connected_email_ref`, and masked phone metadata only.
+- Auth sessions: short-lived records for login or 2FA handling.
+- Verification codes: hashed only, never stored as plaintext.
+
+The Telegram account workflow supports viewing accounts, adding an account to a Model/Brand, filtering by model or platform, viewing accounts needing attention, starting an auth session, submitting a verification code, marking connected or needs-login, disabling, archiving, and viewing account-specific audit history.
+
+Account health currently considers disabled or archived state, auth state, critical/warning flags, and missing Model/Brand attachment. Proxy health is intentionally a future hook.
 
 ## Foundation Hardening Review
 
@@ -190,6 +229,7 @@ GREEN:
 - `.env` is ignored, and `.env.example` is placeholder-only.
 - Core auth tables use unique constraints and join-table uniqueness to prevent duplicate memberships.
 - Audit logging exists for admin actions and denied access attempts.
+- Account auth flow stores verification-code hashes only and uses safe audit metadata.
 
 YELLOW:
 
@@ -200,9 +240,10 @@ YELLOW:
 - Pending Users navigation was made explicit.
 - Role removal choices now show only assigned roles.
 - User status now has a database check constraint.
+- Accounts graduated from placeholder resources to Model/Brand-attached records with platform, account status, auth status, and health constraints.
 
 RED:
 
 - The original `users.role_id` column exists in the earliest migration but is not used by the current model. It should be removed in a future cleanup migration only after explicit approval because it is a schema deletion.
 - The audit log is still the only event sink. A dedicated event table or queue should wait until real automation/reporting consumers exist.
-- The resource placeholder tables are intentionally thin. Their domain-specific constraints should be added when each module is built.
+- Proxy, task, incident, report, and automation placeholder tables are intentionally thin. Their domain-specific constraints should be added when each module is built.

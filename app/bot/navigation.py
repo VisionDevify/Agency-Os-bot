@@ -19,6 +19,15 @@ from app.services.auth import (
     mask_telegram_id,
     user_has_permission,
 )
+from app.services.accounts import (
+    archive_account,
+    get_account,
+    latest_auth_session,
+    require_account_auth_permission,
+    start_auth_session,
+    update_account,
+    mark_auth_session_success,
+)
 from app.services.model_brands import (
     archive_model_brand,
     assign_model_member,
@@ -46,6 +55,12 @@ PAGE_PERMISSIONS: dict[str, str] = {
 
 
 def permission_for_page(page: str) -> str | None:
+    if page.startswith("account:") and ":auth:" in page:
+        return None
+    if page.startswith("accounts:"):
+        return "manage_accounts"
+    if page.startswith("account:"):
+        return "manage_accounts"
     if page.startswith("models"):
         return "view_dashboard"
     if page.startswith("model:"):
@@ -61,6 +76,35 @@ def permission_for_page(page: str) -> str | None:
 
 def _perform_admin_action(page: str, session: Session, actor: User) -> str | None:
     parts = page.split(":")
+    if len(parts) >= 3 and parts[0] == "account" and parts[1].isdigit():
+        account = get_account(session, int(parts[1]))
+        if account is None:
+            return "accounts:list"
+        action = parts[2]
+        if action == "auth" and len(parts) >= 4:
+            auth_action = parts[3]
+            if auth_action == "enter":
+                require_account_auth_permission(session, actor)
+                return None
+            if auth_action == "start":
+                start_auth_session(session, account, actor=actor)
+                return f"account:{account.id}:auth:enter"
+            if auth_action == "connected":
+                auth_session = latest_auth_session(session, account.id)
+                if auth_session is not None:
+                    mark_auth_session_success(session, auth_session, actor=actor)
+                else:
+                    update_account(session, account, actor=actor, auth_status="connected")
+                return f"account:{account.id}"
+            if auth_action == "needs_login":
+                update_account(session, account, actor=actor, auth_status="needs_login")
+                return f"account:{account.id}"
+        if action == "disable":
+            update_account(session, account, actor=actor, status="disabled")
+            return f"account:{account.id}"
+        if action == "archive":
+            archive_account(session, account, actor=actor)
+            return f"account:{account.id}"
     if page == "models:create":
         model_brand = create_default_model_brand(session, actor=actor)
         return f"model:{model_brand.id}"
@@ -225,6 +269,8 @@ def screen_for_page(
         normalized in PAGE_TITLES
         or normalized == "audit_logs"
         or normalized == "permissions"
+        or normalized.startswith("accounts:")
+        or normalized.startswith("account:")
         or normalized.startswith("models:")
         or normalized.startswith("model:")
         or normalized.startswith("users:")

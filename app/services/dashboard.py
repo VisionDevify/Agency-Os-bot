@@ -3,9 +3,11 @@ from dataclasses import dataclass
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
+from app.models.account import Account
 from app.models.audit import AuditLog
 from app.models.model_brand import ModelBrand, ModelBrandMember
 from app.models.user import User
+from app.services.account_health import ACCOUNT_HEALTH_CRITICAL, calculate_account_health
 from app.services.model_health import HEALTH_CRITICAL, HEALTH_HEALTHY, HEALTH_WARNING, calculate_model_health
 
 
@@ -14,6 +16,12 @@ class DashboardStats:
     total_users: int = 0
     active_users: int = 0
     accounts: int = 0
+    instagram_accounts: int = 0
+    x_accounts: int = 0
+    onlyfans_accounts: int = 0
+    accounts_needing_login: int = 0
+    accounts_needing_2fa: int = 0
+    critical_accounts: int = 0
     healthy_proxies: int = 0
     open_tasks: int = 0
     open_incidents: int = 0
@@ -30,6 +38,12 @@ def placeholder_dashboard_stats() -> DashboardStats:
         total_users=1,
         active_users=1,
         accounts=0,
+        instagram_accounts=0,
+        x_accounts=0,
+        onlyfans_accounts=0,
+        accounts_needing_login=0,
+        accounts_needing_2fa=0,
+        critical_accounts=0,
         healthy_proxies=0,
         open_tasks=0,
         open_incidents=0,
@@ -54,10 +68,27 @@ def dashboard_stats(session: Session) -> DashboardStats:
             .order_by(ModelBrand.id)
         ).all()
     )
+    accounts = list(
+        session.scalars(
+            select(Account)
+            .where(Account.status != "archived")
+            .options(selectinload(Account.model_brand))
+            .order_by(Account.id)
+        ).all()
+    )
     health_counts = {HEALTH_HEALTHY: 0, HEALTH_WARNING: 0, HEALTH_CRITICAL: 0}
     model_scores: list[tuple[str, int]] = []
     for model in models:
-        health = calculate_model_health(model)
+        model_accounts = [account for account in accounts if account.model_brand_id == model.id]
+        health = calculate_model_health(
+            model,
+            disabled_accounts=sum(1 for account in model_accounts if account.status == "disabled"),
+            warning_accounts=sum(
+                1
+                for account in model_accounts
+                if account.status == "warning" or account.auth_status in {"needs_login", "needs_2fa"}
+            ),
+        )
         health_counts[health.status] += 1
         model_scores.append((model.display_name, health.score))
 
@@ -87,11 +118,25 @@ def dashboard_stats(session: Session) -> DashboardStats:
             .limit(5)
         ).all()
     )
+    platform_counts = {
+        "instagram": sum(1 for account in accounts if account.platform == "instagram"),
+        "x": sum(1 for account in accounts if account.platform == "x"),
+        "onlyfans": sum(1 for account in accounts if account.platform == "onlyfans"),
+    }
+    critical_accounts = sum(
+        1 for account in accounts if calculate_account_health(account).status == ACCOUNT_HEALTH_CRITICAL
+    )
 
     return DashboardStats(
         total_users=total_users,
         active_users=active_users,
-        accounts=0,
+        accounts=len(accounts),
+        instagram_accounts=platform_counts["instagram"],
+        x_accounts=platform_counts["x"],
+        onlyfans_accounts=platform_counts["onlyfans"],
+        accounts_needing_login=sum(1 for account in accounts if account.auth_status == "needs_login"),
+        accounts_needing_2fa=sum(1 for account in accounts if account.auth_status == "needs_2fa"),
+        critical_accounts=critical_accounts,
         healthy_proxies=0,
         open_tasks=0,
         open_incidents=0,

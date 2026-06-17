@@ -5,6 +5,11 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.bot.menu import (
+    account_detail_menu,
+    account_list_menu,
+    account_model_choice_menu,
+    account_platform_menu,
+    accounts_menu,
     dashboard_menu,
     main_menu,
     model_detail_menu,
@@ -14,6 +19,7 @@ from app.bot.menu import (
     model_team_menu,
     models_menu,
     page_menu,
+    platform_filter_menu,
     permission_choice_menu,
     role_choice_menu,
     role_detail_menu,
@@ -22,12 +28,22 @@ from app.bot.menu import (
     user_detail_menu,
     users_menu,
 )
+from app.models.account import ACCOUNT_PLATFORMS, Account
 from app.models.audit import AuditLog
 from app.models.model_brand import MODEL_BRAND_RELATIONSHIP_TYPES, ModelBrand, ModelBrandMember
 from app.models.permissions import Permission, Role
 from app.models.user import User
 from app.services.auth import DEFAULT_PERMISSION_DESCRIPTIONS
 from app.services.dashboard import DashboardStats, dashboard_stats, placeholder_dashboard_stats
+from app.services.accounts import (
+    account_audit_logs,
+    account_health,
+    accounts_for_model,
+    accounts_needing_attention,
+    latest_waiting_auth_session,
+    list_accounts,
+    platform_label,
+)
 from app.services.model_brands import (
     RELATIONSHIP_LABELS,
     active_users_for_assignment,
@@ -69,7 +85,13 @@ def render_dashboard(stats: DashboardStats | None = None, session: Session | Non
         "",
         f"Total Users: {current.total_users}",
         f"Active Users: {current.active_users}",
-        f"Accounts: {current.accounts}",
+        f"Total Accounts: {current.accounts}",
+        f"Instagram Accounts: {current.instagram_accounts}",
+        f"X Accounts: {current.x_accounts}",
+        f"OnlyFans Accounts: {current.onlyfans_accounts}",
+        f"Accounts Needing Login: {current.accounts_needing_login}",
+        f"Accounts Needing 2FA: {current.accounts_needing_2fa}",
+        f"Critical Accounts: {current.critical_accounts}",
         f"Healthy Proxies: {current.healthy_proxies}",
         f"Open Tasks: {current.open_tasks}",
         f"Open Incidents: {current.open_incidents}",
@@ -95,6 +117,162 @@ def render_models_home() -> Screen:
     return Screen(text="Models\nCommand center.", reply_markup=models_menu())
 
 
+def render_accounts_home() -> Screen:
+    return Screen(text="Accounts\nSecure account management.", reply_markup=accounts_menu())
+
+
+def _account_button(account: Account) -> tuple[str, str]:
+    label = f"{account.id}. {platform_label(account.platform)} @{account.username}"
+    return label, f"nav:account:{account.id}"
+
+
+def render_account_list_page(
+    session: Session,
+    *,
+    accounts: list[Account] | None = None,
+    title: str = "Accounts",
+    back_to: str = "accounts",
+) -> Screen:
+    current_accounts = accounts if accounts is not None else list_accounts(session)
+    lines = [title, ""]
+    buttons: list[tuple[str, str]] = []
+    if not current_accounts:
+        lines.append("No accounts yet.")
+    for account in current_accounts[:15]:
+        health = account_health(account)
+        model_name = account.model_brand.display_name if account.model_brand else "Unassigned"
+        lines.append(f"{account.id}. {platform_label(account.platform)} @{account.username}")
+        lines.append(f"   Model: {model_name} | Status: {account.status}")
+        lines.append(f"   Auth: {account.auth_status} | Health: {health.label} {health.score}/100")
+        buttons.append(_account_button(account))
+    return Screen(text="\n".join(lines), reply_markup=account_list_menu(buttons, back_to=back_to))
+
+
+def render_account_model_choice_page(session: Session) -> Screen:
+    models = list_model_brands(session)
+    lines = ["Choose Model/Brand", ""]
+    buttons: list[tuple[str, str]] = []
+    if not models:
+        lines.append("Create a Model/Brand first.")
+    for model_brand in models:
+        buttons.append((model_brand.display_name, f"nav:accounts:add:model:{model_brand.id}"))
+    return Screen(text="\n".join(lines), reply_markup=account_model_choice_menu(buttons))
+
+
+def render_account_platform_choice_page(session: Session, model_id: int) -> Screen:
+    model_brand = session.get(ModelBrand, model_id)
+    if model_brand is None:
+        return Screen(text="Model not found.", reply_markup=page_menu(back_to="accounts:add"))
+    return Screen(
+        text=f"Choose Platform\n\nModel: {model_brand.display_name}",
+        reply_markup=account_platform_menu(model_brand.id),
+    )
+
+
+def render_account_input_page(session: Session, model_id: int, platform: str) -> Screen:
+    model_brand = session.get(ModelBrand, model_id)
+    if model_brand is None:
+        return Screen(text="Model not found.", reply_markup=page_menu(back_to="accounts:add"))
+    return Screen(
+        text="\n".join(
+            [
+                "Add Account",
+                "",
+                f"Model: {model_brand.display_name}",
+                f"Platform: {platform_label(platform)}",
+                "",
+                "Send username or username | display name.",
+            ]
+        ),
+        reply_markup=page_menu(back_to=f"accounts:add:model:{model_id}"),
+    )
+
+
+def render_accounts_by_model_page(session: Session) -> Screen:
+    models = list_model_brands(session)
+    lines = ["Accounts by Model", ""]
+    buttons: list[tuple[str, str]] = []
+    if not models:
+        lines.append("No models yet.")
+    for model_brand in models:
+        count = len(accounts_for_model(session, model_brand.id))
+        lines.append(f"{model_brand.display_name}: {count}")
+        buttons.append((f"{model_brand.display_name} ({count})", f"nav:accounts:model:{model_brand.id}"))
+    return Screen(text="\n".join(lines), reply_markup=account_list_menu(buttons, back_to="accounts"))
+
+
+def render_accounts_by_platform_page() -> Screen:
+    return Screen(text="Accounts by Platform", reply_markup=platform_filter_menu())
+
+
+def render_account_detail_page(session: Session, account_id: int) -> Screen:
+    account = session.scalar(
+        select(Account)
+        .where(Account.id == account_id)
+        .options(selectinload(Account.model_brand), selectinload(Account.auth_sessions))
+    )
+    if account is None:
+        return Screen(text="Account not found.", reply_markup=page_menu(back_to="accounts:list"))
+    model_name = account.model_brand.display_name if account.model_brand else "Unassigned"
+    health = account_health(account)
+    last_checked = account.last_checked_at.isoformat() if account.last_checked_at else "Not checked yet"
+    lines = [
+        "Account Detail",
+        "",
+        f"Platform: {platform_label(account.platform)}",
+        f"Username: @{account.username}",
+        f"Display Name: {account.display_name}",
+        f"Model/Brand: {model_name}",
+        f"Status: {account.status}",
+        f"Auth Status: {account.auth_status}",
+        f"Health: {health.label} {health.score}/100",
+        "Proxy Assignment: Not assigned",
+        f"Last Checked: {last_checked}",
+        f"Notes: {account.notes or 'None'}",
+    ]
+    return Screen(text="\n".join(lines), reply_markup=account_detail_menu(account.id))
+
+
+def render_account_auth_prompt_page(session: Session, account_id: int) -> Screen:
+    account = session.get(Account, account_id)
+    if account is None:
+        return Screen(text="Account not found.", reply_markup=page_menu(back_to="accounts:list"))
+    auth_session = latest_waiting_auth_session(session, account.id)
+    if auth_session is None:
+        return Screen(
+            text="Enter 2FA Code\n\nNo waiting auth session. Start Login/Auth Session first.",
+            reply_markup=page_menu(back_to=f"account:{account.id}"),
+        )
+    return Screen(
+        text="\n".join(
+            [
+                "Enter 2FA Code",
+                "",
+                f"Account: {platform_label(account.platform)} @{account.username}",
+                "Send the verification code in the next message.",
+                "The bot will store only a hash and will try to delete your code message.",
+            ]
+        ),
+        reply_markup=page_menu(back_to=f"account:{account.id}"),
+    )
+
+
+def render_account_audit_page(session: Session, account_id: int) -> Screen:
+    account = session.get(Account, account_id)
+    if account is None:
+        return Screen(text="Account not found.", reply_markup=page_menu(back_to="accounts:list"))
+    logs = account_audit_logs(session, account)
+    lines = ["Account Audit History", "", f"Account: {platform_label(account.platform)} @{account.username}", ""]
+    if not logs:
+        lines.append("No account audit events yet.")
+    for log in logs:
+        timestamp = log.created_at.isoformat() if log.created_at else "pending timestamp"
+        lines.append(f"{timestamp}")
+        lines.append(f"Action: {log.action} | Status: {log.status}")
+        lines.append("")
+    return Screen(text="\n".join(lines).strip(), reply_markup=page_menu(back_to=f"account:{account.id}"))
+
+
 def _model_identity(model_brand: ModelBrand) -> str:
     if model_brand.stage_name:
         return f"{model_brand.display_name} ({model_brand.stage_name})"
@@ -108,7 +286,16 @@ def render_model_list_page(session: Session) -> Screen:
     if not models:
         lines.append("No models yet.")
     for model_brand in models[:10]:
-        health = calculate_model_health(model_brand)
+        accounts = accounts_for_model(session, model_brand.id)
+        health = calculate_model_health(
+            model_brand,
+            disabled_accounts=sum(1 for account in accounts if account.status == "disabled"),
+            warning_accounts=sum(
+                1
+                for account in accounts
+                if account.status == "warning" or account.auth_status in {"needs_login", "needs_2fa"}
+            ),
+        )
         identity = _model_identity(model_brand)
         lines.append(f"{model_brand.id}. {identity}")
         lines.append(f"   Status: {model_brand.status} | Health: {health.label} {health.score}/100")
@@ -122,7 +309,16 @@ def render_model_dashboard_page(session: Session) -> Screen:
     if not models:
         lines.append("No models yet.")
     for model_brand in models[:10]:
-        health = calculate_model_health(model_brand)
+        accounts = accounts_for_model(session, model_brand.id)
+        health = calculate_model_health(
+            model_brand,
+            disabled_accounts=sum(1 for account in accounts if account.status == "disabled"),
+            warning_accounts=sum(
+                1
+                for account in accounts
+                if account.status == "warning" or account.auth_status in {"needs_login", "needs_2fa"}
+            ),
+        )
         lines.append(f"{model_brand.display_name}: {health.label} {health.score}/100")
     return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="models"))
 
@@ -145,7 +341,23 @@ def render_model_detail_page(session: Session, model_id: int) -> Screen:
     managers = members["manager"]
     chatters = members["chatter_manager"] + members["senior_chatter"] + members["chatter"]
     vas = members["va"]
-    health = calculate_model_health(model_brand)
+    accounts = accounts_for_model(session, model_brand.id)
+    health = calculate_model_health(
+        model_brand,
+        disabled_accounts=sum(1 for account in accounts if account.status == "disabled"),
+        warning_accounts=sum(
+            1
+            for account in accounts
+            if account.status == "warning" or account.auth_status in {"needs_login", "needs_2fa"}
+        ),
+    )
+    platform_counts = {platform: sum(1 for account in accounts if account.platform == platform) for platform in ACCOUNT_PLATFORMS}
+    attention_count = sum(
+        1
+        for account in accounts
+        if account.status in {"warning", "critical", "disabled"}
+        or account.auth_status in {"needs_login", "needs_2fa", "expired", "locked"}
+    )
     lines = [
         "Model Detail",
         "",
@@ -156,7 +368,12 @@ def render_model_detail_page(session: Session, model_id: int) -> Screen:
         f"Managers Assigned: {_member_names(managers)}",
         f"Chatters Assigned: {_member_names(chatters)}",
         f"VAs Assigned: {_member_names(vas)}",
-        "Accounts Count: 0",
+        f"Accounts Count: {len(accounts)}",
+        f"Instagram Count: {platform_counts['instagram']}",
+        f"X Count: {platform_counts['x']}",
+        f"OnlyFans Count: {platform_counts['onlyfans']}",
+        f"Email Count: {platform_counts['email']}",
+        f"Accounts Needing Attention: {attention_count}",
         "Open Tasks: 0",
         "Open Incidents: 0",
     ]
@@ -473,6 +690,60 @@ def render_denied() -> Screen:
 
 
 def render_page(page: str, session: Session | None = None) -> Screen:
+    if page == "accounts":
+        return render_accounts_home()
+    if page == "accounts:list" and session is not None:
+        return render_account_list_page(session)
+    if page == "accounts:add" and session is not None:
+        return render_account_model_choice_page(session)
+    if page.startswith("accounts:add:model:") and session is not None:
+        parts = page.split(":")
+        if len(parts) == 4 and parts[3].isdigit():
+            return render_account_platform_choice_page(session, int(parts[3]))
+        if len(parts) >= 6 and parts[3].isdigit() and parts[4] == "platform":
+            return render_account_input_page(session, int(parts[3]), parts[5])
+    if page == "accounts:by_model" and session is not None:
+        return render_accounts_by_model_page(session)
+    if page.startswith("accounts:model:") and session is not None:
+        parts = page.split(":")
+        if len(parts) >= 3 and parts[2].isdigit():
+            model_brand = session.get(ModelBrand, int(parts[2]))
+            title = f"Accounts for {model_brand.display_name}" if model_brand else "Accounts"
+            return render_account_list_page(
+                session,
+                accounts=accounts_for_model(session, int(parts[2])),
+                title=title,
+                back_to="accounts:by_model",
+            )
+    if page == "accounts:by_platform":
+        return render_accounts_by_platform_page()
+    if page.startswith("accounts:platform:") and session is not None:
+        platform = page.split(":")[2]
+        filtered = [account for account in list_accounts(session) if account.platform == platform]
+        return render_account_list_page(
+            session,
+            accounts=filtered,
+            title=f"{platform_label(platform)} Accounts",
+            back_to="accounts:by_platform",
+        )
+    if page == "accounts:attention" and session is not None:
+        return render_account_list_page(
+            session,
+            accounts=accounts_needing_attention(session),
+            title="Accounts Needing Attention",
+            back_to="accounts",
+        )
+    if page.startswith("account:") and session is not None:
+        parts = page.split(":")
+        if len(parts) >= 2 and parts[1].isdigit():
+            account_id = int(parts[1])
+            if len(parts) == 2:
+                return render_account_detail_page(session, account_id)
+            if parts[2] == "audit":
+                return render_account_audit_page(session, account_id)
+            if parts[2] == "auth" and len(parts) >= 4 and parts[3] == "enter":
+                return render_account_auth_prompt_page(session, account_id)
+            return render_account_detail_page(session, account_id)
     if page == "models":
         return render_models_home()
     if page in {"models:list", "models:search"} and session is not None:
@@ -495,7 +766,16 @@ def render_page(page: str, session: Session | None = None) -> Screen:
                 return render_model_team_page(session, model_id)
             if parts[2] == "audit":
                 return render_model_audit_page(session, model_id)
-            if parts[2] in {"accounts", "tasks", "incidents"}:
+            if parts[2] == "accounts":
+                model_brand = session.get(ModelBrand, model_id)
+                title = f"Accounts for {model_brand.display_name}" if model_brand else "Accounts"
+                return render_account_list_page(
+                    session,
+                    accounts=accounts_for_model(session, model_id),
+                    title=title,
+                    back_to=f"model:{model_id}",
+                )
+            if parts[2] in {"tasks", "incidents"}:
                 return render_model_placeholder_page(session, model_id, parts[2].title())
     if page == "users" and session is not None:
         return render_users_page(session)

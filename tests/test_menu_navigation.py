@@ -4,7 +4,16 @@ from app.bot.menu import MENU_ITEMS, dashboard_menu, main_menu
 from app.bot.navigation import screen_for_page
 from app.bot.screens import render_dashboard
 from app.services.audit import AuditRecorder
-from app.services.auth import USER_STATUS_PENDING, get_or_create_telegram_user, setup_owner_if_needed
+from app.services.accounts import create_account
+from app.models.audit import AuditLog
+from app.services.auth import (
+    USER_STATUS_ACTIVE,
+    USER_STATUS_PENDING,
+    assign_role_to_user,
+    get_or_create_telegram_user,
+    setup_owner_if_needed,
+)
+from app.services.model_brands import create_model_brand
 from app.services.permissions import PermissionPrincipal, RoleName
 from tests.utils import session_scope
 
@@ -106,10 +115,30 @@ def test_dynamic_admin_callbacks_do_not_crash() -> None:
     with session_scope() as session:
         owner = setup_owner_if_needed(session, telegram_user_id=1, owner_telegram_id=1)
         user = get_or_create_telegram_user(session, telegram_user_id=4, display_name="Callback Person")
+        model = create_model_brand(session, actor=owner, display_name="Callback Model")
+        account = create_account(
+            session,
+            model_brand=model,
+            platform="instagram",
+            username="callback",
+            actor=owner,
+        )
         principal = PermissionPrincipal(telegram_id=owner.telegram_id, is_owner=True, role=RoleName.OWNER)
 
         pages = [
             "dashboard:refresh",
+            "accounts",
+            "accounts:list",
+            "accounts:add",
+            f"accounts:add:model:{model.id}",
+            f"accounts:add:model:{model.id}:platform:instagram",
+            "accounts:by_model",
+            f"accounts:model:{model.id}",
+            "accounts:by_platform",
+            "accounts:platform:instagram",
+            "accounts:attention",
+            f"account:{account.id}",
+            f"account:{account.id}:audit",
             "models",
             "models:list",
             "models:dashboard",
@@ -126,3 +155,28 @@ def test_dynamic_admin_callbacks_do_not_crash() -> None:
             screen = screen_for_page(page, principal, session=session, user=owner)
             assert screen.text
             assert screen.reply_markup is not None
+
+
+def test_account_auth_prompt_requires_sensitive_permission() -> None:
+    with session_scope() as session:
+        owner = setup_owner_if_needed(session, telegram_user_id=1, owner_telegram_id=1)
+        model = create_model_brand(session, actor=owner, display_name="Sensitive Callback Model")
+        account = create_account(
+            session,
+            model_brand=model,
+            platform="instagram",
+            username="sensitive_callback",
+            actor=owner,
+        )
+        viewer = get_or_create_telegram_user(session, telegram_user_id=5, display_name="Viewer")
+        viewer.status = USER_STATUS_ACTIVE
+        viewer.is_active = True
+        assign_role_to_user(session, viewer, RoleName.VIEWER)
+        principal = PermissionPrincipal(telegram_id=viewer.telegram_id, role=RoleName.VIEWER)
+
+        with pytest.raises(PermissionError):
+            screen_for_page(f"account:{account.id}:auth:enter", principal, session=session, user=viewer)
+
+        denied = session.query(AuditLog).filter_by(action="access.denied").one()
+        assert denied.resource_type == "account_auth_session"
+        assert denied.details["permission"] == "owner_or_admin_with_manage_accounts_or_view_credentials"

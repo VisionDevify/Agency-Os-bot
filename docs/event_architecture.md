@@ -21,10 +21,10 @@ Future events can feed:
 
 ## Current Lightweight Pattern
 
-Sprint 4 keeps event work lightweight:
+Sprint 5 keeps event work lightweight:
 
 - Admin and access events are written through audit helpers.
-- Model/Brand domain events are emitted through `app.services.events.emit_event`.
+- Model/Brand and Account domain events are emitted through `app.services.events.emit_event`.
 - Event names use a consistent dotted format.
 - Sensitive metadata is masked or omitted.
 - No separate event bus exists yet.
@@ -49,9 +49,19 @@ This avoids over-engineering while preserving a clean upgrade path.
 - `member.assigned`: user assigned to a model/brand team.
 - `member.removed`: user removed from a model/brand team.
 - `model.health.changed`: model/brand health snapshot emitted after a meaningful model/team change.
+- `account.created`: account inventory record created and attached to a model/brand when available.
+- `account.updated`: account metadata, status, or notes changed.
+- `account.disabled`: account intentionally disabled.
+- `account.archived`: account archived without deleting history.
+- `account.auth_session.started`: login/auth coordination session opened.
+- `account.auth_session.waiting_for_code`: auth session is waiting for a verification code.
+- `account.auth_code.submitted`: verification code submitted and hashed; plaintext code is not stored.
+- `account.auth_session.success`: auth session marked successful.
+- `account.auth_session.failed`: auth session marked failed with a safe reason.
+- `account.auth_session.expired`: auth session expired.
+- `account.auth_status.changed`: account auth status changed.
 - `access.denied`: user attempted a restricted or blocked action.
 - `owner.protection_triggered`: lockout protection blocked a risky action.
-- `account.added`: future account inventory item created.
 - `proxy.failed`: future proxy health check failed.
 - `incident.created`: future incident opened.
 - `task.completed`: future task completed.
@@ -77,7 +87,14 @@ The audit log can remain a consumer of events. Not every event must be shown to 
 ## Safety Rules
 
 - Do not put tokens, passwords, session strings, encryption keys, or raw credential payloads in events.
+- Do not put plaintext verification codes or code hashes in events.
 - Prefer secret references or masked identifiers.
 - Use stable event names so reports and automations do not break.
 - Emit denied and failed attempts, not just successful actions.
 - Treat simulation events as first-class records so operators can review intended changes before live execution.
+
+## Account Event Notes
+
+Accounts attach directly to Model/Brand records. Account events should include safe metadata such as account ID, model/brand ID, platform, username, status, auth status, and session ID when needed. Credential values, passwords, verification-code values, and raw platform session data must stay outside events and audits.
+
+Future real integrations should prefer official APIs or OAuth where available. Platform automation, scraping, and security bypass behavior are intentionally out of scope.

@@ -1,4 +1,14 @@
-SENSITIVE_KEYS = {"token", "secret", "password", "session_string", "api_key", "encryption_key"}
+SENSITIVE_KEYS = {
+    "api_key",
+    "code",
+    "code_hash",
+    "encryption_key",
+    "password",
+    "secret",
+    "session_string",
+    "token",
+    "verification_code",
+}
 
 
 def sanitize_details(details: dict | None) -> dict:

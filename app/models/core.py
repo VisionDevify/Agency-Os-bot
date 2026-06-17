@@ -12,10 +12,6 @@ class NamedResource(TimestampMixin):
     metadata_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
 
-class Account(NamedResource, Base):
-    __tablename__ = "accounts"
-
-
 class Proxy(NamedResource, Base):
     __tablename__ = "proxies"
 
