@@ -25,8 +25,8 @@ def should_start_bot(env: Mapping[str, str] | None = None) -> bool:
         if normalized in FALSE_VALUES:
             return False
         if normalized in TRUE_VALUES:
-            return bool(values.get("TELEGRAM_BOT_TOKEN")) and bool(values.get("REDIS_URL"))
-    return bool(values.get("TELEGRAM_BOT_TOKEN")) and bool(values.get("REDIS_URL"))
+            return bool(values.get("TELEGRAM_BOT_TOKEN"))
+    return bool(values.get("TELEGRAM_BOT_TOKEN"))
 
 
 def api_command(env: Mapping[str, str] | None = None) -> list[str]:
