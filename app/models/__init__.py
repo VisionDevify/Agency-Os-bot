@@ -10,6 +10,7 @@ from app.models.automation import (
 )
 from app.models.autonomous_operations import FollowUp, OperationsAction, OperationsWorkflow
 from app.models.core import Automation, Report
+from app.models.coo import PriorityItem
 from app.models.event_log import EventLog
 from app.models.incident import Incident, IncidentTimeline
 from app.models.intelligence import ExecutiveInsight, IntelligenceRun, IntelligenceSignal, IssuePattern, TrendSnapshot, WorkloadSnapshot
@@ -78,6 +79,7 @@ __all__ = [
     "Playbook",
     "PlaybookRun",
     "PostWatch",
+    "PriorityItem",
     "Proxy",
     "ProxyRotationHistory",
     "Recommendation",

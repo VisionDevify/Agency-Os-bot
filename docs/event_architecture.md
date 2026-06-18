@@ -1,6 +1,6 @@
 # Event Architecture
 
-Agency OS should become event-driven over time. Audit logs remain the operator-facing safety record. Sprint 8 added `event_logs` as the first lightweight durable event feed for reports, notifications, automations, self-healing, and future AI operations. Sprint 9 adds notification routing events, durable automation simulation events, recommendations, and heartbeat state changes. Sprint 11 adds operations activation events for task ownership, incident timelines, localization, availability, smart notification routing, daily digest delivery, and duplicate polling protection. Sprint 12 adds deterministic intelligence events for signals, patterns, trends, workload, executive insights, intelligence runs, recommendations, and manual opportunities. Sprint 15 adds learning events, outcome memory, playbook runs, confidence changes, and feedback events. Sprint 16 adds team rollout, notification digest, and scheduled automation execution events. Sprint 17 adds creator watch, own post watch, comment strategy, Help Copilot, activation, and opportunity routing events. Sprint 18 adds guided intake, assignment, result-recording, and strategy-regeneration events.
+Agency OS should become event-driven over time. Audit logs remain the operator-facing safety record. Sprint 8 added `event_logs` as the first lightweight durable event feed for reports, notifications, automations, self-healing, and future AI operations. Sprint 9 adds notification routing events, durable automation simulation events, recommendations, and heartbeat state changes. Sprint 11 adds operations activation events for task ownership, incident timelines, localization, availability, smart notification routing, daily digest delivery, and duplicate polling protection. Sprint 12 adds deterministic intelligence events for signals, patterns, trends, workload, executive insights, intelligence runs, recommendations, and manual opportunities. Sprint 15 adds learning events, outcome memory, playbook runs, confidence changes, and feedback events. Sprint 16 adds team rollout, notification digest, and scheduled automation execution events. Sprint 17 adds creator watch, own post watch, comment strategy, Help Copilot, activation, and opportunity routing events. Sprint 18 adds guided intake, assignment, result-recording, and strategy-regeneration events. Sprint 24 adds COO priority scans, COO briefings, and team activation learning events.
 
 ## Principle
 
@@ -373,6 +373,25 @@ Core event names:
 Autopilot events mean Fortuna OS inspected internal data and prepared safe operational records. They do not mean the system posted externally, scraped platforms, bypassed security, stored passwords, or executed high-risk automations.
 
 Safe metadata can include workflow IDs, readiness score, source entity IDs, missing counts, priority, status, assigned user ID, and due timestamps.
+
+Unsafe metadata remains forbidden:
+
+- bot tokens, passwords, encryption keys, proxy passwords, credential values, verification codes, raw Telegram chat IDs, raw platform payloads, and any social-platform session data.
+
+## Sprint 24 COO Layer Events
+
+Fortuna COO events describe coordination behavior: ranking priorities, generating briefings, and checking team activation gaps.
+
+Core event names:
+
+- `coo.priority_scan.completed`
+- `coo.scan.completed`
+- `coo.briefing.generated`
+- `learning.event.created` with `event_type=coo.team_activation_scan`
+
+These events mean Fortuna OS inspected internal records and prepared recommendations or summaries. They do not mean Fortuna automatically reassigned work, approved risky actions, posted externally, scraped platforms, or handled secrets.
+
+Safe metadata can include readiness score, open priority counts, activation gap counts, owner routing labels, and task/follow-up counts.
 
 Unsafe metadata remains forbidden:
 

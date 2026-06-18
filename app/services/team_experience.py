@@ -147,10 +147,12 @@ def role_home_items(user: User | None) -> list[tuple[str, str]]:
     if role in {"Owner", "Admin"}:
         return [
             ("Setup Fortuna", "setup:wizard"),
+            ("Fortuna HQ", "executive_mode"),
+            ("Today Top 5", "coo:top5"),
+            ("COO Briefing", "coo:briefing"),
             ("Fortuna Activation", "agency_activation"),
             ("Owner Daily Checklist", "owner_daily_checklist"),
             ("First Day Plan", "first_day_plan"),
-            ("Fortuna HQ", "reports:executive"),
             ("Fortuna Intelligence", "intelligence"),
             ("Fortuna Opportunities", "opportunities"),
             ("Models", "models"),
@@ -164,6 +166,8 @@ def role_home_items(user: User | None) -> list[tuple[str, str]]:
         ]
     if role in {"Manager", "Chatter Manager"}:
         return [
+            ("Manager Queue", "manager_queue"),
+            ("Today Top 5", "coo:top5"),
             ("Team", "availability:team"),
             ("Models", "models"),
             ("Tasks", "tasks"),
@@ -175,6 +179,7 @@ def role_home_items(user: User | None) -> list[tuple[str, str]]:
         ]
     if role in {"Senior Chatter", "Chatter"}:
         return [
+            ("My Work", "my_work"),
             ("My Models", "my_models"),
             ("My Opportunities", "my_opportunities"),
             ("My Tasks", "tasks:my"),

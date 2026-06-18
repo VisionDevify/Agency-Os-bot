@@ -146,6 +146,8 @@ def setup_wizard_menu() -> InlineKeyboardMarkup:
 def agency_activation_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [InlineKeyboardButton(text="Today Top 5", callback_data=callback_for("coo:top5"))],
+            [InlineKeyboardButton(text="Readiness V2", callback_data=callback_for("coo:readiness"))],
             [InlineKeyboardButton(text="Owner Daily Checklist", callback_data=callback_for("owner_daily_checklist"))],
             [InlineKeyboardButton(text="Run Activation Scan", callback_data=callback_for("agency_activation:scan"))],
             [InlineKeyboardButton(text="Run Daily Cycle", callback_data=callback_for("agency_activation:daily_cycle"))],
@@ -206,6 +208,103 @@ def activation_blocker_detail_menu(section: str, index: int, action_page: str | 
     )
     rows.extend(page_controls(back_to=f"agency_activation:{section}"))
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def coo_dashboard_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Run COO Scan", callback_data=callback_for("coo:scan"))],
+            [
+                InlineKeyboardButton(text="Today Top 5", callback_data=callback_for("coo:top5")),
+                InlineKeyboardButton(text="COO Briefing", callback_data=callback_for("coo:briefing")),
+            ],
+            [
+                InlineKeyboardButton(text="Readiness V2", callback_data=callback_for("coo:readiness")),
+                InlineKeyboardButton(text="Load Balancer", callback_data=callback_for("coo:load")),
+            ],
+            [
+                InlineKeyboardButton(text="Manager Queue", callback_data=callback_for("manager_queue")),
+                InlineKeyboardButton(text="What Fortuna Did", callback_data=callback_for("fortuna_action_log")),
+            ],
+            *page_controls(back_to="menu"),
+        ]
+    )
+
+
+def top5_actions_menu(action_buttons: list[tuple[str, str]] | None = None) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text="Refresh Top 5", callback_data=callback_for("coo:scan"))]]
+    for label, page in action_buttons or []:
+        rows.append([InlineKeyboardButton(text=label, callback_data=callback_for(page))])
+    rows.extend(page_controls(back_to="coo"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def coo_briefing_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Refresh Briefing", callback_data=callback_for("coo:briefing"))],
+            [
+                InlineKeyboardButton(text="Readiness", callback_data=callback_for("coo:readiness")),
+                InlineKeyboardButton(text="Manager Queue", callback_data=callback_for("manager_queue")),
+            ],
+            *page_controls(back_to="coo"),
+        ]
+    )
+
+
+def manager_queue_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Refresh Queue", callback_data=callback_for("manager_queue"))],
+            [
+                InlineKeyboardButton(text="Tasks", callback_data=callback_for("tasks")),
+                InlineKeyboardButton(text="Incidents", callback_data=callback_for("incidents")),
+            ],
+            [InlineKeyboardButton(text="Opportunities", callback_data=callback_for("opportunities:manager"))],
+            *page_controls(back_to="coo"),
+        ]
+    )
+
+
+def my_work_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="My Tasks", callback_data=callback_for("tasks:my")),
+                InlineKeyboardButton(text="My Opportunities", callback_data=callback_for("my_opportunities")),
+            ],
+            [InlineKeyboardButton(text="Availability", callback_data=callback_for("availability"))],
+            *page_controls(back_to="menu"),
+        ]
+    )
+
+
+def readiness_v2_menu(action_buttons: list[tuple[str, str]] | None = None) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text="Run COO Scan", callback_data=callback_for("coo:scan"))]]
+    for label, page in action_buttons or []:
+        rows.append([InlineKeyboardButton(text=label, callback_data=callback_for(page))])
+    rows.extend(page_controls(back_to="agency_activation"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def executive_mode_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Top Priorities", callback_data=callback_for("coo:top5")),
+                InlineKeyboardButton(text="COO Briefing", callback_data=callback_for("coo:briefing")),
+            ],
+            [
+                InlineKeyboardButton(text="Readiness", callback_data=callback_for("coo:readiness")),
+                InlineKeyboardButton(text="What Fortuna Did", callback_data=callback_for("fortuna_action_log")),
+            ],
+            [
+                InlineKeyboardButton(text="Critical Issues", callback_data=callback_for("incidents:critical")),
+                InlineKeyboardButton(text="Recommendations", callback_data=callback_for("reports:executive:recommendations")),
+            ],
+            *page_controls(back_to="menu"),
+        ]
+    )
 
 
 def model_completion_menu(model_id: int) -> InlineKeyboardMarkup:

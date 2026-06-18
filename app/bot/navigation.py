@@ -33,6 +33,7 @@ from app.services.accounts import (
 )
 from app.services.agency_activation import run_activation_scan
 from app.services.autonomous_operations import run_daily_autonomous_cycle
+from app.services.coo import run_coo_scan
 from app.services.production_activation import decide_activation_blocker, find_activation_blocker, run_daily_autopilot_now, toggle_daily_autopilot
 from app.services.model_brands import (
     archive_model_brand,
@@ -160,6 +161,10 @@ PAGE_PERMISSIONS: dict[str, str] = {
     "owner_daily_checklist": "view_dashboard",
     "team_onboarding_activation": "manage_users",
     "fortuna_action_log": "view_dashboard",
+    "coo": "view_dashboard",
+    "executive_mode": "view_dashboard",
+    "manager_queue": "manage_tasks",
+    "my_work": "view_dashboard",
 }
 
 
@@ -203,6 +208,14 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         return None
     if page == "structure":
         return None
+    if page.startswith("coo"):
+        return ("view_dashboard", "manage_reports", "manage_tasks", "manage_users")
+    if page == "executive_mode":
+        return ("view_dashboard", "manage_reports")
+    if page == "manager_queue":
+        return ("manage_tasks", "manage_reports", "manage_users")
+    if page == "my_work":
+        return ("view_dashboard", "view_chatter_dashboard", "manage_tasks")
     if page.startswith("setup:") or page.startswith("demo"):
         return ("manage_accounts", "manage_users")
     if page.startswith("agency_activation"):
@@ -300,6 +313,9 @@ def _perform_admin_action(
     if page == "setup:wizard:start":
         start_setup_wizard(session, actor=actor)
         return "setup:wizard"
+    if page == "coo:scan":
+        run_coo_scan(session, actor=actor)
+        return "coo:top5"
     if page == "agency_activation:scan":
         run_activation_scan(session, actor=actor, create_tasks=True)
         return "agency_activation"
@@ -1045,6 +1061,10 @@ def screen_for_page(
         or normalized == "owner_daily_checklist"
         or normalized == "team_onboarding_activation"
         or normalized.startswith("fortuna_action_log")
+        or normalized.startswith("coo")
+        or normalized == "executive_mode"
+        or normalized == "manager_queue"
+        or normalized == "my_work"
         or normalized.startswith("availability")
         or normalized.startswith("onboarding")
         or normalized.startswith("setup:")

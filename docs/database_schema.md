@@ -178,6 +178,47 @@ Notes:
 
 - Daily Autopilot uses safe internal scans and setup guidance. High-risk automations still require explicit owner approval.
 
+### priority_items
+
+Stores Fortuna COO-ranked operational priorities.
+
+Columns:
+
+- `id`: primary key.
+- `source_type`: source entity family, such as `model`, `account`, `task`, `incident`, `opportunity`, `notification_target`, `automation_run`, or `readiness`.
+- `source_id`: source identifier as text.
+- `category`: priority category, such as `missing_proxy`, `critical_incident`, `overdue_task`, `unassigned_opportunity`, or a setup blocker code.
+- `severity`: `info`, `warning`, or `critical`.
+- `urgency`: `low`, `normal`, `high`, or `urgent`.
+- `confidence`: 0-100 deterministic confidence score.
+- `business_impact`: 0-100 impact score.
+- `score`: final 0-100 priority score.
+- `explanation`: human-readable reason and next-step context.
+- `recommended_owner`: routing target label such as Owner, Admin, or Manager.
+- `status`: `open`, `routed`, `acknowledged`, `resolved`, or `dismissed`.
+- `created_at`, `updated_at`: timestamps.
+
+Indexes and constraints:
+
+- `uq_priority_items_source_category`.
+- `ck_priority_items_severity`.
+- `ck_priority_items_urgency`.
+- `ck_priority_items_confidence`.
+- `ck_priority_items_business_impact`.
+- `ck_priority_items_score`.
+- `ck_priority_items_status`.
+- `ix_priority_items_source`.
+- `ix_priority_items_category`.
+- `ix_priority_items_status`.
+- `ix_priority_items_score`.
+- `ix_priority_items_recommended_owner`.
+- `ix_priority_items_updated_at`.
+
+Notes:
+
+- Priority items are safe summaries. They must not include secrets, raw chat IDs, proxy passwords, tokens, platform passwords, or 2FA codes.
+- The COO layer recommends routing and reassignment, but does not automatically move work or execute risky changes.
+
 ### roles
 
 Stores role definitions.

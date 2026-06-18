@@ -72,6 +72,7 @@ pytest
 - Team Rollout and Human Experience Layer: role-specific homes, personalized dashboards, Daily Experience, Help Center, Team QA readiness checklist, notification digest mode, and safe scheduled automation execution for low-risk rules.
 - Team Activation and Opportunity Command Center: guided Creator Watch intake, guided Opportunity intake, Own Post Watch intake, opportunity assignment, result recording, suggested human-only comment strategies, chatter workspace, manager opportunity view, Help Copilot, activation QA, and opportunity notification routing keys.
 - Production Activation and Daily Autopilot: one-tap readiness blocker fix paths, owner daily checklist, persisted Daily Autopilot settings, team invite activation guidance, notification target registration guidance, proxy setup check, masked proxy session details, and "What Fortuna Did" autonomous action log.
+- Fortuna COO Layer: persistent priority engine, Today's Top 5 Actions, owner/admin/manager routing, Manager Queue, My Work queue, COO Briefing, Team Load Balancer, Readiness Score V2, Executive Mode, and professional Fortuna messages.
 
 ## Railway Deployment
 
@@ -121,6 +122,7 @@ Production smoke testing checklist:
 - `docs/agency_os_master_spec.md`
 - `docs/database_schema.md`
 - `docs/event_architecture.md`
+- `docs/coo_layer.md`
 - `docs/railway_deployment.md`
 - `docs/notification_routing.md`
 - `docs/production_operations.md`
