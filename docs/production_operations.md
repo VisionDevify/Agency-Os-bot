@@ -216,3 +216,34 @@ It does not display raw environment variables, tokens, database URLs, Redis URLs
 Railway logs must still be viewed in Railway. The app intentionally shows a placeholder explanation instead of scraping Railway logs.
 
 If the Alembic revision status is `Mismatch`, inspect migration history and run only the normal forward migration command. Do not run destructive downgrade/reset commands.
+
+## Sprint 28 Help And Pilot Operations
+
+Help Brain:
+
+- Use Help Center -> Ask Fortuna for role-aware workflow answers.
+- Feedback buttons write safe learning events.
+- Help answers must never include secrets, proxy passwords, raw chat IDs, or restricted admin data for non-admin users.
+
+Notification pilot:
+
+- Use Settings -> Notification Group Pilot to register and test groups.
+- Testing Sandbox is the only default real-send target.
+- Other purposes are simulated during routing tests until owner approval expands delivery.
+
+Proxy pilot:
+
+- Use Proxy Vault -> Real Check Pilot to test one saved proxy.
+- Real checks remain owner-controlled and disabled by default.
+- Proxy passwords are entered only through the secure bot UI and never displayed.
+
+UI self-test:
+
+- Use Settings -> UI Self-Test or `/selftest`.
+- The self-test renders key screens internally and reports failures/warnings without depending on Telegram Web callback clicks.
+
+Bot worker startup:
+
+- API owns Alembic migrations.
+- Bot worker should not run Alembic before polling.
+- If API health is green but Telegram is silent, check bot worker logs for polling startup and heartbeat, not API health alone.

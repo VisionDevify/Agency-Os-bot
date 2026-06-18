@@ -87,3 +87,17 @@ Registration still happens from Telegram:
 ## Proxy Health Reality
 
 Production Observability shows whether global real proxy health and location checks are enabled, the last real proxy check status/time, and whether recent proxy health failures exist. Real checks remain disabled by default. Per-proxy owner enablement and check history are shown in Proxy Detail.
+
+## Sprint 28 Help And Pilot Signals
+
+Production Observability also shows:
+
+- Help questions in the last 24 hours.
+- Confused help feedback count.
+- Notification pilot configured count.
+- Proxy pilot enabled proxy count.
+- Last UI Self-Test result.
+
+UI Self-Test is owner-only and can be opened from Settings or run with `/selftest`. It renders core Telegram screens internally, which gives the owner a verification path when Telegram Web callbacks are unreliable.
+
+The API service owns startup migrations. The bot worker must not run Alembic before polling; it should acquire the Redis polling guard, record heartbeat, and start polling promptly.

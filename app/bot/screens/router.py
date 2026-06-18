@@ -94,6 +94,12 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_help_copilot_page(session, user)
     if page.startswith("help_copilot:") and session is not None:
         return render_help_copilot_page(session, user, question=page.split(":", 1)[1])
+    if page == "notification_group_pilot" and session is not None:
+        return render_notification_group_pilot_page(session)
+    if page == "ui_self_test" and session is not None:
+        return render_ui_self_test_page(session, user)
+    if page == "ui_self_test:run" and session is not None:
+        return render_ui_self_test_page(session, user, run_now=True)
     if page == "chatter_workspace" and session is not None and user is not None:
         return render_chatter_workspace_page(session, user)
     if page == "my_models" and session is not None and user is not None:
@@ -134,6 +140,8 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_proxy_list_page(session)
     if page == "proxies:entry_check" and session is not None:
         return render_proxy_entry_check_page(session)
+    if page == "proxies:real_check_pilot" and session is not None:
+        return render_proxy_real_check_pilot_page(session)
     if page == "proxies:olympix":
         return render_olympix_proxy_wizard_page()
     if page == "proxies:missing" and session is not None:

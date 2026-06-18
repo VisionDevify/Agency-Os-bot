@@ -108,7 +108,7 @@ def performance_menu() -> InlineKeyboardMarkup:
 def help_center_menu(topic_buttons: list[tuple[str, str]] | None = None) -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in (topic_buttons or [])]
     rows.append([InlineKeyboardButton(text="How Fortuna OS Is Organized", callback_data=callback_for("structure"))])
-    rows.append([InlineKeyboardButton(text="Help Copilot", callback_data=callback_for("help_copilot"))])
+    rows.append([InlineKeyboardButton(text="Ask Fortuna", callback_data=callback_for("help_copilot"))])
     rows.extend(page_controls(back_to="menu"))
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -602,6 +602,7 @@ def proxies_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="View Proxies", callback_data=callback_for("proxies:list"))],
             [InlineKeyboardButton(text="Create Proxy", callback_data=callback_for("proxies:create"))],
             [InlineKeyboardButton(text="Proxy Setup Check", callback_data=callback_for("proxies:entry_check"))],
+            [InlineKeyboardButton(text="Real Check Pilot", callback_data=callback_for("proxies:real_check_pilot"))],
             [InlineKeyboardButton(text="Olympix Mobile SOCKS5 Wizard", callback_data=callback_for("proxies:olympix"))],
             [InlineKeyboardButton(text="Accounts Missing Proxy", callback_data=callback_for("proxies:missing"))],
             [InlineKeyboardButton(text="Simulation Mode", callback_data=callback_for("proxies:simulation"))],
@@ -1077,10 +1078,29 @@ def help_copilot_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="How do I finish setup?", callback_data=callback_for("help_copilot:finish_setup"))],
             [InlineKeyboardButton(text="How do I record results?", callback_data=callback_for("help_copilot:record_results"))],
             [InlineKeyboardButton(text="How do I complete an opportunity?", callback_data=callback_for("help_copilot:opportunity"))],
+            [InlineKeyboardButton(text="How do I register notification groups?", callback_data=callback_for("help_copilot:notification_groups"))],
+            [InlineKeyboardButton(text="How do I assign a proxy?", callback_data=callback_for("help_copilot:proxy_setup"))],
+            [InlineKeyboardButton(text="What did Fortuna do today?", callback_data=callback_for("help_copilot:what_fortuna_did"))],
             [InlineKeyboardButton(text="How does Availability work?", callback_data=callback_for("help_copilot:availability"))],
             *page_controls(back_to="help"),
         ]
     )
+
+
+def help_feedback_menu(log_id: int | None, *, next_action: str | None = None) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    if next_action:
+        rows.append([InlineKeyboardButton(text="Open Next Step", callback_data=callback_for(next_action))])
+    if log_id is not None:
+        rows.append(
+            [
+                InlineKeyboardButton(text="Helpful", callback_data=callback_for(f"help_feedback:{log_id}:helpful")),
+                InlineKeyboardButton(text="Not Helpful", callback_data=callback_for(f"help_feedback:{log_id}:not_helpful")),
+            ]
+        )
+        rows.append([InlineKeyboardButton(text="Still Confused", callback_data=callback_for(f"help_feedback:{log_id}:still_confused"))])
+    rows.extend(page_controls(back_to="help_copilot"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def team_activation_menu(user_buttons: list[tuple[str, str]] | None = None) -> InlineKeyboardMarkup:
@@ -1475,11 +1495,13 @@ def settings_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Bot Status", callback_data=callback_for("bot_status"))],
             [InlineKeyboardButton(text="Production Status", callback_data=callback_for("production_status"))],
             [InlineKeyboardButton(text="Production Observability", callback_data=callback_for("production_observability"))],
+            [InlineKeyboardButton(text="UI Self-Test", callback_data=callback_for("ui_self_test"))],
             [InlineKeyboardButton(text="My Availability", callback_data=callback_for("availability"))],
             [InlineKeyboardButton(text="Team Availability", callback_data=callback_for("availability:team"))],
             [InlineKeyboardButton(text="Notification Digest Mode", callback_data=callback_for("notification_digest"))],
             [InlineKeyboardButton(text="View Audit Logs", callback_data=callback_for("audit_logs"))],
             [InlineKeyboardButton(text="Notification Group Setup", callback_data=callback_for("notification_group_setup"))],
+            [InlineKeyboardButton(text="Notification Group Pilot", callback_data=callback_for("notification_group_pilot"))],
             [InlineKeyboardButton(text="Notification Targets", callback_data=callback_for("notification_targets"))],
             [
                 InlineKeyboardButton(text="Back", callback_data=callback_for("menu")),
@@ -1518,6 +1540,25 @@ def notification_group_setup_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="Notification Targets", callback_data=callback_for("notification_targets")),
                 InlineKeyboardButton(text="How to Register Groups", callback_data=callback_for("help:notification_groups")),
             ],
+            [InlineKeyboardButton(text="Notification Group Pilot", callback_data=callback_for("notification_group_pilot"))],
+            *page_controls(back_to="settings"),
+        ]
+    )
+
+
+def notification_group_pilot_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Register This Chat",
+                    callback_data=callback_for("notification_targets:add_current"),
+                )
+            ],
+            [InlineKeyboardButton(text="Test Sandbox", callback_data=callback_for("notification_targets:routing_test"))],
+            [InlineKeyboardButton(text="Simulate Routing", callback_data=callback_for("notification_targets:routing_test"))],
+            [InlineKeyboardButton(text="Activation Checklist", callback_data=callback_for("notification_group_pilot"))],
+            [InlineKeyboardButton(text="Ask Fortuna", callback_data=callback_for("help_copilot:notification_groups"))],
             *page_controls(back_to="settings"),
         ]
     )
@@ -1574,6 +1615,10 @@ def production_observability_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="Notification Group Setup", callback_data=callback_for("notification_group_setup")),
             ],
             [
+                InlineKeyboardButton(text="Notification Pilot", callback_data=callback_for("notification_group_pilot")),
+                InlineKeyboardButton(text="UI Self-Test", callback_data=callback_for("ui_self_test")),
+            ],
+            [
                 InlineKeyboardButton(text="How to Register Groups", callback_data=callback_for("help:notification_groups")),
                 InlineKeyboardButton(text="Add Current Chat as Target", callback_data=callback_for("notification_targets:add_current")),
             ],
@@ -1581,6 +1626,29 @@ def production_observability_menu() -> InlineKeyboardMarkup:
             *page_controls(back_to="settings"),
         ]
     )
+
+
+def ui_self_test_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Run UI Self-Test", callback_data=callback_for("ui_self_test:run"))],
+            [InlineKeyboardButton(text="Production Observability", callback_data=callback_for("production_observability"))],
+            *page_controls(back_to="settings"),
+        ]
+    )
+
+
+def proxy_real_check_pilot_menu(proxy_buttons: list[tuple[str, str]] | None = None) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in (proxy_buttons or [])]
+    rows.extend(
+        [
+            [InlineKeyboardButton(text="Olympix Wizard", callback_data=callback_for("proxies:olympix"))],
+            [InlineKeyboardButton(text="Proxy Setup Check", callback_data=callback_for("proxies:entry_check"))],
+            [InlineKeyboardButton(text="Ask Fortuna", callback_data=callback_for("help_copilot:proxy_setup"))],
+            *page_controls(back_to="proxies"),
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def availability_menu() -> InlineKeyboardMarkup:

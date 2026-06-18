@@ -79,6 +79,60 @@ def render_proxy_entry_check_page(session: Session) -> Screen:
     ]
     return Screen("\n".join(lines), proxy_entry_check_menu(status.needs_setup))
 
+
+def render_proxy_real_check_pilot_page(session: Session) -> Screen:
+    proxies = list_proxies(session)
+    lines = [
+        "Real Check Pilot",
+        "",
+        "Pilot goal: test one saved proxy safely before any broader monitoring rollout.",
+        "Global real checks stay disabled by default. Owner must enable real checks per proxy.",
+        "",
+        f"Saved Proxies: {len(proxies)}",
+    ]
+    buttons: list[tuple[str, str]] = []
+    if not proxies:
+        lines.extend(
+            [
+                "",
+                "No proxy is saved yet.",
+                "Use the Olympix wizard and enter credentials only through the secure bot UI.",
+            ]
+        )
+    for proxy in proxies[:10]:
+        mode = proxy_check_mode(proxy)
+        result = latest_proxy_health_check_results(session, proxy, limit=1)
+        latest = result[0] if result else None
+        latest_line = "no check yet"
+        if latest is not None:
+            latest_time = latest.created_at.isoformat() if latest.created_at else "unknown time"
+            latest_line = f"{latest.check_type} {latest.status} at {latest_time}"
+        lines.extend(
+            [
+                "",
+                f"Proxy {proxy.id}: {proxy.provider}",
+                f"   Real Health Checks: {_yes_no(mode.real_health_enabled)}",
+                f"   Real Location Checks: {_yes_no(mode.real_location_enabled)}",
+                f"   Last Check: {latest_line}",
+                f"   Target: {proxy.target_state or proxy.target_country or 'not set'}",
+                "   Password: encrypted and hidden",
+            ]
+        )
+        buttons.append((f"Open Proxy {proxy.id}", f"nav:proxy:{proxy.id}"))
+    lines.extend(
+        [
+            "",
+            "Pilot Steps:",
+            "1. Choose a test proxy.",
+            "2. Confirm credentials are already saved.",
+            "3. Enable real checks for that proxy only.",
+            "4. Run a real connectivity check.",
+            "5. Review the saved result and learning/recommendations.",
+        ]
+    )
+    return Screen(text="\n".join(lines), reply_markup=proxy_real_check_pilot_menu(buttons))
+
+
 def render_proxy_detail_page(session: Session, proxy_id: int) -> Screen:
     proxy = session.scalar(
         select(Proxy)

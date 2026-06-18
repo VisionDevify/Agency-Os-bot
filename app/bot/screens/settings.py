@@ -1,5 +1,11 @@
 from .formatting import *
 from app.services.observability import production_observability_summary
+from app.services.help_brain import (
+    latest_ui_self_test_run,
+    notification_pilot_status,
+    recent_help_questions,
+    run_ui_self_test,
+)
 
 def render_users_page(session: Session, status_filter: str | None = None) -> Screen:
     users = session.scalars(
@@ -259,15 +265,22 @@ def render_production_observability_page(session: Session) -> Screen:
         f"Last Delivery: {summary['last_delivery_status']}",
         f"Failed Notifications: {summary['failed_notification_count']}",
         f"Notification Targets Configured: {summary['notification_targets_configured_count']}",
+        f"Help Questions Today: {summary['help_questions_today']}",
+        f"Confused Help Feedback: {summary['help_confused_count']}",
         "",
         "Proxy Health Reality:",
         f"Real Health Checks: {_yes_no(summary['proxy_real_health_checks_enabled'])}",
         f"Real Location Checks: {_yes_no(summary['proxy_real_location_checks_enabled'])}",
         f"Last Real Proxy Check: {summary['last_real_proxy_check_status']} at {_observability_time(summary['last_real_proxy_check_at'])}",
         f"Recent Proxy Health Failures: {_yes_no(summary['recent_proxy_health_failures'])}",
+        f"Proxy Pilot: {summary['proxy_pilot_status']}",
         "",
         "Notification Group Readiness:",
         *notification_lines,
+        f"Notification Pilot: {summary['notification_pilot_status']}",
+        "",
+        "UI Self-Test:",
+        f"Last Result: {summary['last_ui_self_test_status']} at {_observability_time(summary['last_ui_self_test_at'])}",
         "",
         "Logs:",
         summary["railway_note"],
@@ -420,6 +433,40 @@ def render_notification_group_setup_page(session: Session) -> Screen:
     return Screen(text="\n".join(lines), reply_markup=notification_group_setup_menu())
 
 
+def render_notification_group_pilot_page(session: Session) -> Screen:
+    status = notification_pilot_status(session)
+    rows = status["statuses"]
+    latest_at = status["latest_at"].isoformat() if status["latest_at"] else "never"
+    lines = [
+        "Notification Group Pilot",
+        "",
+        "Pilot goal: register the five Fortuna Telegram spaces without spamming real groups.",
+        "Only Testing Sandbox should receive real test messages by default.",
+        "",
+        f"Configured: {status['configured']}/{status['required']}",
+        f"Last Delivery Status: {status['latest_status']} at {latest_at}",
+        "",
+        "Required Groups:",
+    ]
+    for item in rows:
+        marker = "Configured" if item.configured else "Missing"
+        last = item.last_delivery_at.isoformat() if item.last_delivery_at else "never"
+        lines.append(f"- Fortuna OS - {item.label}: {marker} | Last test: {item.last_delivery_status} at {last}")
+    lines.extend(
+        [
+            "",
+            "Activation Checklist:",
+            "1. Create the group/channel.",
+            "2. Add @FortunaSolstice_Bot.",
+            "3. Open that group/channel.",
+            "4. Tap Register This Chat.",
+            "5. Choose its purpose.",
+            "6. Test only Testing Sandbox first.",
+        ]
+    )
+    return Screen(text="\n".join(lines), reply_markup=notification_group_pilot_menu())
+
+
 def render_notification_routing_test_page(session: Session) -> Screen:
     statuses = notification_group_setup_status(session)
     configured = [status.label for status in statuses if status.configured]
@@ -445,6 +492,47 @@ def render_notification_routing_test_page(session: Session) -> Screen:
         f"Latest Attempt: {latest_line}",
     ]
     return Screen(text="\n".join(lines), reply_markup=notification_group_setup_menu())
+
+
+def render_ui_self_test_page(session: Session, actor: User | None = None, *, run_now: bool = False) -> Screen:
+    if run_now and actor is not None:
+        run_ui_self_test(session, actor=actor)
+    latest = latest_ui_self_test_run(session)
+    questions = recent_help_questions(session, limit=3)
+    lines = [
+        "UI Self-Test",
+        "",
+        "Owner-only internal renderer check for important Telegram screens.",
+        "This verifies screen text/buttons without relying on Telegram Web callback clicks.",
+        "",
+    ]
+    if latest is None:
+        lines.append("No self-test has run yet.")
+    else:
+        when = latest.created_at.isoformat() if latest.created_at else "unknown time"
+        lines.extend(
+            [
+                f"Last Result: {latest.status}",
+                f"Screens Checked: {latest.screens_checked}",
+                f"Failures: {len(latest.failures_json or [])}",
+                f"Warnings: {len(latest.warnings_json or [])}",
+                f"Timestamp: {when}",
+            ]
+        )
+        if latest.failures_json:
+            lines.append("")
+            lines.append("Failures:")
+            lines.extend(f"- {item}" for item in latest.failures_json[:5])
+        if latest.warnings_json:
+            lines.append("")
+            lines.append("Warnings:")
+            lines.extend(f"- {item}" for item in latest.warnings_json[:5])
+    lines.extend(["", "Recent Help Questions:"])
+    if not questions:
+        lines.append("- None yet")
+    for question in questions:
+        lines.append(f"- {question.detected_intent}: {question.feedback or 'no feedback'}")
+    return Screen(text="\n".join(lines), reply_markup=ui_self_test_menu())
 
 def render_notification_target_detail_page(session: Session, target_id: int) -> Screen:
     target = session.get(NotificationTarget, target_id)

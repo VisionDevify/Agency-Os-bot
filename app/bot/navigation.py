@@ -110,6 +110,7 @@ from app.services.automations import (
 from app.services.recommendations import get_recommendation, update_recommendation_status
 from app.services.intelligence import run_full_intelligence_scan, run_intelligence_analysis
 from app.services.learning import create_playbook_run, get_playbook, record_feedback, seed_default_playbooks
+from app.services.help_brain import record_help_feedback
 from app.services.opportunities import (
     assign_creator_watch,
     assign_post_watch,
@@ -209,7 +210,13 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         return None
     if page.startswith("onboarding"):
         return None
-    if page == "help" or page.startswith("help:") or page == "help_copilot" or page.startswith("help_copilot:"):
+    if (
+        page == "help"
+        or page.startswith("help:")
+        or page == "help_copilot"
+        or page.startswith("help_copilot:")
+        or page.startswith("help_feedback:")
+    ):
         return None
     if page == "structure":
         return None
@@ -298,8 +305,15 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         return ("manage_users",)
     if page.startswith("role:") or page == "permissions":
         return ("manage_roles",)
-    if page == "notification_group_setup" or page.startswith("notification_targets") or page.startswith("notification_target:"):
+    if (
+        page == "notification_group_setup"
+        or page == "notification_group_pilot"
+        or page.startswith("notification_targets")
+        or page.startswith("notification_target:")
+    ):
         return ("manage_reports", "manage_roles")
+    if page.startswith("ui_self_test"):
+        return ("manage_roles",)
     if page in {"bot_status", "production_status"}:
         return ("view_dashboard", "manage_reports", "manage_roles")
     permission = PAGE_PERMISSIONS.get(page)
@@ -318,6 +332,12 @@ def _perform_admin_action(
     if page == "setup:wizard:start":
         start_setup_wizard(session, actor=actor)
         return "setup:wizard"
+    if len(parts) >= 3 and parts[0] == "help_feedback" and parts[1].isdigit():
+        try:
+            record_help_feedback(session, log_id=int(parts[1]), feedback=parts[2], actor=actor)
+        except (PermissionError, ValueError):
+            pass
+        return "help_copilot"
     if page == "coo:scan":
         run_coo_scan(session, actor=actor)
         return "coo:top5"
@@ -1001,7 +1021,9 @@ def screen_for_page(
             )
         return render_main_menu(session=session, user=user)
 
-    if normalized == "production_observability" and not (principal.is_owner or (user is not None and user.is_owner)):
+    if normalized in {"production_observability", "ui_self_test", "ui_self_test:run"} and not (
+        principal.is_owner or (user is not None and user.is_owner)
+    ):
         if session is not None:
             audit_action(
                 session,
@@ -1026,7 +1048,7 @@ def screen_for_page(
                     "permission": "owner",
                 },
             )
-        raise PermissionError("Production Observability is owner-only.")
+        raise PermissionError(f"{normalized.replace('_', ' ').title()} is owner-only.")
 
     permissions = permissions_for_page(normalized)
     if permissions is not None:
@@ -1136,9 +1158,11 @@ def screen_for_page(
         or normalized.startswith("notification_targets")
         or normalized.startswith("notification_target:")
         or normalized == "notification_group_setup"
+        or normalized == "notification_group_pilot"
         or normalized == "bot_status"
         or normalized == "production_status"
         or normalized == "production_observability"
+        or normalized.startswith("ui_self_test")
         or normalized == "owner_daily_checklist"
         or normalized == "team_onboarding_activation"
         or normalized.startswith("fortuna_action_log")
@@ -1173,6 +1197,7 @@ def screen_for_page(
         }
         or normalized.startswith("help:")
         or normalized.startswith("help_copilot:")
+        or normalized.startswith("help_feedback:")
         or normalized.startswith("team_qa:")
         or normalized.startswith("notification_digest:")
     ):

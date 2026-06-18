@@ -1,4 +1,5 @@
 from .formatting import *
+from app.services.help_brain import help_brain_answer, seed_help_knowledge_base
 
 def render_help_center_page(user: User | None = None) -> Screen:
     buttons = [(label, f"nav:help:{topic}") for topic, label in help_topics_for_role(user)]
@@ -6,6 +7,7 @@ def render_help_center_page(user: User | None = None) -> Screen:
         "Help Center",
         "",
         "Quick answers for day-to-day work.",
+        "Ask Fortuna when you need a role-aware next step.",
         "Pick a topic when you need a reminder or a clean next step.",
     ]
     return Screen(text="\n".join(lines), reply_markup=help_center_menu(buttons))
@@ -18,6 +20,7 @@ def render_help_topic_page(topic: str, user: User | None = None) -> Screen:
     )
 
 def render_help_copilot_page(session: Session, user: User | None = None, *, question: str | None = None) -> Screen:
+    seed_help_knowledge_base(session)
     prompts = {
         "where_start": "Where do I start?",
         "create_first_model": "How do I create the first model?",
@@ -43,21 +46,29 @@ def render_help_copilot_page(session: Session, user: User | None = None, *, ques
         "screen:chatter_workspace": "Explain this Chatter Workspace screen.",
         "screen:manager_opportunity": "Explain this Manager Opportunity View screen.",
         "screen:post_watch": "Explain this Own Post Watch screen.",
+        "notification_groups": "How do I register notification groups?",
+        "proxy_setup": "How do I assign a proxy?",
+        "what_fortuna_did": "What did Fortuna do today?",
+        "warning": "What does this warning mean?",
+        "help_person": "Who should I ask for help?",
     }
     if question:
-        result = help_copilot_answer(session, user, question=prompts.get(question, question), current_page="help")
+        result = help_brain_answer(session, user, question=prompts.get(question, question), current_page="help")
         lines = [
-            "Help Copilot",
+            "Fortuna Help Brain",
             "",
-            f"Role Context: {result['role']}",
+            f"Role Context: {result.role}",
+            f"Intent: {result.intent.replace('_', ' ').title()}",
             "",
-            result["answer"],
+            result.answer,
             "",
-            f"Next Action: {result['next_action']}",
+            f"Next Action: {result.next_action}",
         ]
+        return Screen(text="\n".join(lines), reply_markup=help_feedback_menu(result.log_id, next_action=result.next_action))
     else:
         lines = [
-            "Help Copilot",
+            "Fortuna Help Brain",
+            "Help Copilot upgraded",
             "",
             "Ask simple workflow questions like:",
             "- Where do I start?",
@@ -65,6 +76,9 @@ def render_help_copilot_page(session: Session, user: User | None = None, *, ques
             "- What does this mean?",
             "- How do I complete an opportunity?",
             "- Where do I go?",
+            "- How do I register notification groups?",
+            "- How do I assign a proxy?",
+            "- Why is readiness low?",
             "",
             "Choose a prompt below for a role-aware answer.",
         ]

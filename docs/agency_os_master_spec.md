@@ -657,3 +657,16 @@ Activation sequence:
 - Use Owner-only Demo Seed Mode when the owner wants to test workflows without mixing sample data into real operations.
 
 Team rollout uses `docs/team_invite_packet.md`. Notification routing uses manual group creation and Settings -> Notification Targets -> Add Current Chat As Target from the correct Fortuna OS group/channel.
+
+## Sprint 28 Help Brain And Pilot Readiness
+
+Sprint 28 makes Fortuna easier to operate during the first real pilot:
+
+- Help Copilot becomes Fortuna Help Brain / Ask Fortuna.
+- Help knowledge is seeded into PostgreSQL.
+- Help questions and feedback are persisted and feed the Learning Engine.
+- Notification Group Pilot guides registration of HQ, Operations, Incidents, Automation Logs, and Testing Sandbox.
+- Proxy Real Check Pilot gives owners a safe per-proxy path before enabling real monitoring.
+- UI Self-Test lets the owner verify core screen renderers from Telegram without relying on browser callback clicks.
+- Production Observability now surfaces help volume, confused feedback, notification pilot status, proxy pilot status, and last UI self-test.
+- Bot worker startup is hardened so the API owns migrations while the worker focuses on polling.

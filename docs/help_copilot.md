@@ -72,3 +72,17 @@ Future versions can search docs, screen context, and permissions more deeply. An
 ## Sprint 25 Verification
 
 Help Copilot remains deterministic and role-aware. The audit confirmed it should explain setup, access limits, opportunities, activation readiness, and next actions without exposing restricted admin data or secret values.
+
+## Sprint 28 Help Brain Upgrade
+
+Help Copilot is now user-facing as Fortuna Help Brain / Ask Fortuna.
+
+New behavior:
+
+- seeded help knowledge base articles are stored in PostgreSQL.
+- questions are logged to `help_question_logs`.
+- answers use role, permission, live readiness blockers, assigned work, and pilot status where appropriate.
+- feedback buttons update the question log and create a safe learning event.
+- non-admin users get safe alternatives instead of restricted production or proxy internals.
+
+See `docs/help_brain.md`.

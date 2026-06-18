@@ -42,6 +42,7 @@ from app.bot.menu import (
     first_day_plan_menu,
     help_center_menu,
     help_copilot_menu,
+    help_feedback_menu,
     incident_detail_menu,
     incident_list_menu,
     incident_user_choice_menu,
@@ -62,6 +63,7 @@ from app.bot.menu import (
     model_member_choice_menu,
     model_team_menu,
     models_menu,
+    notification_group_pilot_menu,
     notification_target_detail_menu,
     notification_group_setup_menu,
     notification_target_purpose_menu,
@@ -88,6 +90,7 @@ from app.bot.menu import (
     proxy_detail_menu,
     proxy_entry_check_menu,
     proxy_list_menu,
+    proxy_real_check_pilot_menu,
     production_observability_menu,
     reports_menu,
     recommendation_detail_menu,
@@ -118,6 +121,7 @@ from app.bot.menu import (
     fortuna_action_log_menu,
     my_work_menu,
     top5_actions_menu,
+    ui_self_test_menu,
 )
 from app.models.account import ACCOUNT_PLATFORMS, Account
 from app.models.audit import AuditLog

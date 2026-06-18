@@ -76,6 +76,7 @@ pytest
 - Full System Audit and Intelligence Verification: recursive safe metadata redaction, Fortuna branding cleanup, intelligence/learning data-flow tests, proxy UI safety tests, and audit documentation.
 - Telegram Architecture and Production Observability: Telegram screen renderers split by domain, owner-only Production Observability, safe build metadata, Alembic revision display, improved bot heartbeat metadata, notification target readiness, and clear simulated proxy-health labeling.
 - Notification Target Activation and Real Proxy Health Adapter: Notification Group Setup, safe Testing Sandbox routing smoke tests, encrypted/masked chat IDs, owner-enabled real Olympix SOCKS5 health/location checks, and durable proxy health check result history.
+- Help Brain and Pilot Readiness: context-aware Ask Fortuna answers backed by seeded help knowledge, persisted help question logs, help feedback learning events, Notification Group Pilot, Proxy Real Check Pilot, UI Self-Test, and observability additions.
 
 ## Railway Deployment
 
@@ -100,7 +101,7 @@ Bot worker start command:
 python -m app.bot.runner
 ```
 
-Migrations run at API and bot startup. A manual migration command is still safe if needed:
+Migrations run at API startup. The bot worker does not run Alembic before polling, which keeps production Telegram responsive while the API owns schema upgrades. A manual migration command is still safe if needed:
 
 ```bash
 alembic upgrade head
@@ -133,6 +134,8 @@ Production smoke testing checklist:
 - `docs/production_observability.md`
 - `docs/telegram_architecture.md`
 - `docs/proxy_vault_user_guide.md`
+- `docs/help_brain.md`
+- `docs/pilot_readiness.md`
 - `docs/railway_deployment.md`
 - `docs/notification_routing.md`
 - `docs/production_operations.md`

@@ -26,6 +26,22 @@ Telegram surfaces must not show:
 - Python dicts
 - stack traces
 
+## Sprint 28 Real Check Pilot
+
+Use Proxy Vault -> Real Check Pilot before enabling wider monitoring.
+
+The pilot screen shows:
+
+- whether real health checks are enabled per proxy
+- whether real location checks are enabled per proxy
+- latest check type and status
+- target location
+- clear warnings when no proxy is saved yet
+
+Real checks are owner-controlled and disabled by default. Passwords must only be entered through the secure bot UI, are encrypted at rest, and are never shown back in Telegram.
+
+If a real check fails, Fortuna records a proxy health result, creates learning data, and can generate a recommendation/priority item without exposing credentials.
+
 ## Olympix Mobile SOCKS5 Wizard
 
 Use Proxies -> Olympix Mobile SOCKS5 Wizard.

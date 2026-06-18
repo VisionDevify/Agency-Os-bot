@@ -1731,6 +1731,36 @@ Sprint 26 does not add new tables. Production Observability reads existing table
 
 No secrets or raw environment variables are stored for observability.
 
+## Sprint 28 Help And Pilot Tables
+
+`help_knowledge_base`
+
+- seeded help articles
+- unique `topic`
+- `role_scope`
+- `related_route`
+- timestamps
+
+`help_question_logs`
+
+- user asking the question
+- original question
+- detected intent
+- safe answer summary
+- optional feedback: `helpful`, `not_helpful`, `still_confused`
+- timestamp
+
+`ui_self_test_runs`
+
+- owner who requested the run
+- status: `passed`, `warning`, `failed`
+- screens checked
+- safe failures JSON
+- safe warnings JSON
+- timestamp
+
+These tables do not store secrets, raw environment variables, proxy passwords, 2FA codes, platform credentials, or raw Telegram chat IDs.
+
 ## Future Planned Tables
 
 - `account_credentials`: secret references only, not raw secrets.

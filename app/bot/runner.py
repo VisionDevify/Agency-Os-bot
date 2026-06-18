@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 from aiogram import Bot, Dispatcher
 from aiogram import F
-from aiogram.filters import CommandStart
+from aiogram.filters import Command, CommandStart
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy import select
 
@@ -24,10 +24,10 @@ from app.bot.screens import (
     render_opportunity_detail_page,
     render_post_watch_detail_page,
     render_proxy_detail_page,
+    render_ui_self_test_page,
 )
 from app.core.config import settings
 from app.core.logging import configure_logging
-from app.db.migrations import run_migrations
 from app.db.session import SessionLocal
 from app.models.account import AccountAuthSession
 from app.models.opportunity import CREATOR_WATCH_PRIORITIES, OPPORTUNITY_PRIORITIES, POST_WATCH_TYPES, CreatorWatch, PostWatch
@@ -411,6 +411,39 @@ async def start(message: Message) -> None:
             screen = render_onboarding_page(session, user)
         else:
             screen = render_main_menu(session=session, user=user)
+        session.commit()
+    await message.answer(screen.text, reply_markup=screen.reply_markup)
+
+
+@dp.message(Command("selftest"))
+async def selftest(message: Message) -> None:
+    if message.from_user is None or SessionLocal is None:
+        await message.answer("Self-test is owner-only.")
+        return
+
+    with SessionLocal() as session:
+        telegram_id = message.from_user.id
+        record_heartbeat(session, service_name="bot", status="healthy", metadata=_bot_heartbeat_metadata("telegram_selftest"))
+        user = get_or_create_telegram_user(
+            session,
+            telegram_user_id=telegram_id,
+            display_name=_display_name_from_message_user(message.from_user),
+            username=_username_from_message_user(message.from_user),
+            owner_telegram_id=settings.owner_telegram_id,
+        )
+        if not user.is_owner:
+            audit_action(
+                session,
+                actor=user,
+                action="access.denied",
+                resource_type="ui_self_test",
+                status="denied",
+                details={"permission": "owner"},
+            )
+            session.commit()
+            await message.answer("UI Self-Test is owner-only.")
+            return
+        screen = render_ui_self_test_page(session, user, run_now=True)
         session.commit()
     await message.answer(screen.text, reply_markup=screen.reply_markup)
 
@@ -1117,7 +1150,6 @@ async def main() -> None:
     try:
         logger.info("Starting Telegram bot")
         if SessionLocal is not None:
-            run_migrations()
             with SessionLocal() as session:
                 record_heartbeat(session, service_name="bot", status="healthy", metadata=_bot_heartbeat_metadata("startup"))
                 session.commit()

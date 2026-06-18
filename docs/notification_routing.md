@@ -124,6 +124,24 @@ Settings -> Notification Group Setup -> Run Routing Test creates durable deliver
 
 Every attempt is audited and event-logged. Raw chat IDs remain encrypted at rest and masked in Telegram.
 
+## Sprint 28 Notification Group Pilot
+
+Settings -> Notification Group Pilot gives the owner a single readiness view for the five required Fortuna spaces:
+
+- HQ
+- Operations
+- Incidents
+- Automation Logs
+- Testing Sandbox
+
+It shows configured/missing status, last delivery state, and the manual activation checklist. The Register This Chat button must be used from inside the Telegram group or channel being registered.
+
+The pilot keeps real delivery conservative:
+
+- Testing Sandbox can be tested.
+- Other purposes are simulated during routing tests unless the owner explicitly expands delivery later.
+- Raw chat IDs remain hidden.
+
 ## Safety Rules
 
 - Only Owner/Admin can manage targets.

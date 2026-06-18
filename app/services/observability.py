@@ -13,9 +13,11 @@ from app.core.config import settings
 from app.models.audit import AuditLog
 from app.models.automation import AutomationRun
 from app.models.event_log import EventLog
+from app.models.help import UISelfTestRun
 from app.models.intelligence import IntelligenceRun
 from app.models.proxy import ProxyHealthCheckResult
 from app.models.reporting import NotificationTarget
+from app.services.help_brain import help_questions_today, notification_pilot_status, proxy_pilot_status
 from app.services.heartbeats import list_heartbeats, system_status_summary
 
 REQUIRED_NOTIFICATION_PURPOSES: tuple[tuple[str, str], ...] = (
@@ -119,6 +121,10 @@ def production_observability_summary(session: Session) -> dict[str, object]:
     configured_notification_targets = (
         session.scalar(select(func.count(NotificationTarget.id)).where(NotificationTarget.is_active.is_(True))) or 0
     )
+    help_total, help_confused = help_questions_today(session)
+    notification_pilot = notification_pilot_status(session)
+    proxy_pilot = proxy_pilot_status(session)
+    latest_self_test = _latest(session, UISelfTestRun, desc(UISelfTestRun.created_at), desc(UISelfTestRun.id))
 
     return {
         "app_display_name": settings.app_display_name,
@@ -154,9 +160,15 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         "failed_notification_count": status["failed_notification_count"],
         "notification_readiness": notification_target_readiness(session),
         "notification_targets_configured_count": configured_notification_targets,
+        "help_questions_today": help_total,
+        "help_confused_count": help_confused,
         "proxy_real_health_checks_enabled": settings.proxy_real_health_checks_enabled,
         "proxy_real_location_checks_enabled": settings.proxy_real_location_checks_enabled,
         "last_real_proxy_check_status": latest_real_proxy_check.status if latest_real_proxy_check else "None",
         "last_real_proxy_check_at": latest_real_proxy_check.created_at if latest_real_proxy_check else None,
         "recent_proxy_health_failures": recent_proxy_failures,
+        "notification_pilot_status": f"{notification_pilot['configured']}/{notification_pilot['required']} configured",
+        "proxy_pilot_status": f"{proxy_pilot['enabled']}/{proxy_pilot['total']} proxies enabled",
+        "last_ui_self_test_status": latest_self_test.status if latest_self_test else "None",
+        "last_ui_self_test_at": latest_self_test.created_at if latest_self_test else None,
     }
