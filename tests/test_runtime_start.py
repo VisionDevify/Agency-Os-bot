@@ -1,4 +1,11 @@
-from app.runtime.railway_start import api_command, bot_command, is_railway_environment, should_start_bot
+from app.runtime.railway_start import (
+    api_command,
+    bot_command,
+    is_railway_environment,
+    runtime_role,
+    should_start_api,
+    should_start_bot,
+)
 
 
 def test_runtime_detects_railway_environment() -> None:
@@ -6,19 +13,35 @@ def test_runtime_detects_railway_environment() -> None:
     assert is_railway_environment({"DATABASE_URL": "postgres://example"}) is False
 
 
-def test_runtime_starts_bot_on_railway_when_required_values_exist() -> None:
+def test_runtime_defaults_railway_to_api_only() -> None:
     env = {
         "RAILWAY_ENVIRONMENT_ID": "prod",
         "TELEGRAM_BOT_TOKEN": "masked",
         "REDIS_URL": "redis://example",
     }
 
+    assert runtime_role(env) == "api"
+    assert should_start_api(env) is True
+    assert should_start_bot(env) is False
+
+
+def test_runtime_starts_bot_on_railway_worker_when_required_values_exist() -> None:
+    env = {
+        "RAILWAY_ENVIRONMENT_ID": "prod",
+        "RAILWAY_SERVICE_NAME": "Bot Worker",
+        "TELEGRAM_BOT_TOKEN": "masked",
+        "REDIS_URL": "redis://example",
+    }
+
+    assert runtime_role(env) == "bot"
+    assert should_start_api(env) is False
     assert should_start_bot(env) is True
 
 
 def test_runtime_starts_bot_when_required_values_exist_without_railway_markers() -> None:
     env = {"TELEGRAM_BOT_TOKEN": "masked"}
 
+    assert should_start_api(env) is True
     assert should_start_bot(env) is True
 
 
@@ -41,6 +64,7 @@ def test_runtime_bot_start_can_be_disabled_for_local_api_container() -> None:
 def test_runtime_bot_start_can_be_disabled_even_on_railway() -> None:
     env = {
         "RAILWAY_ENVIRONMENT_ID": "prod",
+        "RAILWAY_SERVICE_NAME": "Bot Worker",
         "TELEGRAM_BOT_TOKEN": "masked",
         "REDIS_URL": "redis://example",
         "FORTUNA_START_BOT_WITH_API": "false",

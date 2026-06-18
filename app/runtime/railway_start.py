@@ -10,6 +10,9 @@ logger = logging.getLogger(__name__)
 
 TRUE_VALUES = {"1", "true", "yes", "on"}
 FALSE_VALUES = {"0", "false", "no", "off"}
+API_ROLES = {"api", "web", "server"}
+BOT_ROLES = {"bot", "worker", "bot_worker", "bot-worker", "telegram", "telegram_bot", "telegram-bot"}
+COMBINED_ROLES = {"combined", "all"}
 
 
 def is_railway_environment(env: Mapping[str, str] | None = None) -> bool:
@@ -17,8 +20,49 @@ def is_railway_environment(env: Mapping[str, str] | None = None) -> bool:
     return any(key.startswith("RAILWAY_") for key in values)
 
 
+def runtime_role(env: Mapping[str, str] | None = None) -> str:
+    values = env or os.environ
+    explicit = (
+        values.get("FORTUNA_RUNTIME_ROLE")
+        or values.get("FORTUNA_SERVICE_ROLE")
+        or values.get("SERVICE_ROLE")
+        or values.get("PROCESS_TYPE")
+    )
+    if explicit:
+        normalized = explicit.strip().casefold().replace(" ", "_")
+        if normalized in API_ROLES:
+            return "api"
+        if normalized in BOT_ROLES:
+            return "bot"
+        if normalized in COMBINED_ROLES:
+            return "combined"
+
+    service_name = (
+        values.get("RAILWAY_SERVICE_NAME")
+        or values.get("RAILWAY_SERVICE_SLUG")
+        or values.get("RAILWAY_SERVICE")
+        or ""
+    ).strip().casefold()
+    if service_name:
+        if "bot" in service_name or "worker" in service_name or "telegram" in service_name:
+            return "bot"
+        if "api" in service_name or "web" in service_name:
+            return "api"
+
+    if is_railway_environment(values):
+        return "api"
+    return "combined"
+
+
+def should_start_api(env: Mapping[str, str] | None = None) -> bool:
+    return runtime_role(env) in {"api", "combined"}
+
+
 def should_start_bot(env: Mapping[str, str] | None = None) -> bool:
     values = env or os.environ
+    role = runtime_role(values)
+    if role == "api":
+        return False
     primary = values.get("BOT_PRIMARY_INSTANCE")
     if primary is not None and primary.strip().casefold() in FALSE_VALUES:
         return False
@@ -65,16 +109,22 @@ def _terminate(processes: Sequence[subprocess.Popen]) -> None:
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     processes: list[tuple[str, subprocess.Popen]] = []
+    role = runtime_role()
 
-    api = subprocess.Popen(api_command())
-    processes.append(("api", api))
+    if should_start_api():
+        api = subprocess.Popen(api_command())
+        processes.append(("api", api))
 
     if should_start_bot():
-        logger.info("Starting Fortuna OS API and Telegram bot worker in this Railway service")
+        logger.info("Starting Fortuna OS Telegram bot worker in runtime role %s", role)
         bot = subprocess.Popen(bot_command())
         processes.append(("bot", bot))
     else:
-        logger.info("Starting Fortuna OS API only")
+        logger.info("Fortuna OS bot worker disabled in runtime role %s", role)
+
+    if not processes:
+        logger.error("No Fortuna OS process selected for runtime role %s", role)
+        return 1
 
     stopping = False
 
