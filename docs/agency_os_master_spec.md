@@ -27,6 +27,7 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Sprint 17: Team Activation and Opportunity Command Center with Creator Watch, Own Post Watch, opportunity queue summaries, suggested human-only comment strategies, Chatter Workspace, Manager Opportunity View, Help Copilot, activation scoring, and opportunity notification routing.
 - Sprint 18: Real Opportunity Intake and Team Assignment Activation with guided Creator Watch intake, guided Opportunity intake, guided Own Post Watch intake, creator/post-to-opportunity conversion, assignment workflows, result recording, Comment Strategy V2, Help Copilot upgrades, activation QA, and digestable opportunity events.
 - Sprint 20: Production Data Activation readiness with first-day operations smoke-test guidance, team invite packet, clearer account setup empty states, and explicit manual notification group registration steps.
+- Sprint 21: Self-operational agency activation with readiness scoring, setup gap detection, owner Agency Activation dashboard, model completion wizard, account setup states, Olympix proxy wizard, activation recommendations, deduped setup task creation, and live-state Help Copilot answers.
 
 ## Roadmap
 
@@ -61,6 +62,7 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Opportunities: manual, human-approved opportunity records, Creator Watch, Own Post Watch, guided intake flows, queue summaries, comment strategy prompts, assignment workflows, and opportunity results for future funnel intelligence without scraping or automatic posting.
 - Help Copilot: role-aware deterministic guidance that explains common workflows and points users to the next Agency OS screen.
 - Team Activation: friendly readiness scoring and QA flags for onboarding, pending approval, role/timezone/availability setup, assigned work, chatter model assignment, opportunity assignment, first task completion, first opportunity review, and Help Center usage.
+- Agency Activation: owner/admin readiness engine that inspects live models, accounts, teams, creators, opportunities, and notification targets; persists readiness snapshots; detects setup blockers; creates safe recommendations; and creates deduped setup tasks.
 - System Status: service heartbeats for API, bot, db, redis, and Railway deployment state.
 - Settings: administrative utilities including audit log access, Bot Status, and Notification Targets.
 
@@ -148,6 +150,7 @@ Important actions should use stable event-style names, such as:
 - `member.assigned`
 - `member.removed`
 - `model.health.changed`
+- `agency_activation.scanned`
 - `account.created`
 - `account.updated`
 - `account.disabled`

@@ -126,6 +126,7 @@ def structure_map_menu() -> InlineKeyboardMarkup:
 def setup_wizard_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [InlineKeyboardButton(text="Agency Activation", callback_data=callback_for("agency_activation"))],
             [InlineKeyboardButton(text="Start Setup Wizard", callback_data=callback_for("setup:wizard:start"))],
             [InlineKeyboardButton(text="Create First Model", callback_data=callback_for("setup:wizard:model"))],
             [InlineKeyboardButton(text="Add Accounts", callback_data=callback_for("setup:wizard:accounts"))],
@@ -140,6 +141,75 @@ def setup_wizard_menu() -> InlineKeyboardMarkup:
             *page_controls(back_to="menu"),
         ]
     )
+
+
+def agency_activation_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Run Activation Scan", callback_data=callback_for("agency_activation:scan"))],
+            [
+                InlineKeyboardButton(text="Fix Models", callback_data=callback_for("agency_activation:models")),
+                InlineKeyboardButton(text="Fix Accounts", callback_data=callback_for("agency_activation:accounts")),
+            ],
+            [
+                InlineKeyboardButton(text="Fix Team", callback_data=callback_for("agency_activation:team")),
+                InlineKeyboardButton(text="Fix Creators", callback_data=callback_for("agency_activation:creators")),
+            ],
+            [InlineKeyboardButton(text="Fix Notifications", callback_data=callback_for("notification_targets"))],
+            [InlineKeyboardButton(text="Ask Help Copilot", callback_data=callback_for("help_copilot:activation"))],
+            *page_controls(back_to="menu"),
+        ]
+    )
+
+
+def activation_section_menu(section: str) -> InlineKeyboardMarkup:
+    destinations = {
+        "models": "models",
+        "accounts": "accounts",
+        "team": "manager_qa",
+        "creators": "opportunities:creators",
+        "opportunities": "opportunities:command",
+        "notifications": "notification_targets",
+    }
+    rows: list[list[InlineKeyboardButton]] = []
+    target = destinations.get(section)
+    if target is not None:
+        rows.append([InlineKeyboardButton(text="Open Fix Screen", callback_data=callback_for(target))])
+    rows.append([InlineKeyboardButton(text="Run Activation Scan", callback_data=callback_for("agency_activation:scan"))])
+    rows.extend(page_controls(back_to="agency_activation"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def model_completion_menu(model_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Edit Country", callback_data=f"nav:model:{model_id}:edit:country"),
+                InlineKeyboardButton(text="Edit Timezone", callback_data=f"nav:model:{model_id}:edit:timezone"),
+            ],
+            [
+                InlineKeyboardButton(text="Edit Primary Platform", callback_data=f"nav:model:{model_id}:edit:primary_platform"),
+                InlineKeyboardButton(text="Edit Notes", callback_data=f"nav:model:{model_id}:edit:notes"),
+            ],
+            [
+                InlineKeyboardButton(text="Manage Team", callback_data=callback_for(f"model:{model_id}:team")),
+                InlineKeyboardButton(text="Manage Accounts", callback_data=callback_for(f"model:{model_id}:accounts")),
+            ],
+            [
+                InlineKeyboardButton(text="Manage Creators", callback_data=callback_for("opportunities:creators")),
+                InlineKeyboardButton(text="Manage Opportunities", callback_data=callback_for("opportunities:command")),
+            ],
+            [InlineKeyboardButton(text="Ask Help Copilot", callback_data=callback_for("help_copilot:finish_setup"))],
+            *page_controls(back_to="agency_activation:models"),
+        ]
+    )
+
+
+def account_setup_state_menu(account_buttons: list[tuple[str, str]]) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in account_buttons]
+    rows.append([InlineKeyboardButton(text="Add Account", callback_data=callback_for("accounts:add"))])
+    rows.extend(page_controls(back_to="agency_activation"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def setup_finish_menu(model_id: int | None = None) -> InlineKeyboardMarkup:
@@ -343,6 +413,7 @@ def proxies_menu() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="View Proxies", callback_data=callback_for("proxies:list"))],
             [InlineKeyboardButton(text="Create Proxy", callback_data=callback_for("proxies:create"))],
+            [InlineKeyboardButton(text="Olympix Mobile SOCKS5 Wizard", callback_data=callback_for("proxies:olympix"))],
             [InlineKeyboardButton(text="Accounts Missing Proxy", callback_data=callback_for("proxies:missing"))],
             [InlineKeyboardButton(text="Simulation Mode", callback_data=callback_for("proxies:simulation"))],
             [InlineKeyboardButton(text="Infrastructure Dashboard", callback_data=callback_for("proxies:dashboard"))],
@@ -812,6 +883,9 @@ def help_copilot_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Where are my opportunities?", callback_data=callback_for("help_copilot:my_opportunities"))],
             [InlineKeyboardButton(text="Why can't I access this?", callback_data=callback_for("help_copilot:access"))],
             [InlineKeyboardButton(text="What should I do next?", callback_data=callback_for("help_copilot:next"))],
+            [InlineKeyboardButton(text="What's blocking setup?", callback_data=callback_for("help_copilot:activation"))],
+            [InlineKeyboardButton(text="Why is readiness low?", callback_data=callback_for("help_copilot:readiness_low"))],
+            [InlineKeyboardButton(text="How do I finish setup?", callback_data=callback_for("help_copilot:finish_setup"))],
             [InlineKeyboardButton(text="How do I record results?", callback_data=callback_for("help_copilot:record_results"))],
             [InlineKeyboardButton(text="How do I complete an opportunity?", callback_data=callback_for("help_copilot:opportunity"))],
             [InlineKeyboardButton(text="How does Availability work?", callback_data=callback_for("help_copilot:availability"))],
@@ -1063,6 +1137,7 @@ def model_edit_menu(model_id: int, status: str) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="Edit Country", callback_data=f"nav:model:{model_id}:edit:country"),
             InlineKeyboardButton(text="Edit Timezone", callback_data=f"nav:model:{model_id}:edit:timezone"),
         ],
+        [InlineKeyboardButton(text="Edit Primary Platform", callback_data=f"nav:model:{model_id}:edit:primary_platform")],
         [
             InlineKeyboardButton(text="Edit Notes", callback_data=f"nav:model:{model_id}:edit:notes"),
             InlineKeyboardButton(text="Internal Notes", callback_data=f"nav:model:{model_id}:edit:internal_notes"),

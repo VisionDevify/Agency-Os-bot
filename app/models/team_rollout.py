@@ -124,3 +124,41 @@ class FirstDayChecklist(TimestampMixin, Base):
     metadata_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
     user: Mapped["User"] = relationship("User", lazy="selectin")
+
+
+class AgencyActivationState(Base):
+    __tablename__ = "agency_activation_states"
+    __table_args__ = (
+        CheckConstraint("readiness_score >= 0 and readiness_score <= 100", name="ck_agency_activation_readiness_score"),
+        CheckConstraint("models_ready >= 0 and models_ready <= 100", name="ck_agency_activation_models_ready"),
+        CheckConstraint("accounts_ready >= 0 and accounts_ready <= 100", name="ck_agency_activation_accounts_ready"),
+        CheckConstraint("teams_ready >= 0 and teams_ready <= 100", name="ck_agency_activation_teams_ready"),
+        CheckConstraint("creators_ready >= 0 and creators_ready <= 100", name="ck_agency_activation_creators_ready"),
+        CheckConstraint(
+            "opportunities_ready >= 0 and opportunities_ready <= 100",
+            name="ck_agency_activation_opportunities_ready",
+        ),
+        CheckConstraint(
+            "notifications_ready >= 0 and notifications_ready <= 100",
+            name="ck_agency_activation_notifications_ready",
+        ),
+        Index("ix_agency_activation_states_updated_at", "updated_at"),
+        Index("ix_agency_activation_states_readiness_score", "readiness_score"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    models_ready: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    accounts_ready: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    teams_ready: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    creators_ready: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    opportunities_ready: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    notifications_ready: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    readiness_score: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    blockers_json: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    recommendations_json: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )

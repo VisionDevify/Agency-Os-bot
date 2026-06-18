@@ -21,7 +21,13 @@ from app.models.recommendation import Recommendation
 from app.models.reporting import AccountabilitySnapshot, DailyBriefing, NotificationDeliveryAttempt, NotificationTarget
 from app.models.system import SystemHeartbeat
 from app.models.task import Task
-from app.models.team_rollout import FirstDayChecklist, NotificationDigest, SetupWizardState, TeamOnboardingChecklist
+from app.models.team_rollout import (
+    AgencyActivationState,
+    FirstDayChecklist,
+    NotificationDigest,
+    SetupWizardState,
+    TeamOnboardingChecklist,
+)
 from app.models.user import User, UserAvailability
 
 __all__ = [
@@ -29,6 +35,7 @@ __all__ = [
     "AccountAuthSession",
     "AccountVerificationCode",
     "AccountabilitySnapshot",
+    "AgencyActivationState",
     "AuditLog",
     "Automation",
     "AutomationApproval",

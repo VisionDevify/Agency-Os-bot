@@ -5,12 +5,15 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.bot.menu import (
+    account_setup_state_menu,
     account_detail_menu,
     account_list_menu,
     account_model_choice_menu,
     account_platform_menu,
     account_proxy_choice_menu,
     accounts_menu,
+    activation_section_menu,
+    agency_activation_menu,
     automation_approval_detail_menu,
     automation_approvals_menu,
     automation_rule_detail_menu,
@@ -46,6 +49,7 @@ from app.bot.menu import (
     main_menu,
     manager_command_menu,
     manager_setup_qa_menu,
+    model_completion_menu,
     model_detail_menu,
     model_edit_menu,
     model_list_menu,
@@ -151,6 +155,10 @@ from app.services.accounts import (
     latest_waiting_auth_session,
     list_accounts,
     platform_label,
+)
+from app.services.agency_activation import (
+    account_setup_states,
+    build_activation_report,
 )
 from app.services.model_brands import (
     RELATIONSHIP_LABELS,
@@ -567,6 +575,121 @@ def render_setup_wizard_page(session: Session, user: User | None = None) -> Scre
     return Screen("\n".join(lines), setup_wizard_menu())
 
 
+def _readiness_label(score: int) -> str:
+    if score >= 85:
+        return "Ready"
+    if score >= 60:
+        return "Needs Attention"
+    return "Blocked"
+
+
+def render_agency_activation_page(session: Session) -> Screen:
+    report = build_activation_report(session)
+    blockers = report["blockers"]
+    lines = [
+        "Agency Activation",
+        "",
+        f"Agency Readiness: {_status_marker('healthy' if report['readiness_score'] >= 85 else 'warning' if report['readiness_score'] >= 60 else 'critical')} {report['readiness_score']}% ({_readiness_label(report['readiness_score'])})",
+        "",
+        f"Models Ready: {report['models_ready']}%",
+        f"Accounts Ready: {report['accounts_ready']}%",
+        f"Teams Ready: {report['teams_ready']}%",
+        f"Creators Ready: {report['creators_ready']}%",
+        f"Opportunities Ready: {report['opportunities_ready']}%",
+        f"Notifications Ready: {report['notifications_ready']}%",
+        "",
+        "Top Blockers:",
+    ]
+    if not blockers:
+        lines.append("- None. Setup is ready for daily operations.")
+    for blocker in blockers[:6]:
+        lines.append(f"- {blocker['title']}")
+    lines.extend(
+        [
+            "",
+            "Run Activation Scan to save this readiness snapshot, refresh recommendations, and create setup tasks without duplicates.",
+        ]
+    )
+    return Screen("\n".join(lines), agency_activation_menu())
+
+
+def render_activation_section_page(session: Session, section: str) -> Screen:
+    report = build_activation_report(session)
+    blockers = [blocker for blocker in report["blockers"] if blocker.get("section") == section]
+    title = {
+        "models": "Fix Models",
+        "accounts": "Fix Accounts",
+        "team": "Fix Team",
+        "creators": "Fix Creators",
+        "opportunities": "Fix Opportunities",
+        "notifications": "Fix Notifications",
+    }.get(section, "Fix Setup")
+    lines = [title, ""]
+    if not blockers:
+        lines.append("Nothing blocking this area right now.")
+    for blocker in blockers[:10]:
+        lines.append(f"- {blocker['title']}")
+        lines.append(f"  Next: {blocker['description']}")
+    return Screen("\n".join(lines), activation_section_menu(section))
+
+
+def render_model_completion_page(session: Session, model_id: int) -> Screen:
+    model_brand = session.scalar(
+        select(ModelBrand)
+        .where(ModelBrand.id == model_id)
+        .options(selectinload(ModelBrand.members).selectinload(ModelBrandMember.user))
+    )
+    if model_brand is None:
+        return Screen(text="Model not found.", reply_markup=page_menu(back_to="agency_activation:models"))
+    accounts = accounts_for_model(session, model_id)
+    creators = [creator for creator in list_creator_watches(session) if creator.assigned_model_id == model_id]
+    opportunities = [opportunity for opportunity in list_opportunities(session) if opportunity.model_brand_id == model_id]
+    relationship_types = {member.relationship_type for member in model_brand.members}
+    checks = [
+        ("Country", model_brand.country),
+        ("Timezone", model_brand.timezone),
+        ("Primary Platform", model_brand.primary_platform),
+        ("Team", "assigned" if relationship_types else None),
+        ("Accounts", str(len(accounts)) if accounts else None),
+        ("Creators", str(len(creators)) if creators else None),
+        ("Opportunities", str(len(opportunities)) if opportunities else None),
+    ]
+    lines = [
+        "Model Completion Wizard",
+        "",
+        f"Model: {model_brand.display_name}",
+        f"Status: {model_brand.status}",
+        "",
+        "Setup Checklist:",
+    ]
+    for label, value in checks:
+        marker = "Done" if value else "Needs setup"
+        lines.append(f"- {label}: {marker}{f' ({value})' if value else ''}")
+    lines.extend(
+        [
+            "",
+            "Use the buttons below to fill the missing pieces. You can come back here anytime from Agency Activation.",
+        ]
+    )
+    return Screen("\n".join(lines), model_completion_menu(model_id))
+
+
+def render_account_setup_state_page(session: Session) -> Screen:
+    states = account_setup_states(session)
+    lines = ["Account Setup State", ""]
+    buttons: list[tuple[str, str]] = []
+    if not states:
+        lines.append("No accounts yet. Create a model first, then add IG/X/OF/Email account records without passwords.")
+    for state in states[:12]:
+        lines.append(f"{state.platform.title()} @{state.username}")
+        lines.append(f"   Model: {state.model_name} | Status: {state.status}")
+        lines.append(f"   Checklist: {', '.join(state.checklist)}")
+        if state.recommended_actions:
+            lines.append(f"   Next: {state.recommended_actions[0]}")
+        buttons.append((f"{state.platform.title()} @{state.username}", f"nav:account:{state.account_id}"))
+    return Screen("\n".join(lines), account_setup_state_menu(buttons))
+
+
 def render_setup_model_prompt_page() -> Screen:
     lines = [
         "Create First Model",
@@ -814,7 +937,17 @@ def render_accounts_home() -> Screen:
 
 
 def render_proxies_home() -> Screen:
-    return Screen(text="Proxy Vault\nInfrastructure intelligence.", reply_markup=proxies_menu())
+    return Screen(
+        text="\n".join(
+            [
+                "Proxy Vault",
+                "",
+                "Manage encrypted proxy records, account assignments, and health checks.",
+                "Use the Olympix wizard for Mobile SOCKS5 proxies. Passwords are encrypted and never shown back in Telegram.",
+            ]
+        ),
+        reply_markup=proxies_menu(),
+    )
 
 
 def render_tasks_home() -> Screen:
@@ -1576,7 +1709,7 @@ def render_proxy_list_page(session: Session) -> Screen:
     lines = ["Proxy Vault", ""]
     buttons: list[tuple[str, str]] = []
     if not proxies:
-        lines.append("No proxies yet.")
+        lines.append("No proxies yet. Add an encrypted proxy with the Olympix wizard or create a placeholder for testing.")
     for proxy in proxies[:15]:
         health = calculate_proxy_health(proxy)
         lines.append(f"{proxy.id}. {proxy.provider} {proxy.host}:{proxy.port}")
@@ -1584,6 +1717,27 @@ def render_proxy_list_page(session: Session) -> Screen:
         lines.append(f"   Target: {proxy.target_state or proxy.target_country or 'Not set'}")
         buttons.append(_proxy_button(proxy))
     return Screen(text="\n".join(lines), reply_markup=proxy_list_menu(buttons))
+
+
+def render_olympix_proxy_wizard_page() -> Screen:
+    lines = [
+        "Olympix Mobile SOCKS5 Wizard",
+        "",
+        "This creates an encrypted proxy record. The password is never shown back in Telegram.",
+        "",
+        "Fixed provider details:",
+        "Host: host.olympix.io",
+        "Port: 1080",
+        "",
+        "Send the setup values in this format:",
+        "base username | password | target country | target state | target city",
+        "",
+        "Example:",
+        "customer-user | password | United States | Florida | Miami",
+        "",
+        "Target city is optional. Do not paste this into any unrelated chat.",
+    ]
+    return Screen("\n".join(lines), page_menu(back_to="proxies"))
 
 
 def render_proxy_detail_page(session: Session, proxy_id: int) -> Screen:
@@ -2972,6 +3126,10 @@ def render_help_copilot_page(session: Session, user: User | None = None, *, ques
         "my_opportunities": "Where do I see my opportunities?",
         "access": "Why can't I access this?",
         "next": "What should I do next?",
+        "activation": "What's stopping my agency from being ready?",
+        "readiness_low": "Why is readiness low?",
+        "finish_setup": "How do I finish setup?",
+        "model_unhealthy": "Why is this model unhealthy?",
         "record_results": "How do I record results?",
         "opportunity": "How do I complete an opportunity?",
         "where": "Where do I go?",
@@ -3409,6 +3567,7 @@ def render_model_edit_page(session: Session, model_id: int) -> Screen:
                 f"Stage Name: {model_brand.stage_name or 'Not set'}",
                 f"Country: {model_brand.country or 'Not set'}",
                 f"Timezone: {model_brand.timezone or 'Not set'}",
+                f"Primary Platform: {model_brand.primary_platform or 'Not set'}",
                 f"Status: {model_brand.status}",
                 f"Notes: {model_brand.notes or 'None'}",
                 "",
@@ -3428,6 +3587,7 @@ def render_model_field_edit_page(session: Session, model_id: int, field: str) ->
         "stage_name": "Stage Name",
         "country": "Country",
         "timezone": "Timezone",
+        "primary_platform": "Primary Platform",
         "notes": "Notes",
         "internal_notes": "Internal Notes",
     }
@@ -3980,6 +4140,14 @@ def render_scheduled_automations_page(session: Session, user: User | None = None
 def render_page(page: str, session: Session | None = None, user: User | None = None) -> Screen:
     if page == "structure":
         return render_structure_map_page()
+    if page == "agency_activation" and session is not None:
+        return render_agency_activation_page(session)
+    if page.startswith("agency_activation:") and session is not None:
+        parts = page.split(":")
+        if len(parts) >= 2 and parts[1] == "accounts":
+            return render_account_setup_state_page(session)
+        section = parts[1] if len(parts) >= 2 else "models"
+        return render_activation_section_page(session, section)
     if page == "setup:wizard" and session is not None:
         return render_setup_wizard_page(session, user)
     if page == "setup:wizard:model":
@@ -4054,6 +4222,8 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_proxies_home()
     if page == "proxies:list" and session is not None:
         return render_proxy_list_page(session)
+    if page == "proxies:olympix":
+        return render_olympix_proxy_wizard_page()
     if page == "proxies:missing" and session is not None:
         return render_accounts_missing_proxy_page(session)
     if page == "proxies:simulation" and session is not None:
@@ -4147,6 +4317,8 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
                 if len(parts) >= 4:
                     return render_model_field_edit_page(session, model_id, parts[3])
                 return render_model_edit_page(session, model_id)
+            if parts[2] == "complete":
+                return render_model_completion_page(session, model_id)
             if parts[2] == "team":
                 if len(parts) >= 5 and parts[3] == "assign":
                     return render_model_assignment_page(session, model_id, parts[4])

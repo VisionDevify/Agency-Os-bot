@@ -1337,7 +1337,21 @@ def help_copilot_answer(
 ) -> dict:
     role_names = {role.name for role in user.roles} if user is not None else set()
     question_text = question.lower()
-    if "where" in question_text and "start" in question_text:
+    if (
+        "stopping" in question_text
+        or "readiness" in question_text
+        or "finish setup" in question_text
+        or (
+            ("what should i do next" in question_text or question_text.strip() == "next")
+            and bool({"Owner", "Admin"} & role_names)
+        )
+        or ("why" in question_text and "model" in question_text and "unhealthy" in question_text)
+    ):
+        from app.services.agency_activation import activation_answer
+
+        answer = activation_answer(session, question)
+        next_action = "agency_activation"
+    elif "where" in question_text and "start" in question_text:
         if {"Owner", "Admin"} & role_names:
             answer = "Start with Owner Home -> Setup Agency. Create the first model, add accounts, assign team, then add creators and opportunities."
             next_action = "setup:wizard"

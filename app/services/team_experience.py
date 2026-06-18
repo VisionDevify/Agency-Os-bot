@@ -147,6 +147,7 @@ def role_home_items(user: User | None) -> list[tuple[str, str]]:
     if role in {"Owner", "Admin"}:
         return [
             ("Setup Agency", "setup:wizard"),
+            ("Agency Activation", "agency_activation"),
             ("First Day Plan", "first_day_plan"),
             ("Executive Command Center", "reports:executive"),
             ("Intelligence", "intelligence"),

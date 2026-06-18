@@ -29,6 +29,7 @@ from app.services.accounts import (
     update_account,
     mark_auth_session_success,
 )
+from app.services.agency_activation import run_activation_scan
 from app.services.model_brands import (
     archive_model_brand,
     assign_model_member,
@@ -197,6 +198,8 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         return None
     if page.startswith("setup:") or page.startswith("demo"):
         return ("manage_accounts", "manage_users")
+    if page.startswith("agency_activation"):
+        return ("manage_accounts", "manage_users")
     if page in {
         "daily_experience",
         "performance",
@@ -284,6 +287,9 @@ def _perform_admin_action(
     if page == "setup:wizard:start":
         start_setup_wizard(session, actor=actor)
         return "setup:wizard"
+    if page == "agency_activation:scan":
+        run_activation_scan(session, actor=actor, create_tasks=True)
+        return "agency_activation"
     if page == "setup:wizard:finish":
         state = latest_setup_state(session, actor)
         if state is not None:
@@ -976,6 +982,7 @@ def screen_for_page(
         or normalized.startswith("availability")
         or normalized.startswith("onboarding")
         or normalized.startswith("setup:")
+        or normalized.startswith("agency_activation")
         or normalized.startswith("demo")
         or normalized in {
             "daily_experience",

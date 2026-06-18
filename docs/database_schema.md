@@ -87,6 +87,41 @@ Indexes and constraints:
 - `ix_team_onboarding_checklists_readiness_score`.
 - `ix_team_onboarding_checklists_onboarded`.
 
+### agency_activation_states
+
+Stores the latest owner/admin activation readiness scan.
+
+Columns:
+
+- `id`: primary key.
+- `models_ready`: 0-100 model setup readiness.
+- `accounts_ready`: 0-100 account readiness, including model, proxy, auth, and health checks.
+- `teams_ready`: 0-100 manager/chatter assignment readiness.
+- `creators_ready`: 0-100 creator watchlist readiness.
+- `opportunities_ready`: 0-100 opportunity readiness.
+- `notifications_ready`: 0-100 notification target readiness.
+- `readiness_score`: overall 0-100 agency readiness score.
+- `blockers_json`: safe list of detected setup blockers.
+- `recommendations_json`: safe list of suggested next actions.
+- `updated_at`: scan timestamp.
+
+Indexes and constraints:
+
+- `ck_agency_activation_states_models_ready`.
+- `ck_agency_activation_states_accounts_ready`.
+- `ck_agency_activation_states_teams_ready`.
+- `ck_agency_activation_states_creators_ready`.
+- `ck_agency_activation_states_opportunities_ready`.
+- `ck_agency_activation_states_notifications_ready`.
+- `ck_agency_activation_states_readiness_score`.
+- `ix_agency_activation_states_updated_at`.
+- `ix_agency_activation_states_readiness_score`.
+
+Notes:
+
+- Activation scans are safe summaries. They must not include secrets, raw chat IDs, proxy passwords, platform passwords, or 2FA codes.
+- The scan can generate recommendations and deduped setup tasks so the owner does not need to manually discover missing setup work.
+
 ### roles
 
 Stores role definitions.

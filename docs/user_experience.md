@@ -80,3 +80,27 @@ For the first real production workspace, keep the setup path human and explicit:
 - Use `docs/team_invite_packet.md` for role-specific onboarding messages.
 - Use Help Center -> Team Invite Packet for quick invite copy inside Telegram.
 - Register Telegram notification groups manually, starting with Testing Sandbox only.
+
+## Sprint 21 Self-Operational Activation
+
+Owner/Admin users should not have to hunt for setup gaps. The Agency Activation screen should:
+
+- show a single readiness score
+- break readiness into models, accounts, teams, creators, opportunities, and notifications
+- list top blockers in plain language
+- offer direct fix buttons
+- create recommendations and deduped setup tasks when the owner runs an activation scan
+
+Model completion should guide the owner through missing country, timezone, primary platform, team, accounts, creators, and opportunities from one place.
+
+Account setup state should explain whether each account is ready, needs a proxy, needs auth setup, needs a team/model link, or is blocked.
+
+Proxy setup should avoid raw JSON or provider jargon. The Olympix Mobile SOCKS5 wizard asks for only the values needed, masks secrets, and never shows passwords after save.
+
+Help Copilot should answer live setup questions such as:
+
+- What's stopping my agency from being ready?
+- Why is readiness low?
+- What should I do next?
+- Why is this model unhealthy?
+- How do I finish setup?

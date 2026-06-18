@@ -22,6 +22,7 @@ from app.bot.screens import (
     render_onboarding_page,
     render_opportunity_detail_page,
     render_post_watch_detail_page,
+    render_proxy_detail_page,
 )
 from app.core.config import settings
 from app.core.logging import configure_logging
@@ -56,6 +57,7 @@ from app.services.opportunities import (
     update_creator_watch,
 )
 from app.services.permissions import PermissionPrincipal, RoleName, require_owner
+from app.services.proxies import create_proxy
 from app.services.model_brands import get_model_brand
 from app.services.setup_wizard import (
     add_setup_account,
@@ -88,6 +90,7 @@ PENDING_POST_INTAKES: dict[int, dict[str, int | str | None]] = {}
 PENDING_RESULT_INTAKES: dict[int, dict[str, int | str | None]] = {}
 PENDING_SETUP_WIZARDS: dict[int, dict[str, int | str | None]] = {}
 PENDING_MODEL_EDITS: dict[int, dict[str, int | str | None]] = {}
+PENDING_PROXY_WIZARDS: dict[int, dict[str, str]] = {}
 
 
 async def _acquire_polling_guard(
@@ -183,6 +186,9 @@ def _set_pending_callback_state(telegram_id: int, page: str, session, user: User
     PENDING_ACCOUNT_CREATES.pop(telegram_id, None)
     PENDING_AUTH_CODES.pop(telegram_id, None)
     parts = page.split(":")
+    if page == "proxies:olympix":
+        PENDING_PROXY_WIZARDS[telegram_id] = {"provider": "Olympix Mobile SOCKS5"}
+        return
     if page == "setup:wizard:model":
         PENDING_SETUP_WIZARDS[telegram_id] = {"step": "model"}
         return
@@ -398,7 +404,15 @@ async def text_input(message: Message) -> None:
                 await message.answer(screen.text, reply_markup=screen.reply_markup)
                 session.commit()
                 return
-            allowed_fields = {"display_name", "stage_name", "country", "timezone", "notes", "internal_notes"}
+            allowed_fields = {
+                "display_name",
+                "stage_name",
+                "country",
+                "timezone",
+                "primary_platform",
+                "notes",
+                "internal_notes",
+            }
             if field not in allowed_fields:
                 await message.answer("That model field cannot be edited from Telegram.")
                 session.commit()
@@ -411,6 +425,40 @@ async def text_input(message: Message) -> None:
                 return
             screen = render_model_detail_page(session, model.id)
             await message.answer("Model updated.")
+            await message.answer(screen.text, reply_markup=screen.reply_markup)
+            session.commit()
+            return
+
+        pending_proxy = PENDING_PROXY_WIZARDS.pop(telegram_id, None)
+        if pending_proxy is not None:
+            base_username, password, target_country, target_state, target_city = _parse_pipe_parts(message.text, 5)
+            if not base_username or not password or not target_country or not target_state:
+                await message.answer(
+                    "Please send: base username | password | target country | target state | target city"
+                )
+                session.commit()
+                return
+            try:
+                proxy = create_proxy(
+                    session,
+                    actor=user,
+                    provider=str(pending_proxy.get("provider") or "Olympix Mobile SOCKS5"),
+                    host="host.olympix.io",
+                    port=1080,
+                    base_username=base_username,
+                    password=password,
+                    target_country=target_country,
+                    target_state=target_state,
+                    target_city=target_city,
+                )
+                password = ""
+            except (PermissionError, ValueError):
+                password = ""
+                await message.answer("Unable to save proxy. Check permissions and required fields.")
+                session.commit()
+                return
+            screen = render_proxy_detail_page(session, proxy.id)
+            await message.answer("Proxy saved. Password encrypted and hidden.")
             await message.answer(screen.text, reply_markup=screen.reply_markup)
             session.commit()
             return
