@@ -44,7 +44,7 @@ def runtime_role(env: Mapping[str, str] | None = None) -> str:
         or ""
     ).strip().casefold()
     if service_name:
-        if "bot" in service_name or "worker" in service_name or "telegram" in service_name:
+        if "worker" in service_name or "telegram" in service_name:
             return "bot"
         if "api" in service_name or "web" in service_name:
             return "api"

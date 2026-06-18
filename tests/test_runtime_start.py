@@ -25,6 +25,19 @@ def test_runtime_defaults_railway_to_api_only() -> None:
     assert should_start_bot(env) is False
 
 
+def test_runtime_does_not_treat_public_agency_bot_service_name_as_worker() -> None:
+    env = {
+        "RAILWAY_ENVIRONMENT_ID": "prod",
+        "RAILWAY_SERVICE_NAME": "Agency-Os-bot",
+        "TELEGRAM_BOT_TOKEN": "masked",
+        "REDIS_URL": "redis://example",
+    }
+
+    assert runtime_role(env) == "api"
+    assert should_start_api(env) is True
+    assert should_start_bot(env) is False
+
+
 def test_runtime_starts_bot_on_railway_worker_when_required_values_exist() -> None:
     env = {
         "RAILWAY_ENVIRONMENT_ID": "prod",
