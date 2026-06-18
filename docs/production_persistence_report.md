@@ -8,6 +8,7 @@ Sprint 32 exists because the public health endpoint can look green while the app
 - Railway PostgreSQL and Redis could not be provisioned because the workspace hit the free-plan resource provision limit.
 - The emergency production `DATABASE_URL` was set to a SQLite URL using the `sqlite+pysqlite` driver.
 - Redis was not configured at the time of this audit, so duplicate polling protection is not durable.
+- Sprint 33 adds a bot kill-switch: production polling is blocked when Redis is missing unless `ALLOW_POLLING_WITHOUT_REDIS=true` is explicitly set.
 
 ## Backend
 
@@ -28,13 +29,17 @@ SQLite in Railway is not production-grade durable storage. Data may survive for 
 2. Set production `DATABASE_URL` to PostgreSQL.
 3. Set production `REDIS_URL` to Redis.
 4. Set `ALLOW_SQLITE_FALLBACK=false`.
-5. Run `alembic upgrade head` against PostgreSQL.
-6. Verify `/health` shows `db_backend=postgresql` and `redis=healthy`.
+5. Set `BOT_PRIMARY_INSTANCE=true` only on the one bot worker.
+6. Keep `ALLOW_POLLING_WITHOUT_REDIS=false`.
+7. Run `alembic upgrade head` against PostgreSQL.
+8. Verify `/health` shows `db_backend=postgresql` and `redis=healthy`.
+9. Verify `/botstatus` shows one active primary instance and no duplicate pollers.
 
 ## Long-Term Fix
 
 - Keep SQLite fallback disabled in production by default.
 - Use `/integrity` after every deployment.
+- Use `/botstatus` after every bot deployment.
 - Keep Production Observability visible to Owner only.
 - Export any emergency SQLite data before moving to PostgreSQL.
 

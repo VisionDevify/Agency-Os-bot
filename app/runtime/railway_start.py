@@ -19,13 +19,24 @@ def is_railway_environment(env: Mapping[str, str] | None = None) -> bool:
 
 def should_start_bot(env: Mapping[str, str] | None = None) -> bool:
     values = env or os.environ
+    primary = values.get("BOT_PRIMARY_INSTANCE")
+    if primary is not None and primary.strip().casefold() in FALSE_VALUES:
+        return False
     explicit = values.get("FORTUNA_START_BOT_WITH_API")
     if explicit is not None:
         normalized = explicit.strip().casefold()
         if normalized in FALSE_VALUES:
             return False
         if normalized in TRUE_VALUES:
+            if is_railway_environment(values) and not values.get("REDIS_URL"):
+                override = values.get("ALLOW_POLLING_WITHOUT_REDIS", "").strip().casefold()
+                if override not in TRUE_VALUES:
+                    return False
             return bool(values.get("TELEGRAM_BOT_TOKEN"))
+    if is_railway_environment(values) and not values.get("REDIS_URL"):
+        override = values.get("ALLOW_POLLING_WITHOUT_REDIS", "").strip().casefold()
+        if override not in TRUE_VALUES:
+            return False
     return bool(values.get("TELEGRAM_BOT_TOKEN"))
 
 

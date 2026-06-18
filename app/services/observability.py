@@ -21,6 +21,7 @@ from app.models.reporting import NotificationTarget
 from app.models.user import User
 from app.services.help_brain import help_questions_today, notification_pilot_status, proxy_pilot_status
 from app.services.heartbeats import list_heartbeats, system_status_summary
+from app.services.bot_instances import bot_instance_diagnostics
 from app.services.persistence import storage_status
 
 REQUIRED_NOTIFICATION_PURPOSES: tuple[tuple[str, str], ...] = (
@@ -129,6 +130,7 @@ def production_observability_summary(session: Session) -> dict[str, object]:
     help_total, help_confused = help_questions_today(session)
     notification_pilot = notification_pilot_status(session)
     proxy_pilot = proxy_pilot_status(session)
+    bot_diagnostics = bot_instance_diagnostics(session)
     latest_self_test = _latest(session, UISelfTestRun, desc(UISelfTestRun.created_at), desc(UISelfTestRun.id))
     owner_count = session.scalar(select(func.count(User.id)).where(User.is_owner.is_(True))) or 0
     role_count = session.scalar(select(func.count(Role.id))) or 0
@@ -188,6 +190,12 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         "last_telegram_update_at": bot_metadata.get("last_telegram_update_at", "Unknown"),
         "polling_guard": bot_metadata.get("polling_guard", "Unknown"),
         "redis_lock_status": bot_metadata.get("redis_lock_status", "Unknown"),
+        "bot_instance_id": bot_diagnostics["instance_id_masked"],
+        "bot_primary_polling_enabled": bot_diagnostics["primary_polling_enabled"],
+        "bot_polling_allowed": bot_diagnostics["preflight_allowed"],
+        "bot_polling_warning": bot_diagnostics["preflight_reason"] if not bot_diagnostics["preflight_allowed"] else "None",
+        "active_bot_instance_count": bot_diagnostics["active_instance_count"],
+        "duplicate_bot_instance_count": bot_diagnostics["duplicate_instance_count"],
         "last_audit_action": latest_audit.action if latest_audit else "None",
         "last_audit_at": latest_audit.created_at if latest_audit else None,
         "last_event_type": latest_event.event_type if latest_event else "None",

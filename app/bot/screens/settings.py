@@ -1,5 +1,6 @@
 from .formatting import *
 from app.services.integrity import run_integrity_check
+from app.services.bot_instances import bot_instance_diagnostics
 from app.services.observability import production_observability_summary
 from app.services.help_brain import (
     latest_ui_self_test_run,
@@ -262,6 +263,12 @@ def render_production_observability_page(session: Session, user: User | None = N
         migration_line,
         "",
         "Bot Heartbeat:",
+        f"Instance: {summary['bot_instance_id']}",
+        f"Primary Polling: {_yes_no(summary['bot_primary_polling_enabled'])}",
+        f"Polling Allowed: {_yes_no(summary['bot_polling_allowed'])}",
+        f"Active Bot Instances: {summary['active_bot_instance_count']}",
+        f"Duplicate Bot Instances: {summary['duplicate_bot_instance_count']}",
+        f"Polling Warning: {summary['bot_polling_warning']}",
         f"Bot Started: {summary['bot_started_at']}",
         f"Last Polling Loop: {summary['last_polling_loop_at']}",
         f"Last Telegram Update: {summary['last_telegram_update_at']}",
@@ -328,6 +335,40 @@ def render_integrity_page(session: Session, user: User | None = None) -> Screen:
         ]
     )
     return Screen(text="\n".join(lines), reply_markup=production_observability_menu())
+
+
+def render_botstatus_page(session: Session, user: User | None = None, *, current_instance_id: str | None = None) -> Screen:
+    diagnostics = bot_instance_diagnostics(session, current_instance_id=current_instance_id)
+    warning = "None"
+    if not diagnostics["preflight_allowed"]:
+        warning = str(diagnostics["preflight_reason"])
+    elif diagnostics["multiple_active_instances"]:
+        warning = "Multiple active bot instance heartbeats detected."
+    elif diagnostics["risk"] != "ready":
+        warning = str(diagnostics["risk"])
+
+    lines = [
+        "Fortuna Bot Status",
+        "",
+        f"Instance: {diagnostics['instance_id_masked']}",
+        f"Primary Polling: {_yes_no(diagnostics['primary_polling_enabled'])}",
+        f"Polling Allowed: {_yes_no(diagnostics['preflight_allowed'])}",
+        f"Redis Configured: {_yes_no(diagnostics['redis_configured'])}",
+        f"Polling Guard: {diagnostics['polling_guard']}",
+        f"Redis Lock: {diagnostics['redis_lock_status']}",
+        f"DB Backend: {diagnostics['db_backend']}",
+        f"Durable DB: {_yes_no(diagnostics['db_durable']) if diagnostics['db_durable'] is not None else 'unknown'}",
+        f"Environment: {diagnostics['environment']}",
+        f"Active Instances: {diagnostics['active_instance_count']}",
+        f"Duplicate Instances: {diagnostics['duplicate_instance_count']}",
+        f"Last Telegram Update: {diagnostics['last_update_at']}",
+        f"Last Polling Loop: {diagnostics['last_polling_loop_at']}",
+        f"Warning: {warning}",
+        "",
+        "No tokens, raw URLs, proxy passwords, or chat IDs are shown here.",
+    ]
+    return Screen(text="\n".join(lines), reply_markup=production_observability_menu())
+
 
 def render_availability_page(session: Session, user: User) -> Screen:
     availability = get_or_create_availability(session, user)

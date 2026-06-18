@@ -10,6 +10,7 @@ def test_runtime_starts_bot_on_railway_when_required_values_exist() -> None:
     env = {
         "RAILWAY_ENVIRONMENT_ID": "prod",
         "TELEGRAM_BOT_TOKEN": "masked",
+        "REDIS_URL": "redis://example",
     }
 
     assert should_start_bot(env) is True

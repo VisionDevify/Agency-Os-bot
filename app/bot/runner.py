@@ -25,6 +25,7 @@ from app.bot.screens import (
     render_post_watch_detail_page,
     render_proxy_detail_page,
     render_proxy_import_success_page,
+    render_botstatus_page,
     render_integrity_page,
     render_ui_self_test_page,
 )
@@ -79,6 +80,13 @@ from app.services.setup_wizard import (
     update_setup_model_profile,
 )
 from app.services.heartbeats import record_heartbeat
+from app.services.bot_instances import (
+    bot_instance_id,
+    duplicate_bot_instances,
+    mask_instance_id,
+    polling_preflight,
+    record_bot_instance_heartbeat,
+)
 from app.services.persistence import storage_status
 from app.services.notifications import (
     create_delivery_attempt,
@@ -92,6 +100,7 @@ from app.services.team_operations import BotPollingGuard, update_user_localizati
 
 logger = logging.getLogger(__name__)
 dp = Dispatcher()
+CURRENT_BOT_INSTANCE_ID = bot_instance_id()
 
 PENDING_ACCOUNT_CREATES: dict[int, dict[str, int | str]] = {}
 PENDING_AUTH_CODES: dict[int, int] = {}
@@ -135,6 +144,9 @@ def _bot_heartbeat_metadata(source: str, **extra: str) -> dict[str, str]:
     has_redis = bool(settings.redis_url)
     metadata = {
         "source": source,
+        "instance_id_masked": mask_instance_id(CURRENT_BOT_INSTANCE_ID),
+        "primary_polling_enabled": str(settings.bot_primary_instance),
+        "allow_polling_without_redis": str(settings.allow_polling_without_redis),
         "db_backend": storage.backend,
         "db_driver": storage.scheme,
         "db_durable": str(storage.durable),
@@ -150,6 +162,17 @@ def _bot_heartbeat_metadata(source: str, **extra: str) -> dict[str, str]:
         metadata["last_telegram_update_at"] = now
     metadata.update(extra)
     return metadata
+
+
+def _record_bot_heartbeat(session, *, status: str = "healthy", source: str, **extra: str) -> None:
+    metadata = _bot_heartbeat_metadata(source, **extra)
+    record_heartbeat(session, service_name="bot", status=status, metadata=metadata)
+    record_bot_instance_heartbeat(
+        session,
+        instance_id=CURRENT_BOT_INSTANCE_ID,
+        status=status,
+        metadata=metadata,
+    )
 
 
 def _username_from_message_user(user) -> str | None:
@@ -400,7 +423,7 @@ async def start(message: Message) -> None:
 
     with SessionLocal() as session:
         telegram_id = message.from_user.id
-        record_heartbeat(session, service_name="bot", status="healthy", metadata=_bot_heartbeat_metadata("telegram_start"))
+        _record_bot_heartbeat(session, status="healthy", source="telegram_start")
         if telegram_id == settings.owner_telegram_id:
             user = setup_owner_if_needed(
                 session,
@@ -445,7 +468,7 @@ async def selftest(message: Message) -> None:
 
     with SessionLocal() as session:
         telegram_id = message.from_user.id
-        record_heartbeat(session, service_name="bot", status="healthy", metadata=_bot_heartbeat_metadata("telegram_selftest"))
+        _record_bot_heartbeat(session, status="healthy", source="telegram_selftest")
         user = get_or_create_telegram_user(
             session,
             telegram_user_id=telegram_id,
@@ -478,7 +501,7 @@ async def integrity(message: Message) -> None:
 
     with SessionLocal() as session:
         telegram_id = message.from_user.id
-        record_heartbeat(session, service_name="bot", status="healthy", metadata=_bot_heartbeat_metadata("telegram_integrity"))
+        _record_bot_heartbeat(session, status="healthy", source="telegram_integrity")
         user = get_or_create_telegram_user(
             session,
             telegram_user_id=telegram_id,
@@ -503,6 +526,39 @@ async def integrity(message: Message) -> None:
     await message.answer(screen.text, reply_markup=screen.reply_markup)
 
 
+@dp.message(Command("botstatus"))
+async def botstatus(message: Message) -> None:
+    if message.from_user is None or SessionLocal is None:
+        await message.answer("Bot status is owner-only.")
+        return
+
+    with SessionLocal() as session:
+        telegram_id = message.from_user.id
+        _record_bot_heartbeat(session, status="healthy", source="telegram_botstatus")
+        user = get_or_create_telegram_user(
+            session,
+            telegram_user_id=telegram_id,
+            display_name=_display_name_from_message_user(message.from_user),
+            username=_username_from_message_user(message.from_user),
+            owner_telegram_id=settings.owner_telegram_id,
+        )
+        if not user.is_owner:
+            audit_action(
+                session,
+                actor=user,
+                action="access.denied",
+                resource_type="bot_status",
+                status="denied",
+                details={"permission": "owner"},
+            )
+            session.commit()
+            await message.answer("Bot status is owner-only.")
+            return
+        screen = render_botstatus_page(session, user, current_instance_id=CURRENT_BOT_INSTANCE_ID)
+        session.commit()
+    await message.answer(screen.text, reply_markup=screen.reply_markup)
+
+
 @dp.message(F.text)
 async def text_input(message: Message) -> None:
     if message.from_user is None or SessionLocal is None or message.text is None:
@@ -510,7 +566,7 @@ async def text_input(message: Message) -> None:
 
     telegram_id = message.from_user.id
     with SessionLocal() as session:
-        record_heartbeat(session, service_name="bot", status="healthy", metadata=_bot_heartbeat_metadata("telegram_text"))
+        _record_bot_heartbeat(session, status="healthy", source="telegram_text")
         user = get_or_create_telegram_user(
             session,
             telegram_user_id=telegram_id,
@@ -1110,7 +1166,7 @@ async def navigate(callback: CallbackQuery) -> None:
         return
 
     with SessionLocal() as session:
-        record_heartbeat(session, service_name="bot", status="healthy", metadata=_bot_heartbeat_metadata("telegram_callback"))
+        _record_bot_heartbeat(session, status="healthy", source="telegram_callback")
         user = get_or_create_telegram_user(
             session,
             telegram_user_id=callback.from_user.id,
@@ -1229,6 +1285,21 @@ async def main() -> None:
     token = settings.telegram_bot_token.get_secret_value()
     if not token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN is not configured")
+    preflight = polling_preflight()
+    if not preflight.allowed:
+        logger.error("Fortuna OS bot polling blocked: %s", preflight.reason)
+        if SessionLocal is not None:
+            with contextlib.suppress(Exception):
+                with SessionLocal() as session:
+                    _record_bot_heartbeat(
+                        session,
+                        status="blocked",
+                        source="startup_blocked",
+                        polling_block_reason=preflight.reason,
+                    )
+                    session.commit()
+        raise RuntimeError(preflight.reason)
+
     guard = BotPollingGuard(settings.redis_url)
     if not await _acquire_polling_guard(guard):
         raise RuntimeError("Another Fortuna OS bot polling instance appears active after waiting")
@@ -1247,12 +1318,7 @@ async def main() -> None:
             if SessionLocal is not None:
                 try:
                     with SessionLocal() as session:
-                        record_heartbeat(
-                            session,
-                            service_name="bot",
-                            status="healthy",
-                            metadata=_bot_heartbeat_metadata("polling_loop"),
-                        )
+                        _record_bot_heartbeat(session, status="healthy", source="polling_loop")
                         session.commit()
                 except Exception:
                     logger.warning("Unable to record bot polling heartbeat", exc_info=True)
@@ -1262,7 +1328,15 @@ async def main() -> None:
         logger.info("Starting Telegram bot")
         if SessionLocal is not None:
             with SessionLocal() as session:
-                record_heartbeat(session, service_name="bot", status="healthy", metadata=_bot_heartbeat_metadata("startup"))
+                duplicates = duplicate_bot_instances(session, current_instance_id=CURRENT_BOT_INSTANCE_ID)
+                if duplicates:
+                    logger.warning("Found %s other active Fortuna OS bot instance heartbeat(s)", len(duplicates))
+                _record_bot_heartbeat(
+                    session,
+                    status="healthy",
+                    source="startup",
+                    duplicate_instance_count=str(len(duplicates)),
+                )
                 session.commit()
         refresh_task = asyncio.create_task(refresh_guard())
         await dp.start_polling(bot)

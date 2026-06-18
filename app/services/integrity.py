@@ -16,6 +16,7 @@ from app.models.permissions import Role
 from app.models.proxy import Proxy
 from app.models.user import User
 from app.services.auth import audit_action
+from app.services.bot_instances import active_bot_instance_heartbeats
 from app.services.events import emit_event
 from app.services.observability import alembic_revision_status
 from app.services.persistence import storage_status
@@ -132,6 +133,16 @@ def run_integrity_check(session: Session, *, actor: User | None = None) -> dict[
         guard_check = "warning"
     checks.append(IntegrityCheck("Polling guard", guard_check, guard_status))
 
+    active_instances = active_bot_instance_heartbeats(session)
+    instance_status = "pass" if len(active_instances) <= 1 else "warning"
+    checks.append(
+        IntegrityCheck(
+            "Bot instances",
+            instance_status,
+            f"{len(active_instances)} active bot instance heartbeat(s) detected.",
+        )
+    )
+
     fail_count = sum(1 for check in checks if check.status == "fail")
     warning_count = sum(1 for check in checks if check.status == "warning")
     overall = "fail" if fail_count else "warning" if warning_count else "pass"
@@ -146,4 +157,5 @@ def run_integrity_check(session: Session, *, actor: User | None = None) -> dict[
         "storage_durable": storage.durable,
         "storage_warning": storage.warning,
         "redis_configured": bool(settings.redis_url),
+        "active_bot_instances": len(active_instances),
     }

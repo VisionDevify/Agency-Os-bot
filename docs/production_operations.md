@@ -69,6 +69,9 @@ These values are database-backed through `system_heartbeats`, `event_logs`, and 
 - Verify `/health` before starting the bot worker.
 - Keep only one bot poller active. The production worker owns Telegram polling; local bot processes should stay stopped unless production polling is intentionally paused.
 - The bot runner uses a Redis lock to refuse duplicate polling when another Fortuna OS bot process appears active.
+- `BOT_PRIMARY_INSTANCE=false` disables Telegram polling for a service even if a bot token exists.
+- In Railway/production, Redis is required for polling unless `ALLOW_POLLING_WITHOUT_REDIS=true` is explicitly set for emergency mode.
+- Owner-only `/botstatus` shows the masked bot instance ID, primary polling flag, Redis lock status, DB backend, and duplicate active instance warning.
 
 ## Telegram Groups
 
