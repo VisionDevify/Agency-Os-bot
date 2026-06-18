@@ -12,6 +12,7 @@ from app.models.autonomous_operations import FollowUp, OperationsAction, Operati
 from app.models.core import Automation, Report
 from app.models.coo import PriorityItem
 from app.models.event_log import EventLog
+from app.models.friction import FrictionItem
 from app.models.help import HelpKnowledgeBase, HelpQuestionLog, UISelfTestRun
 from app.models.incident import Incident, IncidentTimeline
 from app.models.intelligence import ExecutiveInsight, IntelligenceRun, IntelligenceSignal, IssuePattern, TrendSnapshot, WorkloadSnapshot
@@ -58,6 +59,7 @@ __all__ = [
     "ExecutiveInsight",
     "FirstDayChecklist",
     "FollowUp",
+    "FrictionItem",
     "HelpKnowledgeBase",
     "HelpQuestionLog",
     "ConfidenceRecord",

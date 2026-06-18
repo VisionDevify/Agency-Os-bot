@@ -22,6 +22,7 @@ def test_model_tables_are_registered() -> None:
         DailyAutopilotSetting,
         EventLog,
         ExecutiveInsight,
+        FrictionItem,
         IntelligenceRun,
         IntelligenceSignal,
         IssuePattern,
@@ -71,6 +72,7 @@ def test_model_tables_are_registered() -> None:
         "daily_autopilot_settings",
         "event_logs",
         "executive_insights",
+        "friction_items",
         "incidents",
         "intelligence_runs",
         "intelligence_signals",
@@ -109,6 +111,7 @@ def test_model_tables_are_registered() -> None:
     assert AuditLog.__tablename__ == "audit_logs"
     assert "status" in AuditLog.__table__.columns
     assert EventLog.__tablename__ == "event_logs"
+    assert FrictionItem.__tablename__ == "friction_items"
     assert DailyBriefing.__tablename__ == "daily_briefings"
     assert AccountabilitySnapshot.__tablename__ == "accountability_snapshots"
     assert ActivationBlockerDecision.__tablename__ == "activation_blocker_decisions"

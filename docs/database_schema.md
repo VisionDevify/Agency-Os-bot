@@ -1761,6 +1761,18 @@ No secrets or raw environment variables are stored for observability.
 
 These tables do not store secrets, raw environment variables, proxy passwords, 2FA codes, platform credentials, or raw Telegram chat IDs.
 
+## Sprint 35 Friction Items
+
+`friction_items`
+
+- screen where the friction was found
+- human-readable issue
+- severity: `low`, `medium`, `high`, `critical`
+- recommended fix
+- discovery timestamp
+
+Friction items are intentionally simple. They exist to track owner/mobile usability problems without converting every UX note into an alert, task, or recommendation.
+
 ## Future Planned Tables
 
 - `account_credentials`: secret references only, not raw secrets.
