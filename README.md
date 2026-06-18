@@ -1,6 +1,6 @@
-# Agency OS Bot
+# Fortuna OS Bot
 
-Secure foundation for the existing Telegram bot and GitHub repo.
+Secure foundation for the existing Telegram bot and GitHub repo. Fortuna OS is the user-facing command center brand; internal package names and historical docs may still use Agency OS where renaming would add migration risk.
 
 ## Stack
 

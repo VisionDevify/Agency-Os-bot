@@ -1486,6 +1486,66 @@ Indexes and constraints:
 - Check constraint on `completion_score`.
 - Index on completion score.
 
+## Sprint 22 Autonomous Operations
+
+### operations_workflows
+
+Tracks each autonomous diagnosis or preparation workflow Fortuna OS starts after something changes.
+
+Columns:
+
+- `id`: primary key.
+- `workflow_type`: account, model, creator, opportunity, readiness, or daily-cycle workflow category.
+- `source_type`: source entity family such as `account`, `model_brand`, `creator_watch`, `opportunity`, `agency_activation`, or `system`.
+- `source_id`: source identifier stored as text for cross-entity flexibility.
+- `status`: `pending`, `ready`, `running`, `completed`, `blocked`, `failed`, or `skipped`.
+- `created_at`, `updated_at`: timestamps.
+
+Indexes and constraints:
+
+- Check constraint on `status`.
+- Indexes on workflow type, source, status, and updated timestamp.
+
+### operations_actions
+
+Stores the next safe actions Fortuna OS prepared inside a workflow.
+
+Columns:
+
+- `id`: primary key.
+- `workflow_id`: FK to `operations_workflows.id`.
+- `action_type`: deterministic action key such as `assign_proxy`, `complete_auth_setup`, `recommend_assignee`, or `track_result`.
+- `status`: `pending`, `ready`, `running`, `completed`, `blocked`, `failed`, or `skipped`.
+- `priority`: `low`, `normal`, `high`, or `urgent`.
+- `assigned_user_id`: nullable FK to `users.id` for routed ownership.
+- `result_summary`: safe human-readable summary only.
+- `created_at`, `updated_at`: timestamps.
+
+Indexes and constraints:
+
+- Check constraints on `status` and `priority`.
+- Indexes on workflow, status, priority, assigned user, and creation timestamp.
+
+### follow_ups
+
+Tracks outstanding reminders Fortuna OS should revisit without relying on the owner to rediscover the issue.
+
+Columns:
+
+- `id`: primary key.
+- `source_type`: source entity family.
+- `source_id`: source identifier stored as text.
+- `due_at`: UTC follow-up time.
+- `assigned_user_id`: nullable FK to `users.id`.
+- `status`: `pending`, `completed`, `blocked`, `failed`, or `skipped`.
+- `reminder_count`: number of reminders already attempted.
+- `created_at`, `updated_at`: timestamps.
+
+Indexes and constraints:
+
+- Check constraint on `status`.
+- Indexes on source, status, due time, and assigned user.
+
 ## Soft Delete Strategy
 
 - Users are not deleted during normal admin flows. Use `disabled` or `denied`.
@@ -1504,6 +1564,7 @@ Indexes and constraints:
 - Post watch records use `status` for recent, attention-needed, assigned, and archived states.
 - Comment strategies are derived guidance and can be deleted with the parent opportunity.
 - Setup wizard states are kept as operational history. Demo records are intentionally removable only through owner-only demo cleanup.
+- Operations workflows, operations actions, and follow-ups are operational history and should move through status instead of being deleted.
 - Learning events, playbook runs, outcome memory, and confidence records should not be hard deleted during normal operations.
 - Playbooks should move to `needs_review` or `retired` instead of deletion.
 - System heartbeat rows are updated in place by service name; state changes are still emitted to audit/event logs.

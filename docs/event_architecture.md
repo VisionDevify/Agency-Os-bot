@@ -351,3 +351,29 @@ Safe metadata can include model ID, account ID, creator ID, opportunity ID, rela
 Unsafe metadata remains forbidden:
 
 - bot tokens, passwords, encryption keys, proxy passwords, platform passwords, verification codes, raw Telegram chat IDs, and private platform content.
+
+## Sprint 22 Autonomous Operations Events
+
+Fortuna OS now records internal operational behavior when it diagnoses records and prepares safe next actions.
+
+Core event names:
+
+- `operations.workflow.created`
+- `follow_up.created`
+- `autopilot.account_analyzed`
+- `autopilot.model_analyzed`
+- `autopilot.creator_analyzed`
+- `autopilot.opportunity_analyzed`
+- `autopilot.readiness_analyzed`
+- `autopilot.daily_cycle.completed`
+- `owner.promoted`
+- `owner.demoted`
+- `owner.protection_triggered`
+
+Autopilot events mean Fortuna OS inspected internal data and prepared safe operational records. They do not mean the system posted externally, scraped platforms, bypassed security, stored passwords, or executed high-risk automations.
+
+Safe metadata can include workflow IDs, readiness score, source entity IDs, missing counts, priority, status, assigned user ID, and due timestamps.
+
+Unsafe metadata remains forbidden:
+
+- bot tokens, passwords, encryption keys, proxy passwords, credential values, verification codes, raw Telegram chat IDs, raw platform payloads, and any social-platform session data.

@@ -294,6 +294,9 @@ def create_manual_opportunity(
         body=f"{opportunity.title} is ready for human review.",
         severity=priority if priority in {"high", "critical"} else None,
     )
+    from app.services.autonomous_operations import run_opportunity_autopilot
+
+    run_opportunity_autopilot(session, opportunity, actor=actor)
     return opportunity
 
 
@@ -419,6 +422,9 @@ def create_creator_watch(
         body=f"{creator.creator_name} was added to Creator Watch.",
         severity=creator.priority if creator.priority in {"high", "critical"} else None,
     )
+    from app.services.autonomous_operations import run_creator_autopilot
+
+    run_creator_autopilot(session, creator, actor=actor)
     return creator
 
 
@@ -1223,18 +1229,21 @@ def create_task_from_opportunity(
 
     model = session.get(ModelBrand, opportunity.model_brand_id) if opportunity.model_brand_id else None
     account: Account | None = None
+    task_assignee = assignee
+    if task_assignee is None and opportunity.assigned_to_user_id is not None:
+        task_assignee = session.get(User, opportunity.assigned_to_user_id)
     task = create_task(
         session,
         actor=actor,
         title=f"Work opportunity: {opportunity.title[:120]}",
         description=(
             "Review the opportunity, pick a human-approved strategy, perform any platform action manually, "
-            "then record the result in Agency OS."
+            "then record the result in Fortuna OS."
         ),
         priority="high" if opportunity.priority == "critical" else opportunity.priority,
         model_brand=model,
         account=account,
-        assigned_to=assignee or opportunity.assigned_to,
+        assigned_to=task_assignee,
         due_at=opportunity.due_at,
     )
     audit_action(
@@ -1353,7 +1362,7 @@ def help_copilot_answer(
         next_action = "agency_activation"
     elif "where" in question_text and "start" in question_text:
         if {"Owner", "Admin"} & role_names:
-            answer = "Start with Owner Home -> Setup Agency. Create the first model, add accounts, assign team, then add creators and opportunities."
+            answer = "Start with Owner Home -> Setup Fortuna. Create the first model, add accounts, assign team, then add creators and opportunities."
             next_action = "setup:wizard"
         elif "Manager" in role_names:
             answer = "Start with Manager Home -> Manager QA. It shows models, users, opportunities, and tasks that need setup."
@@ -1365,16 +1374,16 @@ def help_copilot_answer(
             answer = "Start from your home screen. It shows the work areas your role can use today."
             next_action = "menu"
     elif "first model" in question_text or ("create" in question_text and "model" in question_text):
-        answer = "Open Setup Agency -> Create Model/Brand. Send: display name | stage name | country | timezone | notes. You can edit it later from Model Detail."
+        answer = "Open Setup Fortuna -> Create Model/Brand. Send: display name | stage name | country | timezone | notes. You can edit it later from Model Detail."
         next_action = "setup:wizard:model"
     elif "edit" in question_text and "model" in question_text:
         answer = "Open Models -> View Models -> choose the model -> Edit Model. Use Edit Name, Edit Stage Name, Edit Country, Edit Timezone, or Edit Notes."
         next_action = "models:view"
     elif "add" in question_text and "account" in question_text:
-        answer = "Create a model first, then open Setup Agency -> Add Accounts or Models -> Model Detail -> Manage Accounts. Accounts attach to a model or brand."
+        answer = "Create a model first, then open Setup Fortuna -> Add Accounts or Models -> Model Detail -> Manage Accounts. Accounts attach to a model or brand."
         next_action = "setup:wizard:accounts"
     elif "assign" in question_text and ("chatter" in question_text or "team" in question_text):
-        answer = "Open Setup Agency -> Assign Team or the model detail screen -> Manage Team. Pick Chatter, Senior Chatter, Chatter Manager, VA, or Manager."
+        answer = "Open Setup Fortuna -> Assign Team or the model detail screen -> Manage Team. Pick Chatter, Senior Chatter, Chatter Manager, VA, or Manager."
         next_action = "setup:wizard:team"
     elif "add" in question_text and "creator" in question_text:
         answer = "Open Opportunities -> Creator Watchlist -> Add Creator, then follow the guided steps for platform, username, niche, priority, and assignment."
@@ -1383,7 +1392,7 @@ def help_copilot_answer(
         answer = "Open Opportunities -> Command Center -> Add Opportunity. Choose a source, add the title/reference, assign a chatter if ready, then generate strategies."
         next_action = "opportunities:add"
     elif "assign" in question_text and "opportun" in question_text:
-        answer = "Open Opportunity Detail, tap Assign Chatter, choose the teammate, and Agency OS will make it visible in their workspace."
+        answer = "Open Opportunity Detail, tap Assign Chatter, choose the teammate, and Fortuna OS will make it visible in their workspace."
         next_action = "opportunities:command"
     elif "where" in question_text and "opportun" in question_text:
         answer = "Chatters use My Opportunities. Managers use Opportunities -> Command Center or Manager View."
@@ -1418,7 +1427,7 @@ def help_copilot_answer(
         answer = "Use your home screen first. It only shows the areas that matter for your role."
         next_action = "menu"
     else:
-        answer = "Tell Agency OS what you are trying to do, then use the suggested next action. Managers can use Team Activation to see who needs help."
+        answer = "Tell Fortuna OS what you are trying to do, then use the suggested next action. Managers can use Team Activation to see who needs help."
         next_action = current_page or "help"
     audit_action(
         session,

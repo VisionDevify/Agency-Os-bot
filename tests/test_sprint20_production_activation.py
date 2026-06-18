@@ -61,8 +61,8 @@ def test_help_center_exposes_team_invite_packet_for_owner() -> None:
         labels = [button.text for row in center.reply_markup.inline_keyboard for button in row]
 
         assert "Team Invite Packet" in labels
-        assert "Agency OS invite for Chatter" in topic.text
-        assert "Agency OS invite for Manager" in topic.text
+        assert "Fortuna OS invite for Chatter" in topic.text
+        assert "Fortuna OS invite for Manager" in topic.text
         assert "Do not send passwords or verification codes" in topic.text
 
 

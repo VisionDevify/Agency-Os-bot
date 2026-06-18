@@ -107,7 +107,7 @@ def performance_menu() -> InlineKeyboardMarkup:
 
 def help_center_menu(topic_buttons: list[tuple[str, str]] | None = None) -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in (topic_buttons or [])]
-    rows.append([InlineKeyboardButton(text="How Agency OS Is Organized", callback_data=callback_for("structure"))])
+    rows.append([InlineKeyboardButton(text="How Fortuna OS Is Organized", callback_data=callback_for("structure"))])
     rows.append([InlineKeyboardButton(text="Help Copilot", callback_data=callback_for("help_copilot"))])
     rows.extend(page_controls(back_to="menu"))
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -116,7 +116,7 @@ def help_center_menu(topic_buttons: list[tuple[str, str]] | None = None) -> Inli
 def structure_map_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Setup Agency", callback_data=callback_for("setup:wizard"))],
+            [InlineKeyboardButton(text="Setup Fortuna", callback_data=callback_for("setup:wizard"))],
             [InlineKeyboardButton(text="First Day Plan", callback_data=callback_for("first_day_plan"))],
             *page_controls(back_to="help"),
         ]
@@ -126,7 +126,7 @@ def structure_map_menu() -> InlineKeyboardMarkup:
 def setup_wizard_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Agency Activation", callback_data=callback_for("agency_activation"))],
+            [InlineKeyboardButton(text="Fortuna Activation", callback_data=callback_for("agency_activation"))],
             [InlineKeyboardButton(text="Start Setup Wizard", callback_data=callback_for("setup:wizard:start"))],
             [InlineKeyboardButton(text="Create First Model", callback_data=callback_for("setup:wizard:model"))],
             [InlineKeyboardButton(text="Add Accounts", callback_data=callback_for("setup:wizard:accounts"))],
@@ -147,6 +147,7 @@ def agency_activation_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="Run Activation Scan", callback_data=callback_for("agency_activation:scan"))],
+            [InlineKeyboardButton(text="Run Daily Cycle", callback_data=callback_for("agency_activation:daily_cycle"))],
             [
                 InlineKeyboardButton(text="Fix Models", callback_data=callback_for("agency_activation:models")),
                 InlineKeyboardButton(text="Fix Accounts", callback_data=callback_for("agency_activation:accounts")),
@@ -1195,7 +1196,7 @@ def model_member_choice_menu(
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def user_detail_menu(user_id: int, status: str) -> InlineKeyboardMarkup:
+def user_detail_menu(user_id: int, status: str, is_owner: bool = False) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
     if status == "pending":
         rows.append(
@@ -1206,6 +1207,10 @@ def user_detail_menu(user_id: int, status: str) -> InlineKeyboardMarkup:
         )
     if status == "active":
         rows.append([InlineKeyboardButton(text="Disable", callback_data=f"nav:user:{user_id}:disable")])
+        if is_owner:
+            rows.append([InlineKeyboardButton(text="Demote Owner", callback_data=f"nav:user:{user_id}:demote_owner")])
+        else:
+            rows.append([InlineKeyboardButton(text="Promote Owner", callback_data=f"nav:user:{user_id}:promote_owner")])
     if status in {"disabled", "denied"}:
         rows.append(
             [InlineKeyboardButton(text="Reactivate", callback_data=f"nav:user:{user_id}:reactivate")]

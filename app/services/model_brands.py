@@ -141,6 +141,9 @@ def create_model_brand(
         payload=_model_payload(model_brand),
     )
     _emit_model_health(session, model_brand, actor=actor)
+    from app.services.autonomous_operations import run_model_autopilot
+
+    run_model_autopilot(session, model_brand, actor=actor)
     return model_brand
 
 
@@ -202,6 +205,9 @@ def update_model_brand(
         payload=_model_payload(model_brand),
     )
     _emit_model_health(session, model_brand, actor=actor)
+    from app.services.autonomous_operations import run_model_autopilot
+
+    run_model_autopilot(session, model_brand, actor=actor)
     return model_brand
 
 

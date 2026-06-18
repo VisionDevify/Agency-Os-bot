@@ -1,8 +1,8 @@
-# Agency OS Master Spec
+# Fortuna OS Master Spec
 
 ## Project Vision
 
-Agency OS Bot is the secure Telegram command center for agency operations. Its first job is to make ownership, access control, auditability, and navigation reliable before adding business automations. The bot should behave like an operations console: fast to scan, hard to misuse, and careful with secrets.
+Fortuna OS Bot is the secure Telegram command center for agency operations. Its first job is to make ownership, access control, auditability, and navigation reliable before adding business automations. The bot should behave like an operations console: fast to scan, hard to misuse, and careful with secrets.
 
 The long-term system should coordinate users, roles, models and brands, social or platform accounts, proxy health, tasks, incidents, reports, automations, simulation mode, self-healing, and an AI operations brain that can explain status and recommend safe actions.
 
@@ -28,10 +28,11 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Sprint 18: Real Opportunity Intake and Team Assignment Activation with guided Creator Watch intake, guided Opportunity intake, guided Own Post Watch intake, creator/post-to-opportunity conversion, assignment workflows, result recording, Comment Strategy V2, Help Copilot upgrades, activation QA, and digestable opportunity events.
 - Sprint 20: Production Data Activation readiness with first-day operations smoke-test guidance, team invite packet, clearer account setup empty states, and explicit manual notification group registration steps.
 - Sprint 21: Self-operational agency activation with readiness scoring, setup gap detection, owner Agency Activation dashboard, model completion wizard, account setup states, Olympix proxy wizard, activation recommendations, deduped setup task creation, and live-state Help Copilot answers.
+- Sprint 22: Fortuna OS autonomous operations layer with durable operations workflows, workflow actions, follow-ups, account/model/opportunity/creator autopilots, readiness autopilot, daily autonomous cycle records, owner attention routing, multiple-owner management, proxy navigation repair, and user-facing Fortuna OS branding.
 
 ## Roadmap
 
-- Sprint 18: richer task/incident creation forms, notification group activation, team training workflows, and operational QA with real agency users.
+- Sprint 23: operator-ready notification group activation, production daily-cycle scheduling, and real team rollout against approved agency data.
 - Future: AI Operations Brain for natural-language summaries, anomaly explanations, and operator-approved next actions.
 
 ## Core Modules
@@ -60,9 +61,10 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Outcome Memory: aggregated pattern memory that tracks what worked, what failed, and how often recurring issue categories succeed or fail.
 - Confidence Engine: records why confidence changed for playbooks, recommendations, automations, opportunities, signals, and patterns.
 - Opportunities: manual, human-approved opportunity records, Creator Watch, Own Post Watch, guided intake flows, queue summaries, comment strategy prompts, assignment workflows, and opportunity results for future funnel intelligence without scraping or automatic posting.
-- Help Copilot: role-aware deterministic guidance that explains common workflows and points users to the next Agency OS screen.
+- Help Copilot: role-aware deterministic guidance that explains common workflows and points users to the next Fortuna OS screen.
 - Team Activation: friendly readiness scoring and QA flags for onboarding, pending approval, role/timezone/availability setup, assigned work, chatter model assignment, opportunity assignment, first task completion, first opportunity review, and Help Center usage.
 - Agency Activation: owner/admin readiness engine that inspects live models, accounts, teams, creators, opportunities, and notification targets; persists readiness snapshots; detects setup blockers; creates safe recommendations; and creates deduped setup tasks.
+- Autonomous Operations: durable workflows, actions, routing decisions, and follow-ups created when accounts, models, creators, opportunities, readiness scans, or the daily cycle need a next step.
 - System Status: service heartbeats for API, bot, db, redis, and Railway deployment state.
 - Settings: administrative utilities including audit log access, Bot Status, and Notification Targets.
 

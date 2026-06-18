@@ -192,7 +192,7 @@ def _build_model_gaps(
             ActivationGap(
                 code="model.none",
                 title="Create your first model/brand",
-                description="Agency OS needs one model or brand before accounts, creators, and opportunities can connect.",
+                description="Fortuna OS needs one model or brand before accounts, creators, and opportunities can connect.",
                 severity="critical",
                 section="models",
                 action_page="setup:wizard:model",
@@ -376,11 +376,11 @@ def _build_notification_gaps(active_purposes: set[str]) -> list[ActivationGap]:
         ActivationGap(
             code="notifications.missing_targets",
             title="Notification targets missing",
-            description="Add Agency OS HQ, Operations, Incidents, Automation Logs, and Testing targets when the groups are ready.",
+            description="Add Fortuna HQ, Fortuna Operations, Incidents, Automation Logs, and Testing targets when the groups are ready.",
             severity="warning",
             section="notifications",
             action_page="notification_targets",
-            task_title="Register Agency OS notification targets",
+            task_title="Register Fortuna OS notification targets",
         )
     ]
 
@@ -633,7 +633,7 @@ def activation_answer(session: Session, question: str) -> str:
     blockers = report["blockers"]
     top_blockers = blockers[:3]
     if not blockers:
-        return "Your agency setup looks ready. Next best step: generate a daily briefing and start assigning real work."
+        return "Fortuna OS setup looks ready. Next best step: generate a daily briefing and start assigning real work."
     blocker_lines = "\n".join(f"- {blocker['title']}" for blocker in top_blockers)
     score = report["readiness_score"]
     q = question.lower()
@@ -646,4 +646,4 @@ def activation_answer(session: Session, question: str) -> str:
     if "next" in q or "finish" in q:
         first = blockers[0]
         return f"Readiness is {score}%. Start here: {first['title']}. {first['description']}"
-    return f"Agency readiness is {score}%. The main blockers are:\n{blocker_lines}\nUse Owner Home -> Agency Activation to fix them in order."
+    return f"Fortuna readiness is {score}%. The main blockers are:\n{blocker_lines}\nUse Owner Home -> Fortuna Activation to fix them in order."

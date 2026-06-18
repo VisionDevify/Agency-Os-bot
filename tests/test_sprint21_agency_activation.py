@@ -47,7 +47,7 @@ def test_agency_readiness_scoring_detects_setup_gaps() -> None:
         assert "model.missing_team" in codes
         assert "model.missing_creators" in codes
         assert "notifications.missing_targets" in codes
-        assert "Agency Readiness:" in screen.text
+        assert "Fortuna Readiness:" in screen.text
         assert "Top Blockers:" in screen.text
         assert any(
             button.callback_data == f"nav:model:{model.id}:complete"
@@ -135,7 +135,7 @@ def test_help_copilot_answers_activation_questions_from_live_state() -> None:
         next_answer = help_copilot_answer(session, owner, question="What should I do next?")
 
         assert answer["next_action"] == "agency_activation"
-        assert "Agency readiness" in answer["answer"]
+        assert "Fortuna readiness" in answer["answer"]
         assert "main blockers" in answer["answer"]
         assert next_answer["next_action"] == "agency_activation"
 
@@ -145,4 +145,4 @@ def test_owner_home_includes_agency_activation() -> None:
         owner = _owner(session)
         labels = {label for label, _ in role_home_items(owner)}
 
-        assert "Agency Activation" in labels
+        assert "Fortuna Activation" in labels

@@ -430,8 +430,8 @@ def active_targets_for_event(
 
 def build_notification_text(event_type: str, *, title: str | None = None, body: str | None = None) -> str:
     safe_title = title or event_type.replace(".", " ").title()
-    safe_body = body or "Agency OS event routed safely."
-    return f"Agency OS\n{safe_title}\n{safe_body}"
+    safe_body = body or "Fortuna OS event routed safely."
+    return f"Fortuna OS\n{safe_title}\n{safe_body}"
 
 
 def record_notification_routed(

@@ -160,6 +160,7 @@ from app.services.agency_activation import (
     account_setup_states,
     build_activation_report,
 )
+from app.services.autonomous_operations import outstanding_blockers, recent_operations_activity
 from app.services.model_brands import (
     RELATIONSHIP_LABELS,
     active_users_for_assignment,
@@ -320,7 +321,7 @@ PAGE_TITLES: dict[str, str] = {
 
 def render_main_menu(session: Session | None = None, user: User | None = None) -> Screen:
     if session is None or user is None:
-        return Screen(text="Agency OS\nSelect an area.", reply_markup=main_menu())
+        return Screen(text="Fortuna OS\nSelect an area.", reply_markup=main_menu())
     details = personalized_dashboard(session, user)
     items = role_home_items(user)
     lines = [
@@ -528,9 +529,9 @@ def render_help_topic_page(topic: str, user: User | None = None) -> Screen:
 
 def render_structure_map_page() -> Screen:
     lines = [
-        "How Agency OS Is Organized",
+        "How Fortuna OS Is Organized",
         "",
-        "Agency",
+        "Fortuna HQ",
         "↓",
         "Models / Brands",
         "↓",
@@ -550,9 +551,9 @@ def render_setup_wizard_page(session: Session, user: User | None = None) -> Scre
     summary = summarize_setup_state(session, state)
     model = summary["model"]
     lines = [
-        "Agency Setup Wizard",
+        "Fortuna Setup Wizard",
         "",
-        "Use this to make Agency OS usable for the team without guessing where to start.",
+        "Use this to make Fortuna OS usable for the team without guessing where to start.",
         "",
         "Steps:",
         "1. Create Model/Brand",
@@ -586,10 +587,12 @@ def _readiness_label(score: int) -> str:
 def render_agency_activation_page(session: Session) -> Screen:
     report = build_activation_report(session)
     blockers = report["blockers"]
+    recent_actions = recent_operations_activity(session)
+    open_blockers = outstanding_blockers(session)
     lines = [
-        "Agency Activation",
+        "Fortuna Activation",
         "",
-        f"Agency Readiness: {_status_marker('healthy' if report['readiness_score'] >= 85 else 'warning' if report['readiness_score'] >= 60 else 'critical')} {report['readiness_score']}% ({_readiness_label(report['readiness_score'])})",
+        f"Fortuna Readiness: {_status_marker('healthy' if report['readiness_score'] >= 85 else 'warning' if report['readiness_score'] >= 60 else 'critical')} {report['readiness_score']}% ({_readiness_label(report['readiness_score'])})",
         "",
         f"Models Ready: {report['models_ready']}%",
         f"Accounts Ready: {report['accounts_ready']}%",
@@ -604,6 +607,14 @@ def render_agency_activation_page(session: Session) -> Screen:
         lines.append("- None. Setup is ready for daily operations.")
     for blocker in blockers[:6]:
         lines.append(f"- {blocker['title']}")
+    lines.extend(["", "What Fortuna OS Did Today:"])
+    lines.extend(f"- {item}" for item in recent_actions[:4])
+    if not recent_actions:
+        lines.append("- No autonomous actions recorded yet.")
+    lines.extend(["", "Outstanding Blockers:"])
+    lines.extend(f"- {item}" for item in open_blockers[:4])
+    if not open_blockers:
+        lines.append("- No autonomous blockers currently open.")
     lines.extend(
         [
             "",
@@ -676,7 +687,7 @@ def render_model_completion_page(session: Session, model_id: int) -> Screen:
     lines.extend(
         [
             "",
-            "Use the buttons below to fill the missing pieces. You can come back here anytime from Agency Activation.",
+            "Use the buttons below to fill the missing pieces. You can come back here anytime from Fortuna Activation.",
         ]
     )
     return Screen("\n".join(lines), model_completion_menu(model_id))
@@ -932,7 +943,7 @@ def render_demo_seed_page() -> Screen:
 
 def render_models_home() -> Screen:
     return Screen(
-        text="Models / Brands\n\nEverything in Agency OS starts with a model or brand.",
+        text="Models / Brands\n\nEverything in Fortuna OS starts with a model or brand.",
         reply_markup=models_menu(),
     )
 
@@ -1541,7 +1552,7 @@ def render_account_list_page(
     buttons: list[tuple[str, str]] = []
     if not current_accounts:
         if back_to.startswith("model:") or title.startswith("Accounts for "):
-            lines.append("No accounts yet. Add an account to this model from Setup Agency or Accounts -> Add Account.")
+            lines.append("No accounts yet. Add an account to this model from Setup Fortuna or Accounts -> Add Account.")
         else:
             lines.append("No accounts yet. Create a model first, then attach IG/X/OF/Email accounts.")
     for account in current_accounts[:15]:
@@ -2425,7 +2436,7 @@ def render_recommendation_detail_page(session: Session, recommendation_id: int) 
         f"Target: {target}",
         f"Description: {recommendation.description}",
         "",
-        "Jump opens the closest related Agency OS page when available.",
+        "Jump opens the closest related Fortuna OS page when available.",
     ]
     return Screen(text="\n".join(lines), reply_markup=recommendation_detail_menu(recommendation.id))
 
@@ -2957,7 +2968,7 @@ def render_opportunity_result_status_page(session: Session, opportunity_id: int)
         ("Failed", f"nav:opportunity:{opportunity.id}:result:failed"),
     ]
     return Screen(
-        text="Record Result\n\nChoose the human-recorded result. Agency OS will ask for notes next.",
+        text="Record Result\n\nChoose the human-recorded result. Fortuna OS will ask for notes next.",
         reply_markup=choice_menu(choices, back_to=f"opportunity:{opportunity.id}"),
     )
 
@@ -3062,7 +3073,7 @@ def render_manager_opportunity_page(session: Session) -> Screen:
 
 def render_opportunity_learning_v2_page(session: Session) -> Screen:
     summary = opportunity_learning_overview(session)
-    lines = ["Opportunity Learning", "", "What Agency OS is learning from human-recorded outcomes.", ""]
+    lines = ["Opportunity Learning", "", "What Fortuna OS is learning from human-recorded outcomes.", ""]
     lines.append("Best Niches:")
     if not summary["best_niches"]:
         lines.append("- No opportunity outcomes yet.")
@@ -3352,7 +3363,7 @@ def render_onboarding_page(session: Session, user: User, *, step: str | None = N
     current_step = step or onboarding_next_step(user)
     if current_step == "language":
         return Screen(
-            text="Welcome to Agency OS.\n\nStep 1: Select your language.",
+            text="Welcome to Fortuna OS.\n\nStep 1: Select your language.",
             reply_markup=onboarding_language_menu(),
         )
     if current_step == "country":
@@ -3831,7 +3842,7 @@ def render_user_detail_page(session: Session, user_id: int) -> Screen:
         "Recent Audit Actions:",
         *recent,
     ]
-    return Screen(text="\n".join(lines), reply_markup=user_detail_menu(user.id, user.status))
+    return Screen(text="\n".join(lines), reply_markup=user_detail_menu(user.id, user.status, user.is_owner))
 
 
 def render_role_assignment_page(session: Session, user_id: int, action: str) -> Screen:

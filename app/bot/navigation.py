@@ -13,7 +13,9 @@ from app.services.auth import (
     audit_action,
     deny_user,
     disable_user,
+    demote_owner,
     get_user_by_id,
+    promote_owner,
     reactivate_user,
     remove_permission_from_role,
     remove_role_from_user,
@@ -30,6 +32,7 @@ from app.services.accounts import (
     mark_auth_session_success,
 )
 from app.services.agency_activation import run_activation_scan
+from app.services.autonomous_operations import run_daily_autonomous_cycle
 from app.services.model_brands import (
     archive_model_brand,
     assign_model_member,
@@ -289,6 +292,9 @@ def _perform_admin_action(
         return "setup:wizard"
     if page == "agency_activation:scan":
         run_activation_scan(session, actor=actor, create_tasks=True)
+        return "agency_activation"
+    if page == "agency_activation:daily_cycle":
+        run_daily_autonomous_cycle(session, actor=actor)
         return "agency_activation"
     if page == "setup:wizard:finish":
         state = latest_setup_state(session, actor)
@@ -788,6 +794,12 @@ def _perform_admin_action(
         if action == "reactivate":
             reactivate_user(session, target, actor=actor)
             return f"user:{target.id}"
+        if action == "promote_owner":
+            promote_owner(session, target, actor=actor)
+            return f"user:{target.id}"
+        if action == "demote_owner":
+            demote_owner(session, target, actor=actor)
+            return f"user:{target.id}"
         if action == "assign_role" and len(parts) >= 4:
             role_name = ":".join(parts[3:])
             assign_role_to_user(session, target, role_name, actor=actor)
@@ -957,6 +969,8 @@ def screen_for_page(
         or normalized.startswith("incidents:")
         or normalized.startswith("incident:")
         or normalized.startswith("reports:")
+        or normalized.startswith("proxies:")
+        or normalized.startswith("proxy:")
         or normalized.startswith("recommendation:")
         or normalized.startswith("intelligence")
         or normalized.startswith("playbook:")

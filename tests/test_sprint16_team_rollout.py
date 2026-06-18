@@ -63,7 +63,7 @@ def test_role_specific_home_screens_hide_irrelevant_systems() -> None:
         assign_role_to_user(session, va, RoleName.VA, actor=owner)
         assign_role_to_user(session, client, RoleName.MODEL_CLIENT, actor=owner)
 
-        assert "Automation" in {label for label, _ in role_home_items(owner)}
+        assert "Fortuna Automation" in {label for label, _ in role_home_items(owner)}
         manager_labels = {label for label, _ in role_home_items(manager)}
         assert {"Team", "Models", "Tasks", "Incidents", "Opportunities", "Reports"} <= manager_labels
         assert "Operations Dashboard" not in manager_labels

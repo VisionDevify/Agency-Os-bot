@@ -49,9 +49,9 @@ HELP_TOPICS: dict[str, str] = {
     "tasks": "A task is a clear piece of work with an owner, priority, and due date.",
     "incidents": "An incident is something that needs attention, investigation, or resolution.",
     "opportunities": "An opportunity is a manual, human-approved growth or outreach idea.",
-    "availability": "Availability tells Agency OS who is on shift, away, or in quiet hours.",
+    "availability": "Availability tells Fortuna OS who is on shift, away, or in quiet hours.",
     "complete_work": "Open your task, start it, add notes if needed, then mark it complete when the work is done.",
-    "recommendations": "Recommendations are calm prompts from Agency OS about what may need attention next.",
+    "recommendations": "Recommendations are calm prompts from Fortuna OS about what may need attention next.",
     "get_help": "Use Help, ask your manager, or escalate a task or incident when you are blocked.",
 }
 
@@ -74,7 +74,7 @@ def team_invite_message(role: str, *, bot_username: str = "@FortunaSolstice_Bot"
     }[normalized]
     return "\n".join(
         [
-            f"Agency OS invite for {role_label}",
+            f"Fortuna OS invite for {role_label}",
             f"1. Open {bot_username} in Telegram.",
             "2. Press /start.",
             "3. Choose your language, country, timezone, and 12h/24h time format.",
@@ -146,18 +146,18 @@ def role_home_items(user: User | None) -> list[tuple[str, str]]:
     role = primary_role(user)
     if role in {"Owner", "Admin"}:
         return [
-            ("Setup Agency", "setup:wizard"),
-            ("Agency Activation", "agency_activation"),
+            ("Setup Fortuna", "setup:wizard"),
+            ("Fortuna Activation", "agency_activation"),
             ("First Day Plan", "first_day_plan"),
-            ("Executive Command Center", "reports:executive"),
-            ("Intelligence", "intelligence"),
-            ("Opportunities", "opportunities"),
+            ("Fortuna HQ", "reports:executive"),
+            ("Fortuna Intelligence", "intelligence"),
+            ("Fortuna Opportunities", "opportunities"),
             ("Models", "models"),
             ("Accounts", "accounts"),
             ("Proxies", "proxies"),
             ("Operations", "reports:operations"),
             ("Reports", "reports"),
-            ("Automation", "automations"),
+            ("Fortuna Automation", "automations"),
             ("Settings", "settings"),
             ("Help", "help"),
         ]
@@ -409,7 +409,7 @@ def help_text(topic: str, user: User | None = None) -> str:
     if topic == "team_invites":
         packet = team_invite_packet()
         return "\n\n".join(packet[role] for role in TEAM_INVITE_ROLES)
-    return HELP_TOPICS.get(topic, "Agency OS keeps work visible, calm, and accountable.")
+    return HELP_TOPICS.get(topic, "Fortuna OS keeps work visible, calm, and accountable.")
 
 
 def _readiness_score(checklist: TeamOnboardingChecklist) -> int:

@@ -8,6 +8,7 @@ from app.models.automation import (
     AutomationSchedule,
     AutomationSimulationRun,
 )
+from app.models.autonomous_operations import FollowUp, OperationsAction, OperationsWorkflow
 from app.models.core import Automation, Report
 from app.models.event_log import EventLog
 from app.models.incident import Incident, IncidentTimeline
@@ -50,6 +51,7 @@ __all__ = [
     "EventLog",
     "ExecutiveInsight",
     "FirstDayChecklist",
+    "FollowUp",
     "ConfidenceRecord",
     "Incident",
     "IncidentTimeline",
@@ -66,6 +68,8 @@ __all__ = [
     "OpportunityResult",
     "OpportunitySource",
     "OutcomeMemory",
+    "OperationsAction",
+    "OperationsWorkflow",
     "Permission",
     "Playbook",
     "PlaybookRun",

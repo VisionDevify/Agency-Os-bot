@@ -1019,7 +1019,7 @@ async def navigate(callback: CallbackQuery) -> None:
                     session.commit()
                     return
                 try:
-                    await callback.bot.send_message(int(raw_chat_id), "Agency OS test notification.")
+                    await callback.bot.send_message(int(raw_chat_id), "Fortuna OS test notification.")
                     if attempt is not None:
                         mark_delivery_sent(session, attempt, actor=user)
                 except Exception:

@@ -147,6 +147,9 @@ def create_account(
         resource_id=str(account.id),
         payload=_account_payload(account),
     )
+    from app.services.autonomous_operations import run_account_autopilot
+
+    run_account_autopilot(session, account, actor=actor)
     return account
 
 

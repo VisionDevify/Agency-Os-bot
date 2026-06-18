@@ -252,6 +252,71 @@ def is_owner(user: User | None) -> bool:
     return user.is_owner or any(role.name == RoleName.OWNER.value for role in user.roles)
 
 
+def owner_count(session: Session) -> int:
+    return _count_owner_users(session)
+
+
+def promote_owner(session: Session, user: User, *, actor: User) -> None:
+    if not is_owner(actor):
+        audit_action(
+            session,
+            actor=actor,
+            action="owner.protection_triggered",
+            resource_type="user",
+            resource_id=str(user.id),
+            status="denied",
+            details={"reason": "owner_promotion_requires_owner"},
+        )
+        raise PermissionError("Only Owner can promote another Owner")
+    assign_role_to_user(session, user, RoleName.OWNER, actor=actor)
+    user.is_owner = True
+    user.is_active = True
+    user.status = USER_STATUS_ACTIVE
+    audit_action(
+        session,
+        actor=actor,
+        action="owner.promoted",
+        resource_type="user",
+        resource_id=str(user.id),
+        details=_user_audit_details(user),
+    )
+
+
+def demote_owner(session: Session, user: User, *, actor: User) -> None:
+    if not is_owner(actor):
+        audit_action(
+            session,
+            actor=actor,
+            action="owner.protection_triggered",
+            resource_type="user",
+            resource_id=str(user.id),
+            status="denied",
+            details={"reason": "owner_demotion_requires_owner"},
+        )
+        raise PermissionError("Only Owner can demote another Owner")
+    if is_owner(user) and _count_owner_users(session) <= 1:
+        audit_action(
+            session,
+            actor=actor,
+            action="owner.protection_triggered",
+            resource_type="user",
+            resource_id=str(user.id),
+            status="denied",
+            details={"reason": "final_owner_demotion_blocked"},
+        )
+        raise PermissionError("Cannot demote final Owner")
+    remove_role_from_user(session, user, RoleName.OWNER, actor=actor)
+    user.is_owner = False
+    audit_action(
+        session,
+        actor=actor,
+        action="owner.demoted",
+        resource_type="user",
+        resource_id=str(user.id),
+        details=_user_audit_details(user),
+    )
+
+
 def user_has_permission(user: User | None, permission_key: str) -> bool:
     if user is None or user.status != USER_STATUS_ACTIVE or not user.is_active:
         return False
