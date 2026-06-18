@@ -1172,6 +1172,11 @@ def screen_for_page(
         or normalized == "bot_status"
         or normalized == "production_status"
         or normalized == "production_observability"
+        or normalized == "owner_advanced"
+        or normalized == "today_priorities"
+        or normalized == "setup_progress"
+        or normalized == "assistant_next"
+        or normalized == "start_here"
         or normalized.startswith("ui_self_test")
         or normalized == "owner_daily_checklist"
         or normalized == "team_onboarding_activation"

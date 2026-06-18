@@ -199,6 +199,27 @@ def test_dynamic_admin_callbacks_do_not_crash() -> None:
             assert screen.reply_markup is not None
 
 
+def test_owner_home_primary_callbacks_render_real_pages() -> None:
+    with session_scope() as session:
+        owner = setup_owner_if_needed(session, telegram_user_id=1, owner_telegram_id=1, display_name="Rex")
+        principal = PermissionPrincipal(telegram_id=owner.telegram_id, is_owner=True, role=RoleName.OWNER)
+
+        expected = {
+            "setup_progress": "Setup Progress",
+            "today_priorities": "Today's Priorities",
+            "opportunities": "Opportunities",
+            "proxies": "Proxy Vault",
+            "help": "Help Center",
+            "owner_advanced": "Advanced",
+        }
+
+        for page, marker in expected.items():
+            screen = screen_for_page(page, principal, session=session, user=owner)
+            assert marker in screen.text
+            assert "Good Afternoon" not in screen.text
+            assert screen.reply_markup is not None
+
+
 def test_account_auth_prompt_requires_sensitive_permission() -> None:
     with session_scope() as session:
         owner = setup_owner_if_needed(session, telegram_user_id=1, owner_telegram_id=1)
