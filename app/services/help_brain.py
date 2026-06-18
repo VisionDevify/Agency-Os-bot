@@ -197,6 +197,18 @@ def detect_help_intent(question: str) -> str:
         return "advanced_mode"
     if "simulated" in text and "proxy" in text:
         return "proxy_simulated"
+    if "real check" in text and ("off" in text or "disabled" in text):
+        return "proxy_real_off"
+    if "paste" in text and "proxy" in text:
+        return "proxy_paste"
+    if "session suffix" in text or ("session" in text and "proxy" in text):
+        return "proxy_session_suffix"
+    if "rotation" in text or ("rotate" in text and "proxy" in text):
+        return "proxy_rotation"
+    if "password" in text and "proxy" in text:
+        return "proxy_password_hidden"
+    if "assign" in text and "proxy" in text and "account" in text:
+        return "proxy_assign"
     if "fix first" in text or "what should i fix" in text or "finish setup" in text:
         return "readiness_low"
     if "register" in text and ("notification" in text or "group" in text):
@@ -304,14 +316,14 @@ def _proxy_answer(session: Session, user: User | None) -> tuple[str, str]:
         return "Proxy setup is restricted. Ask an Owner/Admin to assign or check proxies; you can continue with your visible tasks.", "help"
     proxy_count = session.scalar(select(func.count(Proxy.id))) or 0
     if not proxy_count:
-        return "No proxies are saved yet. Open Proxy Vault -> Add Olympix Proxy and enter credentials only through the secure bot UI.", "proxies:olympix"
+        return "No proxies are saved yet. Open Proxy Vault -> Add Proxy -> Paste Full Proxy String. Paste host:port:username:password only in the bot flow.", "proxies:add"
     enabled = 0
     for proxy in list_proxies(session):
         if proxy_check_mode(proxy).real_health_enabled:
             enabled += 1
     return (
         f"{proxy_count} proxy record(s) exist. {enabled} have real checks enabled. Use Real Check Pilot to pick one proxy and run a safe test.",
-        "proxies:real_check_pilot",
+        "proxies",
     )
 
 
@@ -357,6 +369,40 @@ def help_brain_answer(
             "Real checks stay off until an owner enables them for a saved proxy."
         )
         next_action = "proxies"
+    elif intent == "proxy_real_off":
+        answer = (
+            "Real checks are off by default so Fortuna never contacts an external proxy provider without owner approval. "
+            "Open Proxy Detail -> Advanced -> Enable Real Checks when you are ready to test a saved proxy."
+        )
+        next_action = "proxies"
+    elif intent == "proxy_paste":
+        answer = (
+            "Yes. Open Proxy Vault -> Add Proxy -> Paste Full Proxy String, then paste host:port:username:password. "
+            "Fortuna extracts the Olympix session suffix after session_, encrypts the password, and only shows masked details."
+        )
+        next_action = "proxies:olympix:paste"
+    elif intent == "proxy_session_suffix":
+        answer = (
+            "The session suffix is the part after session_ in your Olympix username. "
+            "That suffix controls the active proxy session/IP. Fortuna stores it separately so rotation is simple."
+        )
+        next_action = "proxies"
+    elif intent == "proxy_rotation":
+        answer = (
+            "Rotation changes only the session suffix after session_. Olympix should treat the new suffix as a fresh session/IP. "
+            "Fortuna saves the previous suffix so you can roll back."
+        )
+        next_action = "proxies"
+    elif intent == "proxy_password_hidden":
+        answer = (
+            "Fortuna hides proxy passwords by design. The password is encrypted after you paste it and is never shown again in Telegram, logs, audits, or help screens."
+        )
+        next_action = "proxies"
+    elif intent == "proxy_assign":
+        answer = (
+            "Open the account, then choose Assign Best Proxy or Choose Proxy. If no proxy exists yet, tap Add Proxy First and use the one-paste Olympix flow."
+        )
+        next_action = "accounts:attention"
     elif intent == "notification_groups":
         answer, next_action = _notification_answer(session, user)
     elif intent == "proxy_setup":

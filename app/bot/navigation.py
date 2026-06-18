@@ -48,14 +48,16 @@ from app.services.proxies import (
     assign_proxy_to_account,
     create_default_proxy,
     get_proxy,
+    list_proxies,
     proxy_check_mode,
     remove_proxy_from_account,
     repair_proxy,
     rollback_session,
-    rotate_session,
+    rotate_olympix_session,
     run_real_proxy_check,
     run_simulated_proxy_check,
     set_proxy_real_check_flags,
+    update_proxy_location_target,
     verify_location_with_rotation,
 )
 from app.services.incidents import (
@@ -749,14 +751,14 @@ def _perform_admin_action(
             return "proxies:list"
         action = parts[2]
         if action == "rotate":
-            rotate_session(session, proxy, actor=actor)
-            return f"proxy:{proxy.id}"
+            history = rotate_olympix_session(session, proxy, actor=actor)
+            return f"proxy:{proxy.id}:rotated:{history.id}"
         if action == "rollback":
             try:
-                rollback_session(session, proxy, actor=actor)
+                history = rollback_session(session, proxy, actor=actor)
+                return f"proxy:{proxy.id}:rollback_result:{history.id}"
             except ValueError:
-                pass
-            return f"proxy:{proxy.id}"
+                return f"proxy:{proxy.id}:rollback_empty"
         if action == "verify":
             verify_location_with_rotation(
                 session,
@@ -793,7 +795,7 @@ def _perform_admin_action(
                 run_simulated_proxy_check(session, proxy, actor=actor)
             if parts[3] == "real":
                 run_real_proxy_check(session, proxy, actor=actor)
-            return f"proxy:{proxy.id}"
+            return f"proxy:{proxy.id}:check_result"
         if action == "enable_real":
             set_proxy_real_check_flags(session, proxy, actor=actor, health_enabled=True, location_enabled=True)
             return f"proxy:{proxy.id}"
@@ -814,7 +816,7 @@ def _perform_admin_action(
                 )
                 return f"proxy:{proxy.id}"
             if mode.real_health_enabled:
-                rotate_session(session, proxy, actor=actor)
+                rotate_olympix_session(session, proxy, actor=actor)
                 run_real_proxy_check(session, proxy, actor=actor)
             else:
                 verify_location_with_rotation(
@@ -867,6 +869,12 @@ def _perform_admin_action(
                 return f"account:{account.id}"
         if action == "proxy" and len(parts) >= 4:
             proxy_action = parts[3]
+            if proxy_action == "assign_best":
+                proxies = list_proxies(session, include_disabled=False)
+                best = sorted(proxies, key=lambda item: (item.status != "healthy", -item.health_score, item.id))[0] if proxies else None
+                if best is not None:
+                    assign_proxy_to_account(session, best, account, actor=actor)
+                return f"account:{account.id}"
             if proxy_action == "assign" and len(parts) >= 5 and parts[4].isdigit():
                 proxy = get_proxy(session, int(parts[4]))
                 if proxy is not None:

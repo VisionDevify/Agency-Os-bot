@@ -135,7 +135,8 @@ def test_proxy_vault_and_detail_are_clean_and_secret_safe() -> None:
         assert "Missing Accounts:" in home.text
         assert "Add Proxy" in _button_text(home)
         assert "Advanced Tools" in _button_text(home)
-        assert "Type: SOCKS5 Mobile" in detail.text
+        assert "Olympix Mobile Proxy" in detail.text
+        assert "Connection:" in detail.text
         assert "Real Check: Off" in detail.text
         assert "super-secret" not in detail.text
         assert "metadata_json" not in detail.text

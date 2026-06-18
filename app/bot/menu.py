@@ -687,8 +687,12 @@ def account_detail_menu(account_id: int) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="Archive Account", callback_data=f"nav:account:{account_id}:archive"),
             ],
             [
-                InlineKeyboardButton(text="Assign Proxy", callback_data=f"nav:account:{account_id}:proxy:assign"),
+                InlineKeyboardButton(text="Assign Best Proxy", callback_data=f"nav:account:{account_id}:proxy:assign_best"),
+                InlineKeyboardButton(text="Choose Proxy", callback_data=f"nav:account:{account_id}:proxy:assign"),
+            ],
+            [
                 InlineKeyboardButton(text="Remove Proxy", callback_data=f"nav:account:{account_id}:proxy:remove"),
+                InlineKeyboardButton(text="Add Proxy First", callback_data=callback_for("proxies:add")),
             ],
             [InlineKeyboardButton(text="View Audit History", callback_data=f"nav:account:{account_id}:audit")],
             *page_controls(back_to="accounts:list"),
@@ -699,13 +703,25 @@ def account_detail_menu(account_id: int) -> InlineKeyboardMarkup:
 def proxies_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Add Proxy", callback_data=callback_for("proxies:olympix"))],
+            [InlineKeyboardButton(text="Add Proxy", callback_data=callback_for("proxies:add"))],
             [InlineKeyboardButton(text="Accounts Missing Proxy", callback_data=callback_for("proxies:missing"))],
             [InlineKeyboardButton(text="Proxy Health", callback_data=callback_for("proxies:dashboard"))],
             [InlineKeyboardButton(text="Proxy Assignments", callback_data=callback_for("proxies:list"))],
             [InlineKeyboardButton(text="Help", callback_data=callback_for("help_copilot:add_proxy"))],
             [InlineKeyboardButton(text="Advanced Tools", callback_data=callback_for("proxies:advanced"))],
             *page_controls(back_to="menu"),
+        ]
+    )
+
+
+def proxy_add_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Paste Full Proxy String", callback_data=callback_for("proxies:olympix:paste"))],
+            [InlineKeyboardButton(text="Add Olympix Proxy", callback_data=callback_for("proxies:olympix"))],
+            [InlineKeyboardButton(text="Manual Step-by-Step Setup", callback_data=callback_for("proxies:olympix:manual"))],
+            [InlineKeyboardButton(text="View Proxies", callback_data=callback_for("proxies:list"))],
+            *page_controls(back_to="proxies"),
         ]
     )
 
@@ -1374,24 +1390,65 @@ def proxy_list_menu(proxy_buttons: list[tuple[str, str]], *, back_to: str = "pro
 def proxy_detail_menu(proxy_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [
-                InlineKeyboardButton(text="Test", callback_data=f"nav:proxy:{proxy_id}:check:simulated"),
-                InlineKeyboardButton(text="Assign Account", callback_data=f"nav:proxy:{proxy_id}:assign"),
-            ],
-            [
-                InlineKeyboardButton(text="Set Location", callback_data=f"nav:proxy:{proxy_id}:verify"),
-                InlineKeyboardButton(text="Rotate Session", callback_data=f"nav:proxy:{proxy_id}:rotate"),
-            ],
-            [
-                InlineKeyboardButton(text="History", callback_data=f"nav:proxy:{proxy_id}:history"),
-                InlineKeyboardButton(text="Accounts", callback_data=f"nav:proxy:{proxy_id}:accounts"),
-            ],
-            [InlineKeyboardButton(text="Advanced Real Checks", callback_data=callback_for("proxies:real_check_pilot"))],
-            [
-                InlineKeyboardButton(text="Remove Account", callback_data=f"nav:proxy:{proxy_id}:remove"),
-                InlineKeyboardButton(text="Audit History", callback_data=f"nav:proxy:{proxy_id}:audit"),
-            ],
+            [InlineKeyboardButton(text="Assign Account", callback_data=f"nav:proxy:{proxy_id}:assign")],
+            [InlineKeyboardButton(text="Test Proxy", callback_data=f"nav:proxy:{proxy_id}:check:simulated")],
+            [InlineKeyboardButton(text="Rotate Session", callback_data=f"nav:proxy:{proxy_id}:rotate_preview")],
+            [InlineKeyboardButton(text="Set Location", callback_data=f"nav:proxy:{proxy_id}:location")],
+            [InlineKeyboardButton(text="History", callback_data=f"nav:proxy:{proxy_id}:history")],
+            [InlineKeyboardButton(text="Advanced", callback_data=f"nav:proxy:{proxy_id}:advanced")],
             *page_controls(back_to="proxies:list"),
+        ]
+    )
+
+
+def proxy_detail_advanced_menu(proxy_id: int, *, real_enabled: bool) -> InlineKeyboardMarkup:
+    real_toggle = (
+        InlineKeyboardButton(text="Disable Real Checks", callback_data=f"nav:proxy:{proxy_id}:disable_real")
+        if real_enabled
+        else InlineKeyboardButton(text="Enable Real Checks", callback_data=f"nav:proxy:{proxy_id}:enable_real")
+    )
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [real_toggle],
+            [InlineKeyboardButton(text="Run Real Check", callback_data=f"nav:proxy:{proxy_id}:check:real")],
+            [InlineKeyboardButton(text="Rotate Until Match", callback_data=f"nav:proxy:{proxy_id}:rotate_until_match")],
+            [InlineKeyboardButton(text="Rollback Last Rotation", callback_data=f"nav:proxy:{proxy_id}:rollback")],
+            [
+                InlineKeyboardButton(text="Assigned Accounts", callback_data=f"nav:proxy:{proxy_id}:accounts"),
+                InlineKeyboardButton(text="Remove Account", callback_data=f"nav:proxy:{proxy_id}:remove"),
+            ],
+            [InlineKeyboardButton(text="Audit History", callback_data=f"nav:proxy:{proxy_id}:audit")],
+            *page_controls(back_to=f"proxy:{proxy_id}"),
+        ]
+    )
+
+
+def proxy_rotation_preview_menu(proxy_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Rotate Now", callback_data=f"nav:proxy:{proxy_id}:rotate")],
+            *page_controls(back_to=f"proxy:{proxy_id}"),
+        ]
+    )
+
+
+def proxy_result_menu(proxy_id: int, *, include_rollback: bool = False) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = [
+        [InlineKeyboardButton(text="Test Proxy", callback_data=f"nav:proxy:{proxy_id}:check:simulated")],
+    ]
+    if include_rollback:
+        rows.append([InlineKeyboardButton(text="Rollback", callback_data=f"nav:proxy:{proxy_id}:rollback")])
+    rows.extend(page_controls(back_to=f"proxy:{proxy_id}"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def proxy_import_success_menu(proxy_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Assign Account", callback_data=f"nav:proxy:{proxy_id}:assign")],
+            [InlineKeyboardButton(text="Test Proxy", callback_data=f"nav:proxy:{proxy_id}:check:simulated")],
+            [InlineKeyboardButton(text="Set Target Location", callback_data=f"nav:proxy:{proxy_id}:location")],
+            [InlineKeyboardButton(text="Proxy Vault", callback_data=callback_for("proxies"))],
         ]
     )
 

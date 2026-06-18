@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from datetime import UTC, datetime
+import re
 import secrets
+import string
 
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session, selectinload
@@ -87,6 +89,20 @@ class ProxyRoutingCheckSummary:
     message: str
 
 
+class ProxyStringParseError(ValueError):
+    """Raised when an owner-pasted proxy string is not in the expected safe format."""
+
+
+@dataclass(frozen=True)
+class ParsedOlympixProxyString:
+    host: str
+    port: int
+    full_username: str
+    base_username: str
+    session_suffix: str
+    password: str
+
+
 def _now() -> datetime:
     return datetime.now(UTC)
 
@@ -105,12 +121,77 @@ def _require_any_permission(session: Session, actor: User | None, *permissions: 
     raise PermissionError(f"Missing permission: {' or '.join(permissions)}")
 
 
+def normalize_session_suffix(session_suffix: str) -> str:
+    clean = session_suffix.strip()
+    if clean.casefold().startswith("session_"):
+        return clean.split("_", 1)[1]
+    return clean
+
+
 def generate_session_suffix() -> str:
     return f"session_{secrets.token_hex(4)}"
 
 
+def generate_olympix_session_suffix(length: int = 8) -> str:
+    length = max(4, min(32, length))
+    alphabet = string.ascii_lowercase + string.digits
+    return "".join(secrets.choice(alphabet) for _ in range(length))
+
+
 def generated_username(base_username: str, session_suffix: str) -> str:
+    if "," in base_username:
+        return f"{base_username},session_{normalize_session_suffix(session_suffix)}"
     return f"{base_username}-{session_suffix}"
+
+
+def mask_session_suffix(session_suffix: str | None) -> str:
+    if not session_suffix:
+        return "Not set"
+    clean = normalize_session_suffix(session_suffix)
+    return f"\u2022\u2022\u2022\u2022{clean[-4:]}" if len(clean) > 4 else f"\u2022\u2022\u2022\u2022{clean}"
+
+
+def mask_proxy_username(username: str | None) -> str:
+    if not username:
+        return "Not set"
+    first = username.split(",", 1)[0].strip()
+    if "_" in first:
+        return f"{first.split('_', 1)[0]}_\u2022\u2022\u2022\u2022\u2022\u2022"
+    if len(first) <= 4:
+        return f"{first[:1]}\u2022\u2022\u2022"
+    return f"{first[:4]}\u2022\u2022\u2022\u2022"
+
+
+def parse_olympix_proxy_string(proxy_string: str) -> ParsedOlympixProxyString:
+    parts = [part.strip() for part in proxy_string.strip().split(":", 3)]
+    if len(parts) != 4:
+        raise ProxyStringParseError("Expected host:port:username:password")
+    host, port_text, full_username, password = parts
+    if not host or not port_text or not full_username or not password:
+        raise ProxyStringParseError("Host, port, username, and password are required")
+    try:
+        port = int(port_text)
+    except ValueError as exc:
+        raise ProxyStringParseError("Port must be a number") from exc
+    if port < 1 or port > 65535:
+        raise ProxyStringParseError("Port must be between 1 and 65535")
+    marker = ",session_"
+    if marker not in full_username:
+        raise ProxyStringParseError("Username must include ,session_")
+    base_username, session_suffix = full_username.rsplit(marker, 1)
+    session_suffix = normalize_session_suffix(session_suffix)
+    if not base_username or not session_suffix:
+        raise ProxyStringParseError("Username must include a base username and session suffix")
+    if not re.fullmatch(r"[A-Za-z0-9]+", session_suffix):
+        raise ProxyStringParseError("Session suffix must be alphanumeric")
+    return ParsedOlympixProxyString(
+        host=host,
+        port=port,
+        full_username=full_username,
+        base_username=base_username,
+        session_suffix=session_suffix,
+        password=password,
+    )
 
 
 def _safe_proxy_payload(proxy: Proxy, extra: dict | None = None) -> dict:
@@ -128,6 +209,19 @@ def _safe_proxy_payload(proxy: Proxy, extra: dict | None = None) -> dict:
         "detected_state": proxy.detected_state,
         "detected_city": proxy.detected_city,
     }
+    payload.update(extra or {})
+    return payload
+
+
+def _safe_rotation_payload(proxy: Proxy, extra: dict | None = None) -> dict:
+    payload = _safe_proxy_payload(
+        proxy,
+        {
+            "session_suffix_masked": mask_session_suffix(proxy.session_suffix),
+            "previous_session_suffix_masked": mask_session_suffix(proxy.previous_session_suffix),
+            "username_masked": mask_proxy_username(proxy.base_username),
+        },
+    )
     payload.update(extra or {})
     return payload
 
@@ -280,6 +374,8 @@ def create_proxy(
     port: int,
     base_username: str,
     password: str,
+    session_suffix: str | None = None,
+    proxy_type: str | None = None,
     target_country: str | None = None,
     target_state: str | None = None,
     target_city: str | None = None,
@@ -287,7 +383,10 @@ def create_proxy(
     _require_any_permission(session, actor, "manage_proxies")
     if port < 0 or port > 65535:
         raise ValueError("Invalid proxy port")
-    suffix = generate_session_suffix()
+    suffix = session_suffix.strip() if session_suffix else generate_session_suffix()
+    metadata: dict[str, str] = {}
+    if proxy_type:
+        metadata["proxy_type"] = proxy_type
     proxy = Proxy(
         name=f"{provider} {host}:{port}",
         provider=provider.strip() or "unknown",
@@ -297,6 +396,7 @@ def create_proxy(
         session_suffix=suffix,
         encrypted_password=encrypt_secret(password),
         generated_username=generated_username(base_username.strip(), suffix),
+        metadata_json=metadata,
         status="healthy",
         health_score=100,
         target_country=target_country,
@@ -312,6 +412,47 @@ def create_proxy(
         resource_type="proxy",
         resource_id=str(proxy.id),
         payload=_safe_proxy_payload(proxy),
+    )
+    return proxy
+
+
+def create_olympix_proxy_from_string(
+    session: Session,
+    *,
+    actor: User,
+    proxy_string: str,
+    target_country: str | None = None,
+    target_state: str | None = None,
+    target_city: str | None = None,
+) -> Proxy:
+    parsed = parse_olympix_proxy_string(proxy_string)
+    proxy = create_proxy(
+        session,
+        actor=actor,
+        provider="Olympix",
+        host=parsed.host,
+        port=parsed.port,
+        base_username=parsed.base_username,
+        session_suffix=parsed.session_suffix,
+        password=parsed.password,
+        proxy_type="SOCKS5 Mobile",
+        target_country=target_country,
+        target_state=target_state,
+        target_city=target_city,
+    )
+    audit_action(
+        session,
+        actor=actor,
+        action="proxy.imported",
+        resource_type="proxy",
+        resource_id=str(proxy.id),
+        details={
+            "provider": "Olympix",
+            "host": proxy.host,
+            "port": proxy.port,
+            "username_masked": mask_proxy_username(proxy.base_username),
+            "session_suffix_masked": mask_session_suffix(proxy.session_suffix),
+        },
     )
     return proxy
 
@@ -418,6 +559,18 @@ def assign_proxy_to_account(session: Session, proxy: Proxy, account: Account, *,
             proxy,
             {"account_id": account.id, "model_brand_id": account.model_brand_id},
         ),
+    )
+    from app.services.autonomous_operations import run_account_autopilot
+    from app.services.learning import capture_proxy_outcome
+
+    run_account_autopilot(session, account, actor=actor)
+    capture_proxy_outcome(
+        session,
+        proxy,
+        actor=actor,
+        event_type="proxy.assigned",
+        succeeded=True,
+        details={"account_id": account.id},
     )
 
 
@@ -756,7 +909,10 @@ def rotate_session(
         event_name="proxy.rotation.started",
         resource_type="proxy",
         resource_id=str(proxy.id),
-        payload={"previous_session_suffix": previous, "new_session_suffix": suffix},
+        payload={
+            "previous_session_suffix_masked": mask_session_suffix(previous),
+            "new_session_suffix_masked": mask_session_suffix(suffix),
+        },
     )
     proxy.previous_session_suffix = previous
     proxy.session_suffix = suffix
@@ -824,7 +980,7 @@ def rotate_session(
         resource_type="proxy",
         resource_id=str(proxy.id),
         status=event_status,
-        payload=_safe_proxy_payload(proxy, {"rotation_history_id": history.id}),
+        payload=_safe_rotation_payload(proxy, {"rotation_history_id": history.id}),
     )
     from app.services.learning import capture_proxy_outcome
 
@@ -839,6 +995,19 @@ def rotate_session(
     return history
 
 
+def rotate_olympix_session(session: Session, proxy: Proxy, *, actor: User) -> ProxyRotationHistory:
+    current = normalize_session_suffix(proxy.session_suffix)
+    if "olympix" not in proxy.provider.casefold() and "," not in proxy.base_username:
+        return rotate_session(session, proxy, actor=actor)
+    length = len(current) if current else 8
+    new_suffix = generate_olympix_session_suffix(length)
+    for _ in range(5):
+        if new_suffix != current:
+            break
+        new_suffix = generate_olympix_session_suffix(length)
+    return rotate_session(session, proxy, actor=actor, new_suffix=new_suffix)
+
+
 def rollback_session(session: Session, proxy: Proxy, *, actor: User) -> ProxyRotationHistory:
     _require_any_permission(session, actor, "manage_proxies", "rotate_proxy")
     if not proxy.previous_session_suffix:
@@ -849,6 +1018,17 @@ def rollback_session(session: Session, proxy: Proxy, *, actor: User) -> ProxyRot
     proxy.previous_session_suffix = current
     proxy.generated_username = generated_username(proxy.base_username, proxy.session_suffix)
     proxy.last_rotation = _now()
+    audit_action(
+        session,
+        actor=actor,
+        action="proxy.rotation.rollback_started",
+        resource_type="proxy",
+        resource_id=str(proxy.id),
+        details={
+            "current_session_suffix_masked": mask_session_suffix(current),
+            "rollback_session_suffix_masked": mask_session_suffix(previous),
+        },
+    )
     history = ProxyRotationHistory(
         proxy_id=proxy.id,
         previous_session_suffix=current,
@@ -865,10 +1045,10 @@ def rollback_session(session: Session, proxy: Proxy, *, actor: User) -> ProxyRot
     emit_event(
         session,
         actor=actor,
-        event_name="proxy.rotation.succeeded",
+        event_name="proxy.rotation.rolled_back",
         resource_type="proxy",
         resource_id=str(proxy.id),
-        payload=_safe_proxy_payload(proxy, {"rollback": True, "rotation_history_id": history.id}),
+        payload=_safe_rotation_payload(proxy, {"rollback": True, "rotation_history_id": history.id}),
     )
     return history
 

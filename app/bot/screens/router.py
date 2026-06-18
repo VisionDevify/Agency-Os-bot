@@ -146,6 +146,8 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_daily_autopilot_page(session, user=user)
     if page == "proxies":
         return render_proxies_home(session)
+    if page == "proxies:add":
+        return render_proxy_add_page()
     if page == "proxies:advanced":
         return render_proxy_advanced_page()
     if page == "proxies:list" and session is not None:
@@ -155,6 +157,10 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
     if page == "proxies:real_check_pilot" and session is not None:
         return render_proxy_real_check_pilot_page(session)
     if page == "proxies:olympix":
+        return render_olympix_proxy_wizard_page()
+    if page == "proxies:olympix:paste":
+        return render_olympix_proxy_paste_page()
+    if page == "proxies:olympix:manual":
         return render_olympix_proxy_wizard_page()
     if page == "proxies:missing" and session is not None:
         return render_accounts_missing_proxy_page(session)
@@ -168,6 +174,24 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
             proxy_id = int(parts[1])
             if len(parts) == 2:
                 return render_proxy_detail_page(session, proxy_id)
+            if parts[2] == "rotate_preview":
+                return render_proxy_rotation_preview_page(session, proxy_id)
+            if parts[2] == "rotated":
+                history_id = int(parts[3]) if len(parts) >= 4 and parts[3].isdigit() else None
+                return render_proxy_rotation_result_page(session, proxy_id, history_id)
+            if parts[2] == "rollback_result":
+                history_id = int(parts[3]) if len(parts) >= 4 and parts[3].isdigit() else None
+                return render_proxy_rollback_result_page(session, proxy_id, history_id)
+            if parts[2] == "rollback_empty":
+                return render_proxy_no_rollback_page(session, proxy_id)
+            if parts[2] == "check_result":
+                return render_proxy_check_result_page(session, proxy_id)
+            if parts[2] == "location":
+                return render_proxy_location_page(session, proxy_id)
+            if parts[2] == "advanced":
+                return render_proxy_detail_advanced_page(session, proxy_id)
+            if parts[2] == "imported":
+                return render_proxy_import_success_page(session, proxy_id)
             if parts[2] == "assign":
                 return render_proxy_assign_account_page(session, proxy_id)
             if parts[2] == "remove":

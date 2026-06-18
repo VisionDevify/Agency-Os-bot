@@ -24,6 +24,7 @@ from app.bot.screens import (
     render_opportunity_detail_page,
     render_post_watch_detail_page,
     render_proxy_detail_page,
+    render_proxy_import_success_page,
     render_ui_self_test_page,
 )
 from app.core.config import settings
@@ -59,7 +60,13 @@ from app.services.opportunities import (
     update_creator_watch,
 )
 from app.services.permissions import PermissionPrincipal, RoleName, require_owner
-from app.services.proxies import create_proxy
+from app.services.proxies import (
+    ProxyStringParseError,
+    create_proxy,
+    create_olympix_proxy_from_string,
+    get_proxy,
+    update_proxy_location_target,
+)
 from app.services.model_brands import get_model_brand
 from app.services.setup_wizard import (
     add_setup_account,
@@ -93,6 +100,7 @@ PENDING_RESULT_INTAKES: dict[int, dict[str, int | str | None]] = {}
 PENDING_SETUP_WIZARDS: dict[int, dict[str, int | str | None]] = {}
 PENDING_MODEL_EDITS: dict[int, dict[str, int | str | None]] = {}
 PENDING_PROXY_WIZARDS: dict[int, dict[str, str]] = {}
+PENDING_PROXY_LOCATION_EDITS: dict[int, int] = {}
 
 
 async def _acquire_polling_guard(
@@ -205,8 +213,14 @@ def _set_pending_callback_state(telegram_id: int, page: str, session, user: User
     PENDING_ACCOUNT_CREATES.pop(telegram_id, None)
     PENDING_AUTH_CODES.pop(telegram_id, None)
     parts = page.split(":")
-    if page == "proxies:olympix":
-        PENDING_PROXY_WIZARDS[telegram_id] = {"provider": "Olympix Mobile SOCKS5"}
+    if page == "proxies:olympix:paste":
+        PENDING_PROXY_WIZARDS[telegram_id] = {"provider": "Olympix", "mode": "paste"}
+        return
+    if page == "proxies:olympix:manual":
+        PENDING_PROXY_WIZARDS[telegram_id] = {"provider": "Olympix Mobile SOCKS5", "mode": "manual"}
+        return
+    if len(parts) >= 3 and parts[0] == "proxy" and parts[1].isdigit() and parts[2] == "location":
+        PENDING_PROXY_LOCATION_EDITS[telegram_id] = int(parts[1])
         return
     if page == "setup:wizard:model":
         PENDING_SETUP_WIZARDS[telegram_id] = {"step": "model"}
@@ -507,8 +521,63 @@ async def text_input(message: Message) -> None:
             session.commit()
             return
 
-        pending_proxy = PENDING_PROXY_WIZARDS.pop(telegram_id, None)
+        pending_proxy_location = PENDING_PROXY_LOCATION_EDITS.pop(telegram_id, None)
+        if pending_proxy_location is not None:
+            proxy = get_proxy(session, int(pending_proxy_location))
+            country, state, city = _parse_pipe_parts(message.text, 3)
+            if proxy is None:
+                await message.answer("Proxy not found.")
+                session.commit()
+                return
+            if not country or not state:
+                PENDING_PROXY_LOCATION_EDITS[telegram_id] = int(pending_proxy_location)
+                await message.answer("Please send: Country | State | City\nCity is optional.")
+                session.commit()
+                return
+            try:
+                update_proxy_location_target(
+                    session,
+                    proxy,
+                    actor=user,
+                    target_country=country,
+                    target_state=state,
+                    target_city=city,
+                )
+            except (PermissionError, ValueError):
+                await message.answer("Unable to update proxy location.")
+                session.commit()
+                return
+            screen = render_proxy_detail_page(session, proxy.id)
+            await message.answer("Proxy location updated.")
+            await message.answer(screen.text, reply_markup=screen.reply_markup)
+            session.commit()
+            return
+
+        pending_proxy = PENDING_PROXY_WIZARDS.get(telegram_id)
         if pending_proxy is not None:
+            if pending_proxy.get("mode") == "paste":
+                try:
+                    proxy = create_olympix_proxy_from_string(
+                        session,
+                        actor=user,
+                        proxy_string=message.text,
+                    )
+                    with contextlib.suppress(Exception):
+                        await message.delete()
+                except (PermissionError, ProxyStringParseError, ValueError):
+                    await message.answer(
+                        "That proxy string did not work. Please send it as:\n"
+                        "host:port:username:password\n\n"
+                        "The username must include ,session_."
+                    )
+                    session.commit()
+                    return
+                PENDING_PROXY_WIZARDS.pop(telegram_id, None)
+                screen = render_proxy_import_success_page(session, proxy.id)
+                await message.answer(screen.text, reply_markup=screen.reply_markup)
+                session.commit()
+                return
+
             base_username, password, target_country, target_state, target_city = _parse_pipe_parts(message.text, 5)
             if not base_username or not password or not target_country or not target_state:
                 await message.answer(
@@ -535,6 +604,7 @@ async def text_input(message: Message) -> None:
                 await message.answer("Unable to save proxy. Check permissions and required fields.")
                 session.commit()
                 return
+            PENDING_PROXY_WIZARDS.pop(telegram_id, None)
             screen = render_proxy_detail_page(session, proxy.id)
             await message.answer("Proxy saved. Password encrypted and hidden.")
             await message.answer(screen.text, reply_markup=screen.reply_markup)

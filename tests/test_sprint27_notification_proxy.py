@@ -156,9 +156,9 @@ def test_proxy_real_health_check_stores_result_and_hides_secret_in_ui() -> None:
 
         assert result.status == "passed"
         assert session.query(ProxyHealthCheckResult).count() == 1
-        assert "Real Checks: enabled" in detail.text
-        assert "Latest Check:" in detail.text
-        assert "203.0.x.10" in detail.text
+        assert "Real Check: On" in detail.text
+        assert "Last Check:" in detail.text
+        assert "Target Match: Yes" in detail.text
         assert "super-secret" not in detail.text
         assert "encrypted_password" not in history.text
 

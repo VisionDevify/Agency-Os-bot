@@ -161,4 +161,4 @@ def test_proxy_entry_check_and_detail_mask_sensitive_values() -> None:
         assert "super-secret" not in detail.text
         assert proxy.generated_username not in detail.text
         assert proxy.session_suffix not in detail.text
-        assert "Password: encrypted and hidden" in detail.text
+        assert "Password: Encrypted" in detail.text

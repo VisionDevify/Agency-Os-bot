@@ -1,3 +1,5 @@
+from app.models.proxy import ProxyRotationHistory
+
 from .formatting import *
 from .accounts import render_account_list_page
 
@@ -65,6 +67,54 @@ def render_proxy_advanced_page() -> Screen:
         reply_markup=proxies_advanced_menu(),
     )
 
+
+def render_proxy_add_page() -> Screen:
+    return Screen(
+        text="\n".join(
+            [
+                "Add Proxy",
+                "",
+                "Fortuna can save your Olympix SOCKS5 proxy in one paste.",
+                "",
+                "Best path:",
+                "Paste the full proxy string once.",
+                "",
+                "Format:",
+                "host:port:username:password",
+                "",
+                "Password is encrypted and never shown again.",
+            ]
+        ),
+        reply_markup=proxy_add_menu(),
+    )
+
+
+def render_olympix_proxy_paste_page() -> Screen:
+    return Screen(
+        text="\n".join(
+            [
+                "Paste Olympix Proxy",
+                "",
+                "Send one message in this format:",
+                "host:port:username:password",
+                "",
+                "Example structure:",
+                "host.olympix.io:1080:user_xxxxxx,type_mobile,session_yyyyyyyy:password",
+                "",
+                "Fortuna will extract:",
+                "- Host",
+                "- Port",
+                "- Base username",
+                "- Session suffix",
+                "- Password",
+                "",
+                "The password is encrypted immediately and never shown again.",
+            ]
+        ),
+        reply_markup=page_menu(back_to="proxies:add"),
+    )
+
+
 def render_proxy_list_page(session: Session) -> Screen:
     proxies = list_proxies(session)
     lines = ["Proxy Vault", ""]
@@ -85,6 +135,9 @@ def render_proxy_list_page(session: Session) -> Screen:
 def render_olympix_proxy_wizard_page() -> Screen:
     lines = [
         "Olympix Mobile SOCKS5 Wizard",
+        "",
+        "Recommended:",
+        "Use Paste Full Proxy String if you already have host:port:username:password.",
         "",
         "Step 1: Host",
         "Default: host.olympix.io",
@@ -115,7 +168,7 @@ def render_olympix_proxy_wizard_page() -> Screen:
         "",
         "Target city is optional. Only enter credentials here in the bot.",
     ]
-    return Screen("\n".join(lines), page_menu(back_to="proxies"))
+    return Screen("\n".join(lines), proxy_add_menu())
 
 def render_proxy_entry_check_page(session: Session) -> Screen:
     status = proxy_entry_status(session)
@@ -194,7 +247,6 @@ def render_proxy_detail_page(session: Session, proxy_id: int) -> Screen:
     )
     if proxy is None:
         return Screen(text="Proxy not found.", reply_markup=page_menu(back_to="proxies:list"))
-    health = calculate_proxy_health(proxy)
     mode = proxy_check_mode(proxy)
     recent_results = latest_proxy_health_check_results(session, proxy, limit=5)
     last_result = recent_results[0] if recent_results else None
@@ -205,42 +257,190 @@ def render_proxy_detail_page(session: Session, proxy_id: int) -> Screen:
     detected_location = ", ".join(
         item for item in [proxy.detected_city, proxy.detected_state, proxy.detected_country] if item
     ) or "Not checked yet"
-    last_check_label = "Not tested"
+    status_label = "\U0001f7e1 Not Tested" if last_result is None else f"{_status_marker(proxy.status)} {proxy.status.replace('_', ' ').title()}"
+    last_check_label = "Never"
     target_match = "Unknown"
     if last_result is not None:
         last_check_label = f"{last_result.status.title()} ({last_result.check_type})"
         target_match = "Yes" if last_result.target_match else "No" if last_result.target_match is False else "Unknown"
     lines = [
-        "Proxy Detail",
+        "\U0001f6e1 Olympix Mobile Proxy",
         "",
-        f"Provider: {proxy.provider}",
-        "Type: SOCKS5 Mobile",
-        f"Status: {_status_marker(proxy.status)} {proxy.status.replace('_', ' ').title()}",
-        f"Health: {health.label} {health.score}/100",
+        f"Status: {status_label}",
+        f"Real Check: {'On' if mode.real_health_enabled else 'Off'}",
+        f"Mode: {'Real provider checks enabled' if mode.real_health_enabled else 'Simulated until enabled'}",
+        f"Assigned Accounts: {len(assigned_accounts)}",
+        "",
+        "Connection:",
+        f"Host: {proxy.host}",
+        f"Port: {proxy.port}",
+        f"User: {mask_proxy_username(proxy.base_username)}",
+        f"Session: {mask_session_suffix(proxy.session_suffix)}",
+        "Password: Encrypted",
+        "",
+        "Location:",
         f"Target: {target_location}",
         f"Detected: {detected_location}",
-        f"Accounts: {len(assigned_accounts)}",
-        f"Real Checks: {_yes_no(mode.real_health_enabled)}",
-        f"Real Check: {'On' if mode.real_health_enabled else 'Off'}",
-        "Mode: simulated unless real checks are owner-enabled",
         "",
-        "Latest Check:",
-        f"- Status: {last_check_label}",
-        f"- Latency: {last_result.latency_ms if last_result and last_result.latency_ms is not None else 'Not checked'}",
-        f"- Detected IP: {last_result.detected_ip_masked if last_result and last_result.detected_ip_masked else 'Not checked'}",
-        f"- Target Match: {target_match}",
-        f"- Verified: {format_user_datetime(None, last_result.created_at) if last_result and last_result.created_at else 'Not checked yet'}",
+        "Last Check:",
+        last_check_label,
+        f"Target Match: {target_match}",
         "",
-        "Password: encrypted and hidden.",
+        "Next best move:",
+        "Assign this proxy to an account or run a test.",
     ]
-    if last_result is None:
-        lines.extend(["", "Nothing has been tested yet. Start with Test."])
-    elif last_result.error_message:
+    if last_result is not None and last_result.error_message:
         lines.extend(["", f"Note: {last_result.error_message}"])
-    if health.reasons:
-        lines.extend(["", "Health Reasons:"])
-        lines.extend(f"- {reason}" for reason in health.reasons)
     return Screen(text="\n".join(lines), reply_markup=proxy_detail_menu(proxy.id))
+
+
+def render_proxy_import_success_page(session: Session, proxy_id: int) -> Screen:
+    proxy = session.get(Proxy, proxy_id)
+    if proxy is None:
+        return Screen(text="Proxy not found.", reply_markup=page_menu(back_to="proxies"))
+    lines = [
+        "Proxy saved \u2705",
+        "",
+        f"Provider: {proxy.provider}",
+        f"Type: {(proxy.metadata_json or {}).get('proxy_type', 'SOCKS5 Mobile')}",
+        f"Host: {proxy.host}",
+        f"Port: {proxy.port}",
+        f"User: {mask_proxy_username(proxy.base_username)}",
+        f"Session: {mask_session_suffix(proxy.session_suffix)}",
+        "Password: Encrypted",
+        "",
+        "Next:",
+        "Assign this proxy to an account.",
+    ]
+    return Screen("\n".join(lines), proxy_import_success_menu(proxy.id))
+
+
+def render_proxy_rotation_preview_page(session: Session, proxy_id: int) -> Screen:
+    proxy = session.get(Proxy, proxy_id)
+    if proxy is None:
+        return Screen(text="Proxy not found.", reply_markup=page_menu(back_to="proxies:list"))
+    return Screen(
+        text="\n".join(
+            [
+                "Rotate Session",
+                "",
+                "This changes the session suffix and should create a fresh IP/session with Olympix.",
+                "",
+                f"Current session: {mask_session_suffix(proxy.session_suffix)}",
+                "",
+                "Fortuna will not show or log the proxy password.",
+            ]
+        ),
+        reply_markup=proxy_rotation_preview_menu(proxy.id),
+    )
+
+
+def render_proxy_rotation_result_page(session: Session, proxy_id: int, history_id: int | None = None) -> Screen:
+    proxy = session.get(Proxy, proxy_id)
+    history = session.get(ProxyRotationHistory, history_id) if history_id else None
+    if proxy is None:
+        return Screen(text="Proxy not found.", reply_markup=page_menu(back_to="proxies:list"))
+    old_session = history.previous_session_suffix if history else proxy.previous_session_suffix
+    new_session = history.new_session_suffix if history else proxy.session_suffix
+    lines = [
+        "Session rotated \u2705",
+        "",
+        f"Old session: {mask_session_suffix(old_session)}",
+        f"New session: {mask_session_suffix(new_session)}",
+        "",
+        "Next best move:",
+        "Run a test, then assign or keep using this proxy.",
+    ]
+    return Screen("\n".join(lines), proxy_result_menu(proxy.id, include_rollback=True))
+
+
+def render_proxy_rollback_result_page(session: Session, proxy_id: int, history_id: int | None = None) -> Screen:
+    proxy = session.get(Proxy, proxy_id)
+    history = session.get(ProxyRotationHistory, history_id) if history_id else None
+    if proxy is None:
+        return Screen(text="Proxy not found.", reply_markup=page_menu(back_to="proxies:list"))
+    lines = [
+        "Rollback complete \u2705",
+        "",
+        f"Restored session: {mask_session_suffix(history.new_session_suffix if history else proxy.session_suffix)}",
+        "",
+        "Fortuna restored the previous session suffix.",
+    ]
+    return Screen("\n".join(lines), proxy_result_menu(proxy.id))
+
+
+def render_proxy_no_rollback_page(session: Session, proxy_id: int) -> Screen:
+    return Screen(
+        "No previous session saved yet.\n\nRotate this proxy once before rollback is available.",
+        page_menu(back_to=f"proxy:{proxy_id}"),
+    )
+
+
+def render_proxy_check_result_page(session: Session, proxy_id: int) -> Screen:
+    proxy = session.get(Proxy, proxy_id)
+    if proxy is None:
+        return Screen(text="Proxy not found.", reply_markup=page_menu(back_to="proxies:list"))
+    results = latest_proxy_health_check_results(session, proxy, limit=1)
+    result = results[0] if results else None
+    lines = [
+        "Proxy Test Result",
+        "",
+        "Password: Encrypted",
+    ]
+    if result is None:
+        lines.append("No result was recorded.")
+    else:
+        lines.extend(
+            [
+                f"Mode: {result.check_type.title()}",
+                f"Status: {result.status.title()}",
+                f"Latency: {result.latency_ms if result.latency_ms is not None else 'Unknown'} ms",
+                f"Detected: {_result_location(result)}",
+                f"Target Match: {'Yes' if result.target_match else 'No' if result.target_match is False else 'Unknown'}",
+            ]
+        )
+        if result.error_message:
+            lines.append(f"Note: {result.error_message}")
+    return Screen("\n".join(lines), proxy_result_menu(proxy.id))
+
+
+def render_proxy_location_page(session: Session, proxy_id: int) -> Screen:
+    proxy = session.get(Proxy, proxy_id)
+    if proxy is None:
+        return Screen(text="Proxy not found.", reply_markup=page_menu(back_to="proxies:list"))
+    current = ", ".join(item for item in [proxy.target_city, proxy.target_state, proxy.target_country] if item) or "Not set"
+    return Screen(
+        "\n".join(
+            [
+                "Set Target Location",
+                "",
+                f"Current target: {current}",
+                "",
+                "Send location like this:",
+                "Country | State | City",
+                "",
+                "City is optional.",
+            ]
+        ),
+        page_menu(back_to=f"proxy:{proxy.id}"),
+    )
+
+
+def render_proxy_detail_advanced_page(session: Session, proxy_id: int) -> Screen:
+    proxy = session.get(Proxy, proxy_id)
+    if proxy is None:
+        return Screen(text="Proxy not found.", reply_markup=page_menu(back_to="proxies:list"))
+    mode = proxy_check_mode(proxy)
+    lines = [
+        "Proxy Advanced Tools",
+        "",
+        f"Real Checks: {'On' if mode.real_health_enabled else 'Off'}",
+        f"Location Checks: {'On' if mode.real_location_enabled else 'Off'}",
+        f"Previous Session: {mask_session_suffix(proxy.previous_session_suffix)}",
+        "",
+        "High-risk actions stay owner-controlled.",
+    ]
+    return Screen("\n".join(lines), proxy_detail_advanced_menu(proxy.id, real_enabled=mode.real_health_enabled))
 
 def render_proxy_assigned_accounts_page(session: Session, proxy_id: int) -> Screen:
     proxy = session.get(Proxy, proxy_id)
@@ -265,7 +465,13 @@ def render_proxy_assign_account_page(session: Session, proxy_id: int) -> Screen:
         )
         for account in accounts_missing_proxy(session)
     ]
-    lines = ["Assign Account to Proxy", "", f"Proxy: {proxy.provider} {proxy.host}:{proxy.port}", ""]
+    lines = [
+        "Assign Account to Proxy",
+        "",
+        f"Proxy: {proxy.provider} {proxy.host}:{proxy.port}",
+        f"Session: {mask_session_suffix(proxy.session_suffix)}",
+        "",
+    ]
     if not buttons:
         lines.append("No accounts are missing proxies.")
     return Screen(text="\n".join(lines), reply_markup=proxy_account_choice_menu(proxy.id, buttons, "assign"))
@@ -281,7 +487,7 @@ def render_proxy_remove_account_page(session: Session, proxy_id: int) -> Screen:
         )
         for account in accounts_for_proxy(session, proxy)
     ]
-    lines = ["Remove Account from Proxy", "", f"Proxy: {proxy.provider} {proxy.host}:{proxy.port}", ""]
+    lines = ["Remove Account from Proxy", "", f"Proxy: {proxy.provider} {proxy.host}:{proxy.port}", "Password: Encrypted", ""]
     if not buttons:
         lines.append("No accounts are assigned to this proxy.")
     return Screen(text="\n".join(lines), reply_markup=proxy_account_choice_menu(proxy.id, buttons, "remove"))
