@@ -16,7 +16,7 @@ def render_task_list_page(
     if not current_tasks:
         lines.append("No tasks yet.")
     for task in current_tasks[:15]:
-        due = task.due_at.isoformat() if task.due_at else "No due date"
+        due = format_user_datetime(None, task.due_at) if task.due_at else "No due date"
         model = task.model_brand.display_name if task.model_brand else "No model"
         assignee = _identity(task.assigned_to)
         lines.append(f"{task.id}. {_status_marker(task.status)} {task.title}")
@@ -32,8 +32,8 @@ def render_task_detail_page(session: Session, task_id: int) -> Screen:
         return Screen(text="Task not found.", reply_markup=page_menu(back_to="tasks:list"))
     model = task.model_brand.display_name if task.model_brand else "No model"
     account = f"{task.account.platform} @{task.account.username}" if task.account else "No account"
-    due = task.due_at.isoformat() if task.due_at else "No due date"
-    completed = task.completed_at.isoformat() if task.completed_at else "Not completed"
+    due = format_user_datetime(None, task.due_at) if task.due_at else "No due date"
+    completed = format_user_datetime(None, task.completed_at) if task.completed_at else "Not completed"
     logs = task_audit_logs(session, task, limit=3)
     recent = [f"- {log.action} ({log.status})" for log in logs] or ["- No recent task events"]
     lines = [

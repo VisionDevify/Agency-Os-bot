@@ -31,7 +31,7 @@ def render_intelligence_runs_page(session: Session) -> Screen:
     if not runs:
         lines.append("No intelligence runs yet.")
     for run in runs:
-        finished = run.finished_at.isoformat() if run.finished_at else "running"
+        finished = format_user_datetime(None, run.finished_at) if run.finished_at else "running"
         lines.append(f"{run.id}. {run.run_type}")
         lines.append(f"   Status: {run.status} | Finished: {finished}")
         buttons.append((f"{run.id}. {run.run_type}", f"nav:intelligence:run_detail:{run.id}"))
@@ -47,8 +47,8 @@ def render_intelligence_run_detail_page(session: Session, run_id: int) -> Screen
         f"ID: {run.id}",
         f"Type: {run.run_type}",
         f"Status: {run.status}",
-        f"Started: {run.started_at.isoformat() if run.started_at else 'unknown'}",
-        f"Finished: {run.finished_at.isoformat() if run.finished_at else 'not finished'}",
+        f"Started: {format_user_datetime(None, run.started_at) if run.started_at else 'unknown'}",
+        f"Finished: {format_user_datetime(None, run.finished_at) if run.finished_at else 'not finished'}",
         f"Error: {run.error_message or 'None'}",
         "",
         "Summary:",
@@ -68,7 +68,7 @@ def render_intelligence_signals_page(session: Session) -> Screen:
         lines.append(f"{signal.id}. {_status_marker(signal.severity)} {signal.title}")
         lines.append(f"   Type: {signal.signal_type} | Confidence: {signal.confidence_score}")
         lines.append(f"   Entity: {signal.entity_type or 'general'}:{signal.entity_id or 'n/a'}")
-        lines.append(f"   Seen: {signal.occurrence_count} | Last: {signal.last_seen_at.isoformat() if signal.last_seen_at else 'unknown'}")
+        lines.append(f"   Seen: {signal.occurrence_count} | Last: {format_user_datetime(None, signal.last_seen_at) if signal.last_seen_at else 'unknown'}")
     return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="intelligence"))
 
 def render_intelligence_patterns_page(session: Session) -> Screen:
@@ -93,6 +93,6 @@ def render_intelligence_trends_page(session: Session) -> Screen:
         change = f"{trend.percent_change}%" if trend.percent_change is not None else "baseline"
         lines.append(f"{trend.id}. {trend.metric_name}: {trend.value_numeric}")
         lines.append(f"   Direction: {trend.trend_direction} | Change: {change}")
-        lines.append(f"   Window: {trend.comparison_window} | Date: {trend.snapshot_date.isoformat()}")
+        lines.append(f"   Window: {trend.comparison_window} | Date: {trend.snapshot_date.strftime('%b')} {trend.snapshot_date.day}, {trend.snapshot_date.year}")
     return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="intelligence"))
 

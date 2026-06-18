@@ -31,6 +31,7 @@ COUNTRY_TIMEZONE_QUICK_PICKS: dict[str, tuple[str, ...]] = {
     "Brazil": ("America/Sao_Paulo",),
     "United Kingdom": ("Europe/London",),
 }
+DEFAULT_USER_TIMEZONE = "America/New_York"
 
 
 def _now() -> datetime:
@@ -61,8 +62,8 @@ def _valid_timezone(value: str) -> str:
 
 def timezone_suggestions_for_country(country: str | None) -> tuple[str, ...]:
     if not country:
-        return ("UTC",)
-    return COUNTRY_TIMEZONE_QUICK_PICKS.get(country, ("UTC",))
+        return (DEFAULT_USER_TIMEZONE,)
+    return COUNTRY_TIMEZONE_QUICK_PICKS.get(country, (DEFAULT_USER_TIMEZONE,))
 
 
 def get_or_create_availability(session: Session, user: User) -> UserAvailability:
@@ -73,7 +74,7 @@ def get_or_create_availability(session: Session, user: User) -> UserAvailability
         availability = UserAvailability(
             user_id=user.id,
             status="off_shift",
-            timezone=user.timezone or "UTC",
+            timezone=user.timezone or DEFAULT_USER_TIMEZONE,
         )
         session.add(availability)
         session.flush()
@@ -94,6 +95,7 @@ def update_user_localization(
 ) -> User:
     if require_admin and actor is not None and actor.id != user.id:
         _require_user_admin(session, actor)
+    availability = get_or_create_availability(session, user)
     if language is not None:
         if language not in SUPPORTED_LANGUAGES:
             raise ValueError(f"Invalid language: {language}")
@@ -108,6 +110,9 @@ def update_user_localization(
         )
     if country is not None:
         user.country = country
+        if timezone is None and user.timezone in {DEFAULT_USER_TIMEZONE, "UTC"} and country != "United States":
+            user.timezone = "UTC"
+            availability.timezone = "UTC"
         audit_action(
             session,
             actor=actor,
@@ -118,7 +123,6 @@ def update_user_localization(
         )
     if timezone is not None:
         user.timezone = _valid_timezone(timezone)
-        availability = get_or_create_availability(session, user)
         availability.timezone = user.timezone
         audit_action(
             session,
@@ -210,13 +214,26 @@ def is_user_available(user: User, *, now: datetime | None = None) -> bool:
     return True
 
 
-def format_user_datetime(user: User, value: datetime | None) -> str:
+def _display_timezone(user: User | None) -> str:
+    timezone = user.timezone if user and user.timezone else DEFAULT_USER_TIMEZONE
+    return DEFAULT_USER_TIMEZONE if timezone == "UTC" else timezone
+
+
+def format_user_datetime(user: User | None, value: datetime | None) -> str:
     if value is None:
         return "Not set"
-    local = value.astimezone(ZoneInfo(user.timezone or "UTC"))
-    if user.time_format == "24h":
-        return local.strftime("%Y-%m-%d %H:%M %Z")
-    return local.strftime("%Y-%m-%d %I:%M %p %Z")
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    try:
+        timezone = ZoneInfo(_display_timezone(user))
+    except ZoneInfoNotFoundError:
+        timezone = ZoneInfo(DEFAULT_USER_TIMEZONE)
+    local = value.astimezone(timezone)
+    zone_label = "EST" if timezone.key == DEFAULT_USER_TIMEZONE else (local.tzname() or timezone.key)
+    if user is not None and user.time_format == "24h":
+        return f"{local.strftime('%b')} {local.day}, {local.hour:02d}:{local.minute:02d} {zone_label}"
+    hour = local.strftime("%I").lstrip("0") or "12"
+    return f"{local.strftime('%b')} {local.day}, {hour}:{local.minute:02d} {local.strftime('%p')} {zone_label}"
 
 
 def onboarding_next_step(user: User) -> str:

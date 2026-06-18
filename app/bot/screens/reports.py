@@ -1,7 +1,22 @@
+from datetime import datetime
+
 from .formatting import *
 
 def render_reports_home() -> Screen:
     return Screen(text="Reports\nBriefings, dashboards, and accountability.", reply_markup=reports_menu())
+
+
+def _human_time(user: User | None, value) -> str:
+    if value is None:
+        return "Not set"
+    if isinstance(value, datetime):
+        return format_user_datetime(user, value)
+    if isinstance(value, str) and "T" in value:
+        try:
+            return format_user_datetime(user, datetime.fromisoformat(value.replace("Z", "+00:00")))
+        except ValueError:
+            return value
+    return str(value)
 
 def render_executive_dashboard_page(session: Session, user: User | None = None) -> Screen:
     record_dashboard_view(session, actor=user, dashboard_name="executive")
@@ -247,7 +262,7 @@ def render_daily_digest_page(
         if not attempts:
             lines.append("No delivery attempts yet.")
         for attempt in attempts:
-            when = attempt.attempted_at.isoformat() if attempt.attempted_at else "unknown time"
+            when = format_user_datetime(user, attempt.attempted_at) if attempt.attempted_at else "unknown time"
             lines.append(f"{when} | {attempt.event_type} | {attempt.status}")
         return Screen(text="\n".join(lines), reply_markup=daily_digest_menu())
     elif mode == "schedule":
@@ -289,7 +304,9 @@ def render_accountability_page(session: Session, user: User | None = None) -> Sc
     view_accountability_report(session, actor=user)
     report = generate_accountability_report(session, actor=user)
     record_report_view(session, actor=user, report_name="team_accountability")
-    lines = ["Team Accountability", "", f"Generated: {report['generated_at']}", ""]
+    generated = report.get("generated_at")
+    generated_text = _human_time(user, generated)
+    lines = ["Team Accountability", "", f"Generated: {generated_text}", ""]
     if not report["users"]:
         lines.append("No users yet.")
     for row in report["users"][:15]:
@@ -303,24 +320,69 @@ def render_accountability_page(session: Session, user: User | None = None) -> Sc
         lines.append(f"   Last Seen: {row['last_seen']} | Roles: {roles}")
     return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="reports"))
 
+
+def _recommendation_group(recommendation: Recommendation) -> tuple[str, str]:
+    rec_type = recommendation.recommendation_type
+    title = recommendation.title.lower()
+    if recommendation.severity == "critical" or "critical" in title:
+        return "\U0001f534 Urgent Setup Blockers", "Fix Now"
+    if rec_type.startswith("activation_model") or "model" in title:
+        return "\U0001f7e1 Model Setup", "Fix Now"
+    if "creator" in title or "opportun" in title:
+        return "\U0001f7e1 Growth Setup", "Fix Now"
+    if "notification" in title:
+        return "\U0001f535 System Setup", "Fix Now"
+    if "production" in title or "automation" in title or "proxy" in title:
+        return "\u2699 Production", "Review"
+    return "\U0001f535 Recommended Next Moves", "Review"
+
+
+def _friendly_recommendation_title(recommendation: Recommendation) -> str:
+    raw = recommendation.title.strip()
+    replacements = {
+        "Models Missing Manager": "Model needs a manager",
+        "Models Missing Chatter Team": "Model needs a chatter team",
+        "Accounts Missing Proxy": "Account needs a proxy",
+        "Notification Targets Missing": "Notification groups are not registered",
+    }
+    if raw in replacements:
+        return replacements[raw]
+    return raw.replace("_", " ").strip().capitalize()
+
+
 def render_recommendations_page(session: Session, user: User | None = None) -> Screen:
     generate_recommendations(session, actor=user)
     recommendations = list_recommendations(session, status="open", limit=20)
     record_report_view(session, actor=user, report_name="recommendations")
-    lines = ["Recommendations", ""]
+    lines = [
+        "Fortuna Recommendations",
+        "",
+        "Recommended Next Move:",
+    ]
     buttons: list[tuple[str, str]] = []
     if not recommendations:
-        lines.append("No open recommendations.")
-    for recommendation in recommendations:
-        marker = _status_marker(recommendation.severity)
-        lines.append(f"{recommendation.id}. {marker} {recommendation.title}")
-        lines.append(f"   Status: {recommendation.status} | Type: {recommendation.recommendation_type}")
-        buttons.append(
-            (
-                f"{recommendation.id}. {recommendation.title}",
-                f"nav:recommendation:{recommendation.id}",
-            )
-        )
+        lines.extend(["Nothing urgent here.", "", "Fortuna will keep watching for blockers."])
+    else:
+        top = recommendations[0]
+        lines.extend([_friendly_recommendation_title(top), ""])
+        grouped: dict[str, list[Recommendation]] = {}
+        for recommendation in recommendations:
+            group, _ = _recommendation_group(recommendation)
+            grouped.setdefault(group, []).append(recommendation)
+        shown = 0
+        for group, group_items in grouped.items():
+            if shown >= 3:
+                break
+            lines.append(group)
+            for recommendation in group_items[: 3 - shown]:
+                marker = _status_marker(recommendation.severity)
+                lines.append(f"- {marker} {_friendly_recommendation_title(recommendation)}")
+                buttons.append((f"Fix Now: {_friendly_recommendation_title(recommendation)[:36]}", f"nav:recommendation:{recommendation.id}"))
+                shown += 1
+            lines.append("")
+        hidden_count = max(0, len(recommendations) - shown)
+        if hidden_count:
+            lines.append(f"{hidden_count} more are tucked away to keep this calm.")
     return Screen(text="\n".join(lines), reply_markup=recommendations_menu(buttons))
 
 def render_recommendation_detail_page(session: Session, recommendation_id: int) -> Screen:
@@ -341,9 +403,10 @@ def render_recommendation_detail_page(session: Session, recommendation_id: int) 
         f"Title: {recommendation.title}",
         f"Severity: {_status_marker(recommendation.severity)} {recommendation.severity}",
         f"Status: {recommendation.status}",
-        f"Type: {recommendation.recommendation_type}",
         f"Target: {target}",
-        f"Description: {recommendation.description}",
+        "",
+        "Why this matters:",
+        recommendation.description,
         "",
         "Jump opens the closest related Fortuna OS page when available.",
     ]

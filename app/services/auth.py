@@ -112,6 +112,7 @@ def get_or_create_telegram_user(
             is_active=owner_match,
             status=USER_STATUS_ACTIVE if owner_match else USER_STATUS_PENDING,
             language="English" if owner_match else "",
+            timezone="America/New_York",
         )
         session.add(user)
         session.flush()

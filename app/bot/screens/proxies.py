@@ -17,14 +17,36 @@ def render_proxies_home() -> Screen:
     return Screen(
         text="\n".join(
             [
-                "Proxy Vault",
+                "\U0001f6e1 Proxy Vault",
                 "",
-                "Manage encrypted proxy records, account assignments, and health checks.",
-                "Use the Olympix wizard for Mobile SOCKS5 proxies. Passwords are encrypted and never shown back in Telegram.",
-                PROXY_REALITY_NOTE,
+                "Status: saved proxies stay encrypted",
+                "Real Checks: Off by default",
+                "Mode: Simulated until enabled",
+                "",
+                "What you can do:",
+                "1. Add a proxy",
+                "2. Assign proxy to account",
+                "3. Test proxy",
+                "4. Enable real checks",
+                "",
+                "Fortuna will never show proxy passwords back in Telegram.",
             ]
         ),
         reply_markup=proxies_menu(),
+    )
+
+
+def render_proxy_advanced_page() -> Screen:
+    return Screen(
+        text="\n".join(
+            [
+                "Proxy Vault Advanced",
+                "",
+                "Diagnostics and infrastructure views live here.",
+                "Real provider checks stay off until an owner enables them.",
+            ]
+        ),
+        reply_markup=proxies_advanced_menu(),
     )
 
 def render_proxy_list_page(session: Session) -> Screen:
@@ -48,19 +70,34 @@ def render_olympix_proxy_wizard_page() -> Screen:
     lines = [
         "Olympix Mobile SOCKS5 Wizard",
         "",
-        "This creates an encrypted proxy record. The password is never shown back in Telegram.",
+        "Step 1: Host",
+        "Default: host.olympix.io",
         "",
-        "Fixed provider details:",
-        "Host: host.olympix.io",
-        "Port: 1080",
+        "Step 2: Port",
+        "Default: 1080",
         "",
-        "Send the setup values in this format:",
+        "Step 3: Base username",
+        "Paste the part before ,session_",
+        "",
+        "Step 4: Session suffix",
+        "Example: bf534e5c",
+        "",
+        "Step 5: Password",
+        "Password is encrypted and never shown again.",
+        "The password is never shown after save.",
+        "",
+        "Step 6: Target location",
+        "Country / State / City",
+        "",
+        "Step 7: Review masked summary",
+        "Fortuna will show only safe proxy details before save.",
+        "",
+        "Step 8: Save",
+        "",
+        "Send the setup values like this:",
         "base username | password | target country | target state | target city",
         "",
-        "Example:",
-        "customer-user | password | United States | Florida | Miami",
-        "",
-        "Target city is optional. Do not paste this into any unrelated chat.",
+        "Target city is optional. Only enter credentials here in the bot.",
     ]
     return Screen("\n".join(lines), page_menu(back_to="proxies"))
 
@@ -105,7 +142,7 @@ def render_proxy_real_check_pilot_page(session: Session) -> Screen:
         latest = result[0] if result else None
         latest_line = "no check yet"
         if latest is not None:
-            latest_time = latest.created_at.isoformat() if latest.created_at else "unknown time"
+            latest_time = format_user_datetime(None, latest.created_at) if latest.created_at else "unknown time"
             latest_line = f"{latest.check_type} {latest.status} at {latest_time}"
         lines.extend(
             [
@@ -146,64 +183,44 @@ def render_proxy_detail_page(session: Session, proxy_id: int) -> Screen:
     recent_results = latest_proxy_health_check_results(session, proxy, limit=5)
     last_result = recent_results[0] if recent_results else None
     assigned_accounts = accounts_for_proxy(session, proxy)
-    affected_models = affected_models_for_proxy(session, proxy)
     target_location = ", ".join(
         item for item in [proxy.target_city, proxy.target_state, proxy.target_country] if item
     ) or "Not set"
     detected_location = ", ".join(
         item for item in [proxy.detected_city, proxy.detected_state, proxy.detected_country] if item
     ) or "Not checked yet"
+    last_check_label = "Not tested"
+    target_match = "Unknown"
+    if last_result is not None:
+        last_check_label = f"{last_result.status.title()} ({last_result.check_type})"
+        target_match = "Yes" if last_result.target_match else "No" if last_result.target_match is False else "Unknown"
     lines = [
         "Proxy Detail",
         "",
         f"Provider: {proxy.provider}",
-        f"Host: {proxy.host}:{proxy.port}",
-        f"Status: {proxy.status}",
+        "Type: SOCKS5 Mobile",
+        f"Status: {_status_marker(proxy.status)} {proxy.status.replace('_', ' ').title()}",
         f"Health: {health.label} {health.score}/100",
+        f"Target: {target_location}",
+        f"Detected: {detected_location}",
+        f"Accounts: {len(assigned_accounts)}",
         f"Real Checks: {_yes_no(mode.real_health_enabled)}",
-        f"Real Location Checks: {_yes_no(mode.real_location_enabled)}",
-        "Default Mode: simulated unless real checks are owner-enabled",
-        f"Provider Adapter: Olympix Mobile SOCKS5",
-        f"Check Timeout: {mode.timeout_seconds}s",
-        f"Current Session: {_mask_proxy_value(proxy.session_suffix)}",
-        f"Previous Session: {_mask_proxy_value(proxy.previous_session_suffix)}",
-        f"Rotation Count: {proxy.rotation_count}",
-        f"Generated Username: {_mask_proxy_value(proxy.generated_username)}",
-        "Password: encrypted and hidden",
-        f"Target Location: {target_location}",
-        f"Detected Location: {detected_location}",
-        f"Last Health Check: {proxy.last_health_check.isoformat() if proxy.last_health_check else 'Not checked yet'}",
-        f"Last Verified: {proxy.last_health_check.isoformat() if proxy.last_health_check else 'Not verified yet'}",
-        f"Last Rotation: {proxy.last_rotation.isoformat() if proxy.last_rotation else 'Never'}",
-        f"Last Successful Rotation: {proxy.last_successful_rotation.isoformat() if proxy.last_successful_rotation else 'Never'}",
-        f"Accounts Using Proxy: {len(assigned_accounts)}",
-        f"Accounts Missing Proxy: {len(accounts_missing_proxy(session))}",
-        f"Models Affected: {len(affected_models)}",
+        f"Real Check: {'On' if mode.real_health_enabled else 'Off'}",
+        "Mode: simulated unless real checks are owner-enabled",
+        "",
+        "Latest Check:",
+        f"- Status: {last_check_label}",
+        f"- Latency: {last_result.latency_ms if last_result and last_result.latency_ms is not None else 'Not checked'}",
+        f"- Detected IP: {last_result.detected_ip_masked if last_result and last_result.detected_ip_masked else 'Not checked'}",
+        f"- Target Match: {target_match}",
+        f"- Verified: {format_user_datetime(None, last_result.created_at) if last_result and last_result.created_at else 'Not checked yet'}",
+        "",
+        "Password: encrypted and hidden.",
     ]
     if last_result is None:
-        lines.extend(
-            [
-                "",
-                "Latest Check:",
-                "- No health check results stored yet.",
-            ]
-        )
-    else:
-        lines.extend(
-            [
-                "",
-                "Latest Check:",
-                f"- Type: {last_result.check_type}",
-                f"- Status: {last_result.status}",
-                f"- Latency: {last_result.latency_ms if last_result.latency_ms is not None else 'Unknown'} ms",
-                f"- Detected IP: {last_result.detected_ip_masked or 'Unknown'}",
-                f"- Detected Location: {_result_location(last_result)}",
-                f"- Target Match: {last_result.target_match if last_result.target_match is not None else 'Unknown'}",
-                f"- Checked: {last_result.created_at.isoformat() if last_result.created_at else 'Unknown'}",
-            ]
-        )
-        if last_result.error_message:
-            lines.append(f"- Note: {last_result.error_message}")
+        lines.extend(["", "Nothing has been tested yet. Start with Test."])
+    elif last_result.error_message:
+        lines.extend(["", f"Note: {last_result.error_message}"])
     if health.reasons:
         lines.extend(["", "Health Reasons:"])
         lines.extend(f"- {reason}" for reason in health.reasons)
@@ -316,7 +333,7 @@ def render_proxy_audit_page(session: Session, proxy_id: int) -> Screen:
     if not logs:
         lines.append("No proxy audit events yet.")
     for log in logs:
-        timestamp = log.created_at.isoformat() if log.created_at else "pending timestamp"
+        timestamp = format_user_datetime(None, log.created_at) if log.created_at else "pending timestamp"
         lines.append(f"{timestamp}")
         lines.append(f"Action: {log.action} | Status: {log.status}")
         lines.append("")
@@ -338,7 +355,7 @@ def render_proxy_check_history_page(session: Session, proxy_id: int) -> Screen:
     if not results:
         lines.append("No check history yet. Run a simulated check first, or enable real checks and run a real check.")
     for result in results:
-        when = result.created_at.isoformat() if result.created_at else "Unknown"
+        when = format_user_datetime(None, result.created_at) if result.created_at else "Unknown"
         lines.append(f"{when}")
         lines.append(f"   {result.check_type}: {result.status}")
         lines.append(f"   Latency: {result.latency_ms if result.latency_ms is not None else 'Unknown'} ms")

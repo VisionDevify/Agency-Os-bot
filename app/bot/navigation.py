@@ -220,6 +220,8 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         return None
     if page == "structure":
         return None
+    if page in {"start_here", "owner_advanced"}:
+        return ("view_dashboard", "manage_reports")
     if page.startswith("coo"):
         return ("view_dashboard", "manage_reports", "manage_tasks", "manage_users")
     if page == "executive_mode":

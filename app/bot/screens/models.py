@@ -244,7 +244,7 @@ def render_model_audit_page(session: Session, model_id: int) -> Screen:
     if not logs:
         lines.append("No model audit events yet.")
     for log in logs:
-        timestamp = log.created_at.isoformat() if log.created_at else "pending timestamp"
+        timestamp = format_user_datetime(None, log.created_at) if log.created_at else "pending timestamp"
         lines.append(f"{timestamp}")
         lines.append(f"Action: {log.action} | Status: {log.status}")
         lines.append("")

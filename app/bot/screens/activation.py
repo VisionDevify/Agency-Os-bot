@@ -416,7 +416,7 @@ def render_owner_daily_checklist_page(session: Session, user: User) -> Screen:
         f"Opportunities Needing Assignment: {checklist['opportunities_needing_assignment']}",
         f"Follow-Ups Due: {checklist['followups_due']}",
         f"Daily Autopilot: {'Enabled' if checklist['daily_autopilot_enabled'] else 'Disabled'}",
-        f"Next Daily Run: {next_run.isoformat() if next_run else 'Disabled'}",
+        f"Next Daily Run: {format_user_datetime(user, next_run) if next_run else 'Disabled'}",
         f"Last Daily Result: {checklist['daily_autopilot_last_result']}",
         "",
         "Top Blockers:",

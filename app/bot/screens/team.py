@@ -191,8 +191,8 @@ def render_scheduled_automations_page(session: Session, user: User | None = None
 
 def render_daily_autopilot_page(session: Session, user: User | None = None) -> Screen:
     summary = daily_autopilot_summary(session, user)
-    next_run = summary["next_run"].isoformat() if summary["next_run"] else "Disabled"
-    last_run = summary["last_run"].isoformat() if summary["last_run"] else "Not run yet"
+    next_run = format_user_datetime(user, summary["next_run"]) if summary["next_run"] else "Disabled"
+    last_run = format_user_datetime(user, summary["last_run"]) if summary["last_run"] else "Not run yet"
     lines = [
         "Daily Autopilot",
         "",

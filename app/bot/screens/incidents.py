@@ -31,7 +31,7 @@ def render_incident_detail_page(session: Session, incident_id: int) -> Screen:
     model = incident.model_brand.display_name if incident.model_brand else "No model"
     account = f"{incident.account.platform} @{incident.account.username}" if incident.account else "No account"
     proxy = f"{incident.proxy.provider} {incident.proxy.host}:{incident.proxy.port}" if incident.proxy else "No proxy"
-    resolved = incident.resolved_at.isoformat() if incident.resolved_at else "Not resolved"
+    resolved = format_user_datetime(None, incident.resolved_at) if incident.resolved_at else "Not resolved"
     logs = incident_audit_logs(session, incident, limit=3)
     recent = [f"- {log.action} ({log.status})" for log in logs] or ["- No recent incident events"]
     lines = [
@@ -79,7 +79,7 @@ def render_incident_timeline_page(session: Session, incident_id: int) -> Screen:
         lines.append("No timeline entries yet.")
     for entry in entries[:15]:
         actor = _identity(entry.actor)
-        when = entry.created_at.isoformat() if entry.created_at else "pending timestamp"
+        when = format_user_datetime(None, entry.created_at) if entry.created_at else "pending timestamp"
         lines.append(f"{when}")
         lines.append(f"{entry.event_type} by {actor}")
         lines.append(entry.message)

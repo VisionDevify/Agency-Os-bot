@@ -191,6 +191,14 @@ def help_article_count(session: Session) -> int:
 
 def detect_help_intent(question: str) -> str:
     text = question.casefold()
+    if "crowded" in text or "overwhelming" in text or "too much" in text:
+        return "screen_crowded"
+    if "advanced mode" in text or "simple mode" in text or "switch mode" in text:
+        return "advanced_mode"
+    if "simulated" in text and "proxy" in text:
+        return "proxy_simulated"
+    if "fix first" in text or "what should i fix" in text or "finish setup" in text:
+        return "readiness_low"
     if "register" in text and ("notification" in text or "group" in text):
         return "notification_groups"
     if "proxy" in text or "assign proxy" in text:
@@ -296,7 +304,7 @@ def _proxy_answer(session: Session, user: User | None) -> tuple[str, str]:
         return "Proxy setup is restricted. Ask an Owner/Admin to assign or check proxies; you can continue with your visible tasks.", "help"
     proxy_count = session.scalar(select(func.count(Proxy.id))) or 0
     if not proxy_count:
-        return "No proxies are saved yet. Open Proxy Vault -> Olympix Wizard and enter credentials only through the secure bot UI.", "proxies:olympix"
+        return "No proxies are saved yet. Open Proxy Vault -> Add Olympix Proxy and enter credentials only through the secure bot UI.", "proxies:olympix"
     enabled = 0
     for proxy in list_proxies(session):
         if proxy_check_mode(proxy).real_health_enabled:
@@ -334,6 +342,21 @@ def help_brain_answer(
 
     if intent == "readiness_low":
         answer, next_action = _readiness_answer(session, user)
+    elif intent == "screen_crowded":
+        answer = (
+            "Fortuna now starts in Simple Mode so the daily view stays calm. "
+            "Open Advanced only when you need deeper controls like Intelligence, Automations, Proxy Vault, Reports, or Observability."
+        )
+        next_action = "menu"
+    elif intent == "advanced_mode":
+        answer = "Use Owner Home -> Advanced to open deeper controls. Tap Simple Mode from Advanced to return to the calmer daily home."
+        next_action = "owner_advanced"
+    elif intent == "proxy_simulated":
+        answer = (
+            "Simulated proxy checks are safe placeholders. They do not contact the provider. "
+            "Real checks stay off until an owner enables them for a saved proxy."
+        )
+        next_action = "proxies"
     elif intent == "notification_groups":
         answer, next_action = _notification_answer(session, user)
     elif intent == "proxy_setup":

@@ -98,7 +98,7 @@ def render_account_detail_page(session: Session, account_id: int) -> Screen:
         return Screen(text="Account not found.", reply_markup=page_menu(back_to="accounts:list"))
     model_name = account.model_brand.display_name if account.model_brand else "Unassigned"
     health = account_health(account)
-    last_checked = account.last_checked_at.isoformat() if account.last_checked_at else "Not checked yet"
+    last_checked = format_user_datetime(None, account.last_checked_at) if account.last_checked_at else "Not checked yet"
     proxy_assignment = (
         f"{account.assigned_proxy.provider} {account.assigned_proxy.host}:{account.assigned_proxy.port}"
         if account.assigned_proxy
@@ -118,6 +118,19 @@ def render_account_detail_page(session: Session, account_id: int) -> Screen:
         f"Last Checked: {last_checked}",
         f"Notes: {account.notes or 'None'}",
     ]
+    if account.assigned_proxy is None:
+        proxy_count = len(list_proxies(session, include_disabled=False))
+        lines.extend(
+            [
+                "",
+                "This account needs a proxy.",
+                "Best next action: Assign a healthy proxy.",
+            ]
+        )
+        if proxy_count:
+            lines.append("Fortuna can help you choose one from the saved proxies.")
+        else:
+            lines.append("Add your first proxy, then come back here to assign it.")
     return Screen(text="\n".join(lines), reply_markup=account_detail_menu(account.id))
 
 def render_account_proxy_assignment_page(session: Session, account_id: int) -> Screen:
@@ -132,9 +145,17 @@ def render_account_proxy_assignment_page(session: Session, account_id: int) -> S
         )
         for proxy in proxies
     ]
-    lines = ["Assign Proxy", "", f"Account: @{account.username}", ""]
+    lines = [
+        "Assign Proxy",
+        "",
+        f"Account: @{account.username}",
+        "",
+        "This account needs a proxy.",
+        "Choose a healthy saved proxy, or add one first if the list is empty.",
+        "",
+    ]
     if not buttons:
-        lines.append("No active proxies available.")
+        lines.extend(["No active proxies available.", "Add your first proxy from Proxy Vault -> Add Olympix Proxy."])
     return Screen(text="\n".join(lines), reply_markup=account_proxy_choice_menu(account.id, buttons))
 
 def render_account_auth_prompt_page(session: Session, account_id: int) -> Screen:
@@ -169,7 +190,7 @@ def render_account_audit_page(session: Session, account_id: int) -> Screen:
     if not logs:
         lines.append("No account audit events yet.")
     for log in logs:
-        timestamp = log.created_at.isoformat() if log.created_at else "pending timestamp"
+        timestamp = format_user_datetime(None, log.created_at) if log.created_at else "pending timestamp"
         lines.append(f"{timestamp}")
         lines.append(f"Action: {log.action} | Status: {log.status}")
         lines.append("")

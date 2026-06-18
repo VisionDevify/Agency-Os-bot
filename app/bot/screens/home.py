@@ -1,8 +1,56 @@
+from datetime import UTC, datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
 from .formatting import *
+
+def _owner_display_name(user: User) -> str:
+    return user.display_name or user.username or "there"
+
+
+def _owner_greeting(user: User | None) -> str:
+    now = datetime.now(UTC)
+    try:
+        zone = ZoneInfo((user.timezone if user and user.timezone and user.timezone != "UTC" else "America/New_York"))
+        hour = now.astimezone(zone).hour
+    except ZoneInfoNotFoundError:
+        hour = now.hour
+    if hour < 12:
+        return "Good morning"
+    if hour < 18:
+        return "Good afternoon"
+    return "Good evening"
+
+
+def _readiness_marker(score: int) -> str:
+    if score >= 80:
+        return "\U0001f7e2"
+    if score >= 45:
+        return "\U0001f7e1"
+    return "\U0001f534"
+
 
 def render_main_menu(session: Session | None = None, user: User | None = None) -> Screen:
     if session is None or user is None:
         return Screen(text="Fortuna OS\nSelect an area.", reply_markup=main_menu())
+    if primary_role(user) in {"Owner", "Admin"}:
+        report = build_activation_report(session)
+        blockers = report["blockers"]
+        next_move = blockers[0]["title"] if blockers else "Nothing urgent here."
+        score = int(report["readiness_score"])
+        lines = [
+            "\U0001f319 Fortuna OS",
+            f"{_owner_greeting(user)}, {_owner_display_name(user)}.",
+            "",
+            f"Readiness: {score}% {_readiness_marker(score)}",
+            f"Today: {len(blockers[:5])} actions waiting",
+            "Production: \U0001f7e2 Healthy",
+            "",
+            "Next best move:",
+            next_move,
+            "",
+            "Ready when you are.",
+        ]
+        return Screen(text="\n".join(lines), reply_markup=owner_simple_home_menu())
     details = personalized_dashboard(session, user)
     items = role_home_items(user)
     lines = [
@@ -20,6 +68,54 @@ def render_main_menu(session: Session | None = None, user: User | None = None) -
         role_intro(details["role"]),
     ]
     return Screen(text="\n".join(lines), reply_markup=role_home_menu(items))
+
+
+def render_owner_advanced_page() -> Screen:
+    lines = [
+        "Fortuna OS Advanced",
+        "",
+        "The deeper controls live here when you need them.",
+        "",
+        "Use Simple Mode for the daily flow.",
+    ]
+    return Screen(text="\n".join(lines), reply_markup=owner_advanced_home_menu())
+
+
+def render_start_here_page(session: Session, user: User | None = None) -> Screen:
+    report = build_activation_report(session)
+    blockers = report["blockers"]
+    score = int(report["readiness_score"])
+    lines = [
+        "Start Here",
+        "",
+        f"Readiness: {score}% {_readiness_marker(score)}",
+        "",
+    ]
+    if score < 70:
+        lines.extend(
+            [
+                "Your agency is not fully set up yet. Finish these first.",
+                "",
+                "Top Setup Steps:",
+                "1. Complete model profile",
+                "2. Add accounts",
+                "3. Assign team",
+                "4. Add creators",
+                "5. Register notifications",
+                "",
+                "Recommended next move:",
+                blockers[0]["title"] if blockers else "Open Setup and review progress.",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "Nothing urgent here.",
+                "",
+                "Fortuna noticed the core setup is in good shape. Check Today for the next operating task.",
+            ]
+        )
+    return Screen(text="\n".join(lines), reply_markup=start_here_menu())
 
 def render_dashboard(
     stats: DashboardStats | None = None,

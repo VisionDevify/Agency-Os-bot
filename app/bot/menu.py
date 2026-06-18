@@ -38,6 +38,59 @@ def role_home_menu(items: list[tuple[str, str]] | tuple[tuple[str, str], ...]) -
     return main_menu(items)
 
 
+def owner_simple_home_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Start Here", callback_data=callback_for("start_here")),
+                InlineKeyboardButton(text="Today", callback_data=callback_for("owner_daily_checklist")),
+            ],
+            [
+                InlineKeyboardButton(text="Setup", callback_data=callback_for("setup:wizard")),
+                InlineKeyboardButton(text="Opportunities", callback_data=callback_for("opportunities")),
+            ],
+            [InlineKeyboardButton(text="Help", callback_data=callback_for("help"))],
+            [InlineKeyboardButton(text="Advanced", callback_data=callback_for("owner_advanced"))],
+        ]
+    )
+
+
+def owner_advanced_home_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Fortuna HQ", callback_data=callback_for("executive_mode")),
+                InlineKeyboardButton(text="Intelligence", callback_data=callback_for("intelligence")),
+            ],
+            [
+                InlineKeyboardButton(text="Automation", callback_data=callback_for("automations")),
+                InlineKeyboardButton(text="Proxy Vault", callback_data=callback_for("proxies")),
+            ],
+            [
+                InlineKeyboardButton(text="Reports", callback_data=callback_for("reports")),
+                InlineKeyboardButton(text="Observability", callback_data=callback_for("production_observability")),
+            ],
+            [
+                InlineKeyboardButton(text="Settings", callback_data=callback_for("settings")),
+                InlineKeyboardButton(text="Owner Management", callback_data=callback_for("users")),
+            ],
+            [InlineKeyboardButton(text="Simple Mode", callback_data=callback_for("menu"))],
+        ]
+    )
+
+
+def start_here_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Continue Setup", callback_data=callback_for("setup:wizard"))],
+            [InlineKeyboardButton(text="Fix Top Blocker", callback_data=callback_for("agency_activation"))],
+            [InlineKeyboardButton(text="View Progress", callback_data=callback_for("coo:readiness"))],
+            [InlineKeyboardButton(text="Ask Fortuna", callback_data=callback_for("help_copilot:finish_setup"))],
+            *page_controls(back_to="menu"),
+        ]
+    )
+
+
 def page_controls(*, back_to: str = "menu", include_refresh: bool = False) -> list[list[InlineKeyboardButton]]:
     rows: list[list[InlineKeyboardButton]] = []
     if include_refresh:
@@ -599,15 +652,25 @@ def account_detail_menu(account_id: int) -> InlineKeyboardMarkup:
 def proxies_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [InlineKeyboardButton(text="Add Olympix Proxy", callback_data=callback_for("proxies:olympix"))],
             [InlineKeyboardButton(text="View Proxies", callback_data=callback_for("proxies:list"))],
-            [InlineKeyboardButton(text="Create Proxy", callback_data=callback_for("proxies:create"))],
-            [InlineKeyboardButton(text="Proxy Setup Check", callback_data=callback_for("proxies:entry_check"))],
-            [InlineKeyboardButton(text="Real Check Pilot", callback_data=callback_for("proxies:real_check_pilot"))],
-            [InlineKeyboardButton(text="Olympix Mobile SOCKS5 Wizard", callback_data=callback_for("proxies:olympix"))],
             [InlineKeyboardButton(text="Accounts Missing Proxy", callback_data=callback_for("proxies:missing"))],
+            [InlineKeyboardButton(text="Proxy Health", callback_data=callback_for("proxies:dashboard"))],
+            [InlineKeyboardButton(text="Help", callback_data=callback_for("help_copilot:add_proxy"))],
+            [InlineKeyboardButton(text="Advanced", callback_data=callback_for("proxies:advanced"))],
+            *page_controls(back_to="menu"),
+        ]
+    )
+
+
+def proxies_advanced_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
             [InlineKeyboardButton(text="Simulation Mode", callback_data=callback_for("proxies:simulation"))],
             [InlineKeyboardButton(text="Infrastructure Dashboard", callback_data=callback_for("proxies:dashboard"))],
-            *page_controls(back_to="menu"),
+            [InlineKeyboardButton(text="Real Check Pilot", callback_data=callback_for("proxies:real_check_pilot"))],
+            [InlineKeyboardButton(text="Proxy Setup Check", callback_data=callback_for("proxies:entry_check"))],
+            *page_controls(back_to="proxies"),
         ]
     )
 
@@ -1265,31 +1328,22 @@ def proxy_detail_menu(proxy_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="Run Simulated Check", callback_data=f"nav:proxy:{proxy_id}:check:simulated"),
-                InlineKeyboardButton(text="Run Real Check", callback_data=f"nav:proxy:{proxy_id}:check:real"),
-            ],
-            [
-                InlineKeyboardButton(text="Enable Real Checks", callback_data=f"nav:proxy:{proxy_id}:enable_real"),
-                InlineKeyboardButton(text="Disable Real Checks", callback_data=f"nav:proxy:{proxy_id}:disable_real"),
-            ],
-            [
+                InlineKeyboardButton(text="Test", callback_data=f"nav:proxy:{proxy_id}:check:simulated"),
                 InlineKeyboardButton(text="Assign Account", callback_data=f"nav:proxy:{proxy_id}:assign"),
-                InlineKeyboardButton(text="Remove Account", callback_data=f"nav:proxy:{proxy_id}:remove"),
             ],
-            [InlineKeyboardButton(text="View Assigned Accounts", callback_data=f"nav:proxy:{proxy_id}:accounts")],
             [
+                InlineKeyboardButton(text="Set Location", callback_data=f"nav:proxy:{proxy_id}:verify"),
                 InlineKeyboardButton(text="Rotate Session", callback_data=f"nav:proxy:{proxy_id}:rotate"),
-                InlineKeyboardButton(text="Rollback Session", callback_data=f"nav:proxy:{proxy_id}:rollback"),
             ],
             [
-                InlineKeyboardButton(text="Verify Location", callback_data=f"nav:proxy:{proxy_id}:verify"),
-                InlineKeyboardButton(text="Repair/Test", callback_data=f"nav:proxy:{proxy_id}:repair"),
+                InlineKeyboardButton(text="History", callback_data=f"nav:proxy:{proxy_id}:history"),
+                InlineKeyboardButton(text="Accounts", callback_data=f"nav:proxy:{proxy_id}:accounts"),
             ],
+            [InlineKeyboardButton(text="Advanced Real Checks", callback_data=callback_for("proxies:real_check_pilot"))],
             [
-                InlineKeyboardButton(text="View Check History", callback_data=f"nav:proxy:{proxy_id}:history"),
-                InlineKeyboardButton(text="Rotate Until Target Match", callback_data=f"nav:proxy:{proxy_id}:rotate_until_match"),
+                InlineKeyboardButton(text="Remove Account", callback_data=f"nav:proxy:{proxy_id}:remove"),
+                InlineKeyboardButton(text="Audit History", callback_data=f"nav:proxy:{proxy_id}:audit"),
             ],
-            [InlineKeyboardButton(text="Audit History", callback_data=f"nav:proxy:{proxy_id}:audit")],
             *page_controls(back_to="proxies:list"),
         ]
     )

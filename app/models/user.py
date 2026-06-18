@@ -35,7 +35,7 @@ class User(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(24), default="pending", nullable=False)
     language: Mapped[str] = mapped_column(String(40), default="English", nullable=False)
     country: Mapped[str | None] = mapped_column(String(80), nullable=True)
-    timezone: Mapped[str] = mapped_column(String(80), default="UTC", nullable=False)
+    timezone: Mapped[str] = mapped_column(String(80), default="America/New_York", nullable=False)
     time_format: Mapped[str] = mapped_column(String(8), default="12h", nullable=False)
     last_seen: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     roles: Mapped[list[Role]] = relationship(
@@ -69,7 +69,7 @@ class UserAvailability(TimestampMixin, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False)
     status: Mapped[str] = mapped_column(String(40), default="off_shift", nullable=False)
-    timezone: Mapped[str] = mapped_column(String(80), default="UTC", nullable=False)
+    timezone: Mapped[str] = mapped_column(String(80), default="America/New_York", nullable=False)
     shift_start_local: Mapped[time | None] = mapped_column(Time(), nullable=True)
     shift_end_local: Mapped[time | None] = mapped_column(Time(), nullable=True)
     quiet_hours_start_local: Mapped[time | None] = mapped_column(Time(), nullable=True)

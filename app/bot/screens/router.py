@@ -17,6 +17,10 @@ from .coo import *
 from .help import *
 
 def render_page(page: str, session: Session | None = None, user: User | None = None) -> Screen:
+    if page == "owner_advanced":
+        return render_owner_advanced_page()
+    if page == "start_here" and session is not None:
+        return render_start_here_page(session, user)
     if page == "structure":
         return render_structure_map_page()
     if page == "coo" and session is not None:
@@ -136,6 +140,8 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_daily_autopilot_page(session, user=user)
     if page == "proxies":
         return render_proxies_home()
+    if page == "proxies:advanced":
+        return render_proxy_advanced_page()
     if page == "proxies:list" and session is not None:
         return render_proxy_list_page(session)
     if page == "proxies:entry_check" and session is not None:
@@ -561,11 +567,11 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         if len(parts) >= 2 and parts[1].isdigit():
             return render_simulation_run_detail_page(session, int(parts[1]))
     if page == "audit_logs" and session is not None:
-        return render_audit_logs_page(session)
+        return render_audit_logs_page(session, user)
     if page in {"bot_status", "production_status"} and session is not None:
-        return render_bot_status_page(session)
+        return render_bot_status_page(session, user)
     if page == "production_observability" and session is not None:
-        return render_production_observability_page(session)
+        return render_production_observability_page(session, user)
     if page == "availability" and session is not None and user is not None:
         return render_availability_page(session, user)
     if page == "availability:team" and session is not None:

@@ -64,8 +64,8 @@ def render_automation_rule_detail_page(session: Session, rule_id: int) -> Screen
         f"Risk: {_status_marker(rule.risk_level)} {rule.risk_level}",
         f"Owner Approval Required: {'yes' if rule.requires_owner_approval else 'no'}",
         f"Latest Approval: {latest_approval.status if latest_approval else 'none'}",
-        f"Last Simulated: {rule.last_simulated_at.isoformat() if rule.last_simulated_at else 'never'}",
-        f"Last Run: {rule.last_run_at.isoformat() if rule.last_run_at else 'never'}",
+        f"Last Simulated: {format_user_datetime(None, rule.last_simulated_at) if rule.last_simulated_at else 'never'}",
+        f"Last Run: {format_user_datetime(None, rule.last_run_at) if rule.last_run_at else 'never'}",
         "",
         "What starts it:",
         f"- {rule.trigger_type}",
@@ -115,7 +115,7 @@ def render_automation_approvals_page(session: Session) -> Screen:
     for approval in approvals:
         rule_name = approval.rule.name if approval.rule else f"Rule {approval.automation_rule_id}"
         lines.append(f"{approval.id}. {rule_name}")
-        lines.append(f"   Status: {approval.status} | Expires: {approval.expires_at.isoformat() if approval.expires_at else 'not set'}")
+        lines.append(f"   Status: {approval.status} | Expires: {format_user_datetime(None, approval.expires_at) if approval.expires_at else 'not set'}")
         buttons.append((f"{approval.id}. {rule_name[:34]}", f"nav:approval:{approval.id}"))
     return Screen(text="\n".join(lines), reply_markup=automation_approvals_menu(buttons))
 
@@ -132,7 +132,7 @@ def render_automation_approval_detail_page(session: Session, approval_id: int) -
         f"Risk: {rule.risk_level if rule else 'unknown'}",
         f"Requested By: {approval.requested_by_user_id}",
         f"Approved By: {approval.approved_by_user_id or 'pending'}",
-        f"Expires: {approval.expires_at.isoformat() if approval.expires_at else 'not set'}",
+        f"Expires: {format_user_datetime(None, approval.expires_at) if approval.expires_at else 'not set'}",
         f"Reason: {approval.approval_reason or 'None'}",
     ]
     return Screen(text="\n".join(lines), reply_markup=automation_approval_detail_menu(approval.id, approval.automation_rule_id))
@@ -149,7 +149,7 @@ def render_automation_runs_page(session: Session, *, rule_id: int | None = None)
         rule_name = run.rule.name if run.rule else f"Rule {run.automation_rule_id}"
         lines.append(f"{run.id}. {rule_name}")
         lines.append(f"   Status: {run.status} | Rollback: {run.rollback_status}")
-        lines.append(f"   Started: {run.started_at.isoformat() if run.started_at else 'not started'}")
+        lines.append(f"   Started: {format_user_datetime(None, run.started_at) if run.started_at else 'not started'}")
         buttons.append((f"{run.id}. {rule_name[:34]}", f"nav:automation_run:{run.id}"))
     return Screen(text="\n".join(lines), reply_markup=automation_runs_menu(buttons))
 
@@ -164,8 +164,8 @@ def render_automation_run_detail_page(session: Session, run_id: int) -> Screen:
         f"Status: {run.status}",
         f"Rollback Available: {'yes' if run.rollback_available else 'no'}",
         f"Rollback Status: {run.rollback_status}",
-        f"Started: {run.started_at.isoformat() if run.started_at else 'not started'}",
-        f"Finished: {run.finished_at.isoformat() if run.finished_at else 'not finished'}",
+        f"Started: {format_user_datetime(None, run.started_at) if run.started_at else 'not started'}",
+        f"Finished: {format_user_datetime(None, run.finished_at) if run.finished_at else 'not finished'}",
         f"Error: {run.error_message or 'None'}",
         "",
         "Steps:",
@@ -188,8 +188,8 @@ def render_automation_step_detail_page(session: Session, step_id: int) -> Screen
         f"Action: {step.action_type}",
         f"Status: {step.status}",
         f"Entity: {step.entity_type or 'n/a'}:{step.entity_id or 'n/a'}",
-        f"Started: {step.started_at.isoformat() if step.started_at else 'not started'}",
-        f"Finished: {step.finished_at.isoformat() if step.finished_at else 'not finished'}",
+        f"Started: {format_user_datetime(None, step.started_at) if step.started_at else 'not started'}",
+        f"Finished: {format_user_datetime(None, step.finished_at) if step.finished_at else 'not finished'}",
         f"Error: {step.error_message or 'None'}",
     ]
     lines.extend(_json_lines("Input:", step.input_json, limit=6))
@@ -225,7 +225,7 @@ def render_simulation_runs_page(session: Session) -> Screen:
     if not runs:
         lines.append("No simulation runs yet.")
     for run in runs[:15]:
-        created = run.created_at.isoformat() if run.created_at else "pending timestamp"
+        created = format_user_datetime(None, run.created_at) if run.created_at else "pending timestamp"
         lines.append(f"{run.id}. {run.automation_name}")
         lines.append(
             f"   Status: {run.status} | Risk: {run.risk_level} | Would Trigger: {run.would_trigger_count}"
@@ -238,7 +238,7 @@ def render_simulation_run_detail_page(session: Session, run_id: int) -> Screen:
     run = session.get(AutomationSimulationRun, run_id)
     if run is None:
         return Screen(text="Simulation run not found.", reply_markup=page_menu(back_to="automations:simulations"))
-    expires = run.expires_at.isoformat() if run.expires_at else "not set"
+    expires = format_user_datetime(None, run.expires_at) if run.expires_at else "not set"
     impact = run.impact_summary_json or {}
     lines = [
         "Simulation Impact Preview",

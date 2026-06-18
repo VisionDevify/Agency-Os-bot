@@ -50,8 +50,8 @@ def render_user_detail_page(session: Session, user_id: int) -> Screen:
     ).all()
     recent = [f"- {log.action} ({log.status})" for log in logs] or ["- No recent user actions"]
     username = f"@{user.username}" if user.username else "Not set"
-    created_at = user.created_at.isoformat() if user.created_at else "pending timestamp"
-    last_seen = user.last_seen.isoformat() if user.last_seen else "Not seen yet"
+    created_at = format_user_datetime(user, user.created_at) if user.created_at else "pending timestamp"
+    last_seen = format_user_datetime(user, user.last_seen) if user.last_seen else "Not seen yet"
     lines = [
         "User Detail",
         "",
@@ -146,7 +146,7 @@ def render_default_permissions_page() -> Screen:
     lines.extend(f"- {key}" for key in DEFAULT_PERMISSION_DESCRIPTIONS)
     return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="roles"))
 
-def render_audit_logs_page(session: Session) -> Screen:
+def render_audit_logs_page(session: Session, user: User | None = None) -> Screen:
     logs = session.scalars(
         select(AuditLog).order_by(desc(AuditLog.created_at), desc(AuditLog.id)).limit(10)
     ).all()
@@ -156,7 +156,7 @@ def render_audit_logs_page(session: Session) -> Screen:
     for log in logs:
         actor = log.actor_user_id if log.actor_user_id is not None else "system"
         target = f"{log.resource_type}:{log.resource_id}" if log.resource_id else log.resource_type
-        timestamp = log.created_at.isoformat() if log.created_at else "pending timestamp"
+        timestamp = format_user_datetime(user, log.created_at) if log.created_at else "pending timestamp"
         lines.append(f"{timestamp}")
         lines.append(f"Actor: {actor} | Action: {log.action}")
         lines.append(f"Target: {target} | Status: {log.status}")
@@ -175,15 +175,11 @@ def render_disabled() -> Screen:
 def render_denied() -> Screen:
     return Screen(text="Access denied.", reply_markup=main_menu())
 
-def render_bot_status_page(session: Session) -> Screen:
+def render_bot_status_page(session: Session, user: User | None = None) -> Screen:
     summary = system_status_summary(session)
     heartbeats = list_heartbeats(session)
-    last_heartbeat = summary["last_heartbeat_at"].isoformat() if summary["last_heartbeat_at"] else "not seen yet"
-    last_delivery_at = (
-        summary["last_delivery_attempted_at"].isoformat()
-        if summary["last_delivery_attempted_at"]
-        else "not attempted"
-    )
+    last_heartbeat = format_user_datetime(user, summary["last_heartbeat_at"]) if summary["last_heartbeat_at"] else "not seen yet"
+    last_delivery_at = format_user_datetime(user, summary["last_delivery_attempted_at"]) if summary["last_delivery_attempted_at"] else "not attempted"
     deployment_time = summary["last_deployment_time"] or "not available"
     lines = [
         "Bot Status",
@@ -205,17 +201,17 @@ def render_bot_status_page(session: Session) -> Screen:
         "Services:",
     ]
     for heartbeat in heartbeats:
-        seen = heartbeat.last_seen_at.isoformat() if heartbeat.last_seen_at else "not seen yet"
+        seen = format_user_datetime(user, heartbeat.last_seen_at) if heartbeat.last_seen_at else "not seen yet"
         lines.append(f"- {heartbeat.service_name}: {heartbeat.status} at {seen}")
     return Screen(text="\n".join(lines), reply_markup=bot_status_menu())
 
-def _observability_time(value) -> str:
-    return value.isoformat() if value else "Unknown"
+def _observability_time(value, user: User | None = None) -> str:
+    return format_user_datetime(user, value) if value else "Unknown"
 
 def _yes_no(value) -> str:
     return "yes" if value else "no"
 
-def render_production_observability_page(session: Session) -> Screen:
+def render_production_observability_page(session: Session, user: User | None = None) -> Screen:
     summary = production_observability_summary(session)
     migration_status = summary["alembic_status"]
     migration_line = (
@@ -255,13 +251,13 @@ def render_production_observability_page(session: Session) -> Screen:
         f"Last Telegram Update: {summary['last_telegram_update_at']}",
         f"Polling Guard: {summary['polling_guard']}",
         f"Redis Lock: {summary['redis_lock_status']}",
-        f"Bot Last Seen: {_observability_time(summary['bot_last_seen_at'])}",
+        f"Bot Last Seen: {_observability_time(summary['bot_last_seen_at'], user)}",
         "",
         "Last Operational Records:",
-        f"Audit: {summary['last_audit_action']} at {_observability_time(summary['last_audit_at'])}",
-        f"Event: {summary['last_event_type']} at {_observability_time(summary['last_event_at'])}",
-        f"Automation Run: {summary['last_automation_run']} at {_observability_time(summary['last_automation_run_at'])}",
-        f"Intelligence Run: {summary['last_intelligence_run']} at {_observability_time(summary['last_intelligence_run_at'])}",
+        f"Audit: {summary['last_audit_action']} at {_observability_time(summary['last_audit_at'], user)}",
+        f"Event: {summary['last_event_type']} at {_observability_time(summary['last_event_at'], user)}",
+        f"Automation Run: {summary['last_automation_run']} at {_observability_time(summary['last_automation_run_at'], user)}",
+        f"Intelligence Run: {summary['last_intelligence_run']} at {_observability_time(summary['last_intelligence_run_at'], user)}",
         f"Last Delivery: {summary['last_delivery_status']}",
         f"Failed Notifications: {summary['failed_notification_count']}",
         f"Notification Targets Configured: {summary['notification_targets_configured_count']}",
@@ -271,7 +267,7 @@ def render_production_observability_page(session: Session) -> Screen:
         "Proxy Health Reality:",
         f"Real Health Checks: {_yes_no(summary['proxy_real_health_checks_enabled'])}",
         f"Real Location Checks: {_yes_no(summary['proxy_real_location_checks_enabled'])}",
-        f"Last Real Proxy Check: {summary['last_real_proxy_check_status']} at {_observability_time(summary['last_real_proxy_check_at'])}",
+        f"Last Real Proxy Check: {summary['last_real_proxy_check_status']} at {_observability_time(summary['last_real_proxy_check_at'], user)}",
         f"Recent Proxy Health Failures: {_yes_no(summary['recent_proxy_health_failures'])}",
         f"Proxy Pilot: {summary['proxy_pilot_status']}",
         "",
@@ -280,7 +276,7 @@ def render_production_observability_page(session: Session) -> Screen:
         f"Notification Pilot: {summary['notification_pilot_status']}",
         "",
         "UI Self-Test:",
-        f"Last Result: {summary['last_ui_self_test_status']} at {_observability_time(summary['last_ui_self_test_at'])}",
+        f"Last Result: {summary['last_ui_self_test_status']} at {_observability_time(summary['last_ui_self_test_at'], user)}",
         "",
         "Logs:",
         summary["railway_note"],
@@ -388,7 +384,7 @@ def render_notification_targets_page(session: Session) -> Screen:
         lines.append(f"{target.id}. {target.name}")
         lines.append(f"   Type: {target.target_type} | Purpose: {_notification_purpose_label(target.purpose)} | Status: {status}")
         lines.append(f"   Chat: {mask_target_chat_id(target)}")
-        lines.append(f"   Last Tested: {target.last_tested_at.isoformat() if target.last_tested_at else 'Never'}")
+        lines.append(f"   Last Tested: {format_user_datetime(None, target.last_tested_at) if target.last_tested_at else 'Never'}")
         buttons.append((f"{target.id}. {target.name} ({status})", f"nav:notification_target:{target.id}"))
     return Screen(text="\n".join(lines), reply_markup=notification_targets_menu(buttons))
 
@@ -398,7 +394,7 @@ def render_notification_group_setup_page(session: Session) -> Screen:
     latest = latest_delivery_attempt(session)
     latest_line = "No delivery attempts yet."
     if latest is not None:
-        latest_line = f"{latest.event_type}: {latest.status} at {latest.attempted_at.isoformat()}"
+        latest_line = f"{latest.event_type}: {latest.status} at {format_user_datetime(None, latest.attempted_at)}"
     lines = [
         "Notification Group Setup",
         "",
@@ -413,7 +409,7 @@ def render_notification_group_setup_page(session: Session) -> Screen:
     ]
     for status in statuses:
         marker = "Configured" if status.configured else "Missing"
-        when = status.last_delivery_at.isoformat() if status.last_delivery_at else "never"
+        when = format_user_datetime(None, status.last_delivery_at) if status.last_delivery_at else "never"
         lines.append(
             f"- {status.label}: {marker} ({status.active_count} active) | Last delivery: {status.last_delivery_status} at {when}"
         )
@@ -436,7 +432,7 @@ def render_notification_group_setup_page(session: Session) -> Screen:
 def render_notification_group_pilot_page(session: Session) -> Screen:
     status = notification_pilot_status(session)
     rows = status["statuses"]
-    latest_at = status["latest_at"].isoformat() if status["latest_at"] else "never"
+    latest_at = format_user_datetime(None, status["latest_at"]) if status["latest_at"] else "never"
     lines = [
         "Notification Group Pilot",
         "",
@@ -450,7 +446,7 @@ def render_notification_group_pilot_page(session: Session) -> Screen:
     ]
     for item in rows:
         marker = "Configured" if item.configured else "Missing"
-        last = item.last_delivery_at.isoformat() if item.last_delivery_at else "never"
+        last = format_user_datetime(None, item.last_delivery_at) if item.last_delivery_at else "never"
         lines.append(f"- Fortuna OS - {item.label}: {marker} | Last test: {item.last_delivery_status} at {last}")
     lines.extend(
         [
@@ -474,7 +470,7 @@ def render_notification_routing_test_page(session: Session) -> Screen:
     latest = latest_delivery_attempt(session)
     latest_line = "No routing test delivery attempt yet."
     if latest is not None:
-        latest_line = f"{latest.event_type}: {latest.status} at {latest.attempted_at.isoformat()}"
+        latest_line = f"{latest.event_type}: {latest.status} at {format_user_datetime(None, latest.attempted_at)}"
     lines = [
         "Notification Routing Test",
         "",
@@ -509,7 +505,7 @@ def render_ui_self_test_page(session: Session, actor: User | None = None, *, run
     if latest is None:
         lines.append("No self-test has run yet.")
     else:
-        when = latest.created_at.isoformat() if latest.created_at else "unknown time"
+        when = format_user_datetime(None, latest.created_at) if latest.created_at else "unknown time"
         lines.extend(
             [
                 f"Last Result: {latest.status}",
@@ -547,7 +543,7 @@ def render_notification_target_detail_page(session: Session, target_id: int) -> 
         f"Purpose: {_notification_purpose_label(target.purpose)}",
         f"Status: {status}",
         f"Telegram Chat ID: {mask_target_chat_id(target)}",
-        f"Last Tested: {target.last_tested_at.isoformat() if target.last_tested_at else 'Never'}",
+        f"Last Tested: {format_user_datetime(None, target.last_tested_at) if target.last_tested_at else 'Never'}",
         "",
         "Recent Delivery Attempts:",
     ]
@@ -555,7 +551,7 @@ def render_notification_target_detail_page(session: Session, target_id: int) -> 
     if not attempts:
         lines.append("- None yet")
     for attempt in attempts:
-        when = attempt.attempted_at.isoformat() if attempt.attempted_at else "unknown time"
+        when = format_user_datetime(None, attempt.attempted_at) if attempt.attempted_at else "unknown time"
         suffix = f" ({attempt.error_message})" if attempt.error_message else ""
         lines.append(f"- {attempt.event_type}: {attempt.status} at {when}{suffix}")
     lines.extend([
