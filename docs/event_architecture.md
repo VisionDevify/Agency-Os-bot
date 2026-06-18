@@ -4,6 +4,8 @@ Fortuna OS should become event-driven over time. Audit logs remain the operator-
 
 ## Principle
 
+Sprint 27 adds notification routing smoke-test events and proxy health-check result events.
+
 Every important action emits an event.
 
 Events should be stable, small, and safe. They should say what happened, who triggered it, what resource it targeted, whether it succeeded, when it happened, and provide only safe metadata.
@@ -73,6 +75,10 @@ This avoids over-engineering while preserving a clean upgrade path.
 - `proxy.incident.created`: proxy workflow created an incident.
 - `proxy.repair.succeeded`: self-healing repair workflow succeeded.
 - `proxy.repair.failed`: self-healing repair workflow failed and requires attention.
+- `proxy.health_check.passed`: simulated or real proxy health check passed.
+- `proxy.health_check.warning`: proxy check partially passed or needs review.
+- `proxy.health_check.failed`: proxy check failed.
+- `proxy.health_check.skipped`: real proxy check was skipped because owner-controlled flags are disabled.
 - `task.created`: task opened.
 - `task.assigned`: task assigned or reassigned to a user.
 - `task.reassigned`: task moved from one assignee to another.
@@ -111,6 +117,7 @@ This avoids over-engineering while preserving a clean upgrade path.
 - `notification_target.disabled`: notification target disabled.
 - `notification_target.tested`: operator requested a safe target test.
 - `notification.routed`: routing service selected delivery targets for an event.
+- `notification.routing_smoke_test`: owner/admin ran the safe notification routing smoke test.
 - `notification.digest_created`: low-priority notification updates were bundled into a digest.
 - `team.onboarding_checklist_updated`: manager/admin updated a user's rollout readiness checklist.
 - `automation.schedule_updated`: automation schedule timing or active state changed.

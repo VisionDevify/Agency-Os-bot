@@ -5,16 +5,19 @@ import secrets
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session, selectinload
 
+from app.core.config import settings
 from app.models.account import Account
 from app.models.audit import AuditLog
 from app.models.incident import Incident
 from app.models.model_brand import ModelBrand
-from app.models.proxy import PROXY_STATUSES, Proxy, ProxyRotationHistory
+from app.models.proxy import PROXY_STATUSES, Proxy, ProxyHealthCheckResult, ProxyRotationHistory
 from app.models.user import User
-from app.services.auth import audit_action, user_has_permission
+from app.services.auth import audit_action, is_owner, user_has_permission
 from app.services.crypto import encrypt_secret
 from app.services.events import emit_event
 from app.services.incidents import normalize_severity
+from app.services.proxy_adapters import ProxyAdapterResult, ProxyProviderAdapter, adapter_for_proxy
+from app.services.recommendations import upsert_recommendation
 
 PROXY_HEALTH_HEALTHY = "healthy"
 PROXY_HEALTH_WARNING = "warning"
@@ -70,6 +73,20 @@ class InfrastructureStats:
     average_health_score: int
 
 
+@dataclass(frozen=True)
+class ProxyCheckMode:
+    real_health_enabled: bool
+    real_location_enabled: bool
+    timeout_seconds: int
+    location_provider: str
+
+
+@dataclass(frozen=True)
+class ProxyRoutingCheckSummary:
+    result: ProxyHealthCheckResult
+    message: str
+
+
 def _now() -> datetime:
     return datetime.now(UTC)
 
@@ -113,6 +130,79 @@ def _safe_proxy_payload(proxy: Proxy, extra: dict | None = None) -> dict:
     }
     payload.update(extra or {})
     return payload
+
+
+def _safe_check_error(message: str | None) -> str | None:
+    if not message:
+        return None
+    lowered = message.casefold()
+    if any(marker in lowered for marker in ("password", "credential", "secret", "token", "username", "chat_id")):
+        return "proxy check failed; sensitive details redacted"
+    return message[:500]
+
+
+def proxy_check_mode(proxy: Proxy) -> ProxyCheckMode:
+    metadata = dict(proxy.metadata_json or {})
+    real_health = bool(settings.proxy_real_health_checks_enabled or metadata.get("real_health_checks_enabled"))
+    real_location = bool(settings.proxy_real_location_checks_enabled or metadata.get("real_location_checks_enabled"))
+    return ProxyCheckMode(
+        real_health_enabled=real_health,
+        real_location_enabled=real_location,
+        timeout_seconds=max(1, int(settings.proxy_health_timeout_seconds or 10)),
+        location_provider=settings.proxy_location_provider or "ipwhois",
+    )
+
+
+def set_proxy_real_check_flags(
+    session: Session,
+    proxy: Proxy,
+    *,
+    actor: User,
+    health_enabled: bool,
+    location_enabled: bool | None = None,
+) -> Proxy:
+    if not is_owner(actor):
+        audit_action(
+            session,
+            actor=actor,
+            action="access.denied",
+            resource_type="proxy",
+            resource_id=str(proxy.id),
+            status="denied",
+            details={"permission": "owner", "action": "proxy_real_checks"},
+        )
+        raise PermissionError("Only Owner can enable real proxy checks.")
+    metadata = dict(proxy.metadata_json or {})
+    metadata["real_health_checks_enabled"] = bool(health_enabled)
+    if location_enabled is not None:
+        metadata["real_location_checks_enabled"] = bool(location_enabled and health_enabled)
+    elif not health_enabled:
+        metadata["real_location_checks_enabled"] = False
+    proxy.metadata_json = metadata
+    session.flush()
+    audit_action(
+        session,
+        actor=actor,
+        action="proxy.real_checks.updated",
+        resource_type="proxy",
+        resource_id=str(proxy.id),
+        details={
+            "real_health_checks_enabled": metadata["real_health_checks_enabled"],
+            "real_location_checks_enabled": metadata["real_location_checks_enabled"],
+        },
+    )
+    emit_event(
+        session,
+        actor=actor,
+        event_name="proxy.real_checks.updated",
+        resource_type="proxy",
+        resource_id=str(proxy.id),
+        payload={
+            "real_health_checks_enabled": metadata["real_health_checks_enabled"],
+            "real_location_checks_enabled": metadata["real_location_checks_enabled"],
+        },
+    )
+    return proxy
 
 
 def calculate_proxy_health(proxy: Proxy) -> ProxyHealth:
@@ -393,6 +483,260 @@ def record_proxy_test(
     _sync_proxy_health(session, proxy, actor=actor)
     session.flush()
     return result.success and location_match
+
+
+def _target_match_for_values(
+    proxy: Proxy,
+    *,
+    detected_country: str | None,
+    detected_state: str | None,
+    detected_city: str | None,
+) -> bool | None:
+    checks = [
+        (proxy.target_country, detected_country),
+        (proxy.target_state, detected_state),
+        (proxy.target_city, detected_city),
+    ]
+    checked = False
+    for expected, detected in checks:
+        if expected:
+            checked = True
+            if (detected or "").casefold() != expected.casefold():
+                return False
+    return True if checked else None
+
+
+def record_proxy_health_check_result(
+    session: Session,
+    proxy: Proxy,
+    *,
+    actor: User | None,
+    check_type: str,
+    status: str,
+    latency_ms: int | None = None,
+    detected_ip_masked: str | None = None,
+    detected_country: str | None = None,
+    detected_state: str | None = None,
+    detected_city: str | None = None,
+    target_match: bool | None = None,
+    error_message: str | None = None,
+) -> ProxyHealthCheckResult:
+    result = ProxyHealthCheckResult(
+        proxy_id=proxy.id,
+        check_type=check_type,
+        status=status,
+        latency_ms=latency_ms,
+        detected_ip_masked=detected_ip_masked,
+        detected_country=detected_country,
+        detected_state=detected_state,
+        detected_city=detected_city,
+        target_match=target_match,
+        error_message=_safe_check_error(error_message),
+    )
+    session.add(result)
+    session.flush()
+    audit_action(
+        session,
+        actor=actor,
+        action="proxy.health_check.performed",
+        resource_type="proxy",
+        resource_id=str(proxy.id),
+        status=status,
+        details={
+            "check_type": check_type,
+            "status": status,
+            "latency_ms": latency_ms,
+            "target_match": target_match,
+            "has_detected_ip": bool(detected_ip_masked),
+        },
+    )
+    emit_event(
+        session,
+        actor=actor,
+        event_name=f"proxy.health_check.{status}",
+        resource_type="proxy",
+        resource_id=str(proxy.id),
+        status=status,
+        payload={
+            "check_type": check_type,
+            "latency_ms": latency_ms,
+            "target_match": target_match,
+            "result_id": result.id,
+        },
+    )
+    return result
+
+
+def latest_proxy_health_check_results(
+    session: Session,
+    proxy: Proxy,
+    *,
+    limit: int = 5,
+) -> list[ProxyHealthCheckResult]:
+    return list(
+        session.scalars(
+            select(ProxyHealthCheckResult)
+            .where(ProxyHealthCheckResult.proxy_id == proxy.id)
+            .order_by(desc(ProxyHealthCheckResult.created_at), desc(ProxyHealthCheckResult.id))
+            .limit(limit)
+        ).all()
+    )
+
+
+def _record_proxy_check_learning(
+    session: Session,
+    proxy: Proxy,
+    *,
+    actor: User | None,
+    result: ProxyHealthCheckResult,
+) -> None:
+    if result.status == "skipped":
+        return
+    succeeded = result.status == "passed"
+    from app.services.learning import capture_proxy_outcome
+
+    capture_proxy_outcome(
+        session,
+        proxy,
+        actor=actor,
+        event_type=f"proxy.health_check.{result.status}",
+        succeeded=succeeded,
+        summary=f"Proxy {result.check_type} check {result.status}.",
+        details={
+            "health_check_result_id": result.id,
+            "check_type": result.check_type,
+            "latency_ms": result.latency_ms,
+            "target_match": result.target_match,
+        },
+    )
+    if succeeded:
+        return
+    upsert_recommendation(
+        session,
+        actor=actor,
+        recommendation_type="proxy_real_check_failed",
+        title="Proxy Health Check Failed",
+        description=f"Proxy {proxy.id} failed a {result.check_type} check. Review the proxy or rotate the session.",
+        severity="warning" if result.status == "warning" else "critical",
+        entity_type="proxy",
+        entity_id=proxy.id,
+        metadata={"check_type": result.check_type, "result_id": result.id},
+    )
+    try:
+        from app.services.coo import _upsert_priority
+
+        _upsert_priority(
+            session,
+            source_type="proxy",
+            source_id=proxy.id,
+            category="proxy_health_failure",
+            severity="warning" if result.status == "warning" else "critical",
+            urgency="high",
+            confidence=80,
+            business_impact=70,
+            explanation=f"Proxy {proxy.id} failed its latest {result.check_type} check.",
+            recommended_owner="Admin",
+        )
+    except Exception:
+        # Priority creation is useful but should never block the health check path.
+        pass
+
+
+def run_simulated_proxy_check(session: Session, proxy: Proxy, *, actor: User | None) -> ProxyHealthCheckResult:
+    test_result = ProxyTestResult(
+        success=True,
+        latency_ms=proxy.latency_ms or 250,
+        detected_country=proxy.target_country,
+        detected_state=proxy.target_state,
+        detected_city=proxy.target_city,
+    )
+    matched = record_proxy_test(session, proxy, test_result, actor=actor)
+    result = record_proxy_health_check_result(
+        session,
+        proxy,
+        actor=actor,
+        check_type="simulated",
+        status="passed" if matched else "warning",
+        latency_ms=test_result.latency_ms,
+        detected_country=test_result.detected_country,
+        detected_state=test_result.detected_state,
+        detected_city=test_result.detected_city,
+        target_match=matched,
+    )
+    _record_proxy_check_learning(session, proxy, actor=actor, result=result)
+    return result
+
+
+def run_real_proxy_check(
+    session: Session,
+    proxy: Proxy,
+    *,
+    actor: User,
+    adapter: ProxyProviderAdapter | None = None,
+) -> ProxyHealthCheckResult:
+    _require_any_permission(session, actor, "manage_proxies", "rotate_proxy")
+    mode = proxy_check_mode(proxy)
+    if not mode.real_health_enabled:
+        return record_proxy_health_check_result(
+            session,
+            proxy,
+            actor=actor,
+            check_type="connectivity",
+            status="skipped",
+            error_message="real checks disabled by owner",
+        )
+    provider = adapter or adapter_for_proxy(proxy)
+    adapter_result: ProxyAdapterResult = provider.check(
+        proxy,
+        include_location=mode.real_location_enabled,
+        timeout_seconds=mode.timeout_seconds,
+    )
+    target_match = _target_match_for_values(
+        proxy,
+        detected_country=adapter_result.detected_country,
+        detected_state=adapter_result.detected_state,
+        detected_city=adapter_result.detected_city,
+    )
+    check_type = "full" if mode.real_location_enabled else "connectivity"
+    if not adapter_result.success:
+        status = "failed"
+    elif mode.real_location_enabled and target_match is False:
+        status = "warning"
+    elif mode.real_location_enabled and adapter_result.detected_country is None:
+        status = "warning"
+    else:
+        status = "passed"
+
+    if status != "skipped":
+        record_proxy_test(
+            session,
+            proxy,
+            ProxyTestResult(
+                success=adapter_result.success,
+                latency_ms=adapter_result.latency_ms,
+                detected_country=adapter_result.detected_country,
+                detected_state=adapter_result.detected_state,
+                detected_city=adapter_result.detected_city,
+                failure_reason=adapter_result.failure_reason,
+            ),
+            actor=actor,
+        )
+    result = record_proxy_health_check_result(
+        session,
+        proxy,
+        actor=actor,
+        check_type=check_type,
+        status=status,
+        latency_ms=adapter_result.latency_ms,
+        detected_ip_masked=adapter_result.detected_ip_masked,
+        detected_country=adapter_result.detected_country,
+        detected_state=adapter_result.detected_state,
+        detected_city=adapter_result.detected_city,
+        target_match=target_match,
+        error_message=adapter_result.failure_reason,
+    )
+    _record_proxy_check_learning(session, proxy, actor=actor, result=result)
+    return result
 
 
 def rotate_session(

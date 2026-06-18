@@ -156,6 +156,8 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
                 return render_proxy_assigned_accounts_page(session, proxy_id)
             if parts[2] == "audit":
                 return render_proxy_audit_page(session, proxy_id)
+            if parts[2] == "history":
+                return render_proxy_check_history_page(session, proxy_id)
             return render_proxy_detail_page(session, proxy_id)
     if page == "accounts":
         return render_accounts_home()
@@ -566,6 +568,10 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_onboarding_page(session, user, step=step)
     if page == "notification_targets" and session is not None:
         return render_notification_targets_page(session)
+    if page == "notification_group_setup" and session is not None:
+        return render_notification_group_setup_page(session)
+    if page == "notification_targets:routing_test" and session is not None:
+        return render_notification_routing_test_page(session)
     if page.startswith("notification_target:") and session is not None:
         parts = page.split(":")
         if len(parts) >= 2 and parts[1].isdigit():

@@ -1245,6 +1245,14 @@ def proxy_detail_menu(proxy_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
+                InlineKeyboardButton(text="Run Simulated Check", callback_data=f"nav:proxy:{proxy_id}:check:simulated"),
+                InlineKeyboardButton(text="Run Real Check", callback_data=f"nav:proxy:{proxy_id}:check:real"),
+            ],
+            [
+                InlineKeyboardButton(text="Enable Real Checks", callback_data=f"nav:proxy:{proxy_id}:enable_real"),
+                InlineKeyboardButton(text="Disable Real Checks", callback_data=f"nav:proxy:{proxy_id}:disable_real"),
+            ],
+            [
                 InlineKeyboardButton(text="Assign Account", callback_data=f"nav:proxy:{proxy_id}:assign"),
                 InlineKeyboardButton(text="Remove Account", callback_data=f"nav:proxy:{proxy_id}:remove"),
             ],
@@ -1256,6 +1264,10 @@ def proxy_detail_menu(proxy_id: int) -> InlineKeyboardMarkup:
             [
                 InlineKeyboardButton(text="Verify Location", callback_data=f"nav:proxy:{proxy_id}:verify"),
                 InlineKeyboardButton(text="Repair/Test", callback_data=f"nav:proxy:{proxy_id}:repair"),
+            ],
+            [
+                InlineKeyboardButton(text="View Check History", callback_data=f"nav:proxy:{proxy_id}:history"),
+                InlineKeyboardButton(text="Rotate Until Target Match", callback_data=f"nav:proxy:{proxy_id}:rotate_until_match"),
             ],
             [InlineKeyboardButton(text="Audit History", callback_data=f"nav:proxy:{proxy_id}:audit")],
             *page_controls(back_to="proxies:list"),
@@ -1467,6 +1479,7 @@ def settings_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Team Availability", callback_data=callback_for("availability:team"))],
             [InlineKeyboardButton(text="Notification Digest Mode", callback_data=callback_for("notification_digest"))],
             [InlineKeyboardButton(text="View Audit Logs", callback_data=callback_for("audit_logs"))],
+            [InlineKeyboardButton(text="Notification Group Setup", callback_data=callback_for("notification_group_setup"))],
             [InlineKeyboardButton(text="Notification Targets", callback_data=callback_for("notification_targets"))],
             [
                 InlineKeyboardButton(text="Back", callback_data=callback_for("menu")),
@@ -1489,6 +1502,25 @@ def notification_targets_menu(target_buttons: list[tuple[str, str]]) -> InlineKe
     )
     rows.extend(page_controls(back_to="settings"))
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def notification_group_setup_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="Register Current Chat as Fortuna Target",
+                    callback_data=callback_for("notification_targets:add_current"),
+                )
+            ],
+            [InlineKeyboardButton(text="Run Routing Test", callback_data=callback_for("notification_targets:routing_test"))],
+            [
+                InlineKeyboardButton(text="Notification Targets", callback_data=callback_for("notification_targets")),
+                InlineKeyboardButton(text="How to Register Groups", callback_data=callback_for("help:notification_groups")),
+            ],
+            *page_controls(back_to="settings"),
+        ]
+    )
 
 
 def notification_target_detail_menu(target_id: int) -> InlineKeyboardMarkup:
@@ -1539,7 +1571,7 @@ def production_observability_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Refresh", callback_data=callback_for("production_observability"))],
             [
                 InlineKeyboardButton(text="Bot Status", callback_data=callback_for("bot_status")),
-                InlineKeyboardButton(text="Notification Targets", callback_data=callback_for("notification_targets")),
+                InlineKeyboardButton(text="Notification Group Setup", callback_data=callback_for("notification_group_setup")),
             ],
             [
                 InlineKeyboardButton(text="How to Register Groups", callback_data=callback_for("help:notification_groups")),

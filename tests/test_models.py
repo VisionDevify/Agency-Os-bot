@@ -38,6 +38,7 @@ def test_model_tables_are_registered() -> None:
         PlaybookRun,
         PostWatch,
         Proxy,
+        ProxyHealthCheckResult,
         ProxyRotationHistory,
         Recommendation,
         Report,
@@ -88,6 +89,7 @@ def test_model_tables_are_registered() -> None:
         "playbooks",
         "post_watches",
         "proxies",
+        "proxy_health_check_results",
         "proxy_rotation_history",
         "recommendations",
         "reports",
@@ -118,6 +120,7 @@ def test_model_tables_are_registered() -> None:
     assert AccountVerificationCode.__tablename__ == "account_verification_codes"
     assert "auth_status" in Account.__table__.columns
     assert Proxy.__tablename__ == "proxies"
+    assert ProxyHealthCheckResult.__tablename__ == "proxy_health_check_results"
     assert ProxyRotationHistory.__tablename__ == "proxy_rotation_history"
     assert "encrypted_password" in Proxy.__table__.columns
     assert "assigned_proxy_id" in Account.__table__.columns

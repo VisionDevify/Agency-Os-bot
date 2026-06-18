@@ -8,6 +8,8 @@ from app.models.mixins import TimestampMixin
 
 PROXY_STATUSES = ("healthy", "warning", "critical", "disabled")
 PROXY_ROTATION_STATUSES = ("started", "succeeded", "failed", "rolled_back")
+PROXY_HEALTH_CHECK_TYPES = ("simulated", "connectivity", "location", "full")
+PROXY_HEALTH_CHECK_STATUSES = ("passed", "failed", "warning", "skipped")
 
 
 class Proxy(TimestampMixin, Base):
@@ -65,6 +67,11 @@ class Proxy(TimestampMixin, Base):
         cascade="all, delete-orphan",
         lazy="selectin",
     )
+    health_check_results: Mapped[list["ProxyHealthCheckResult"]] = relationship(
+        back_populates="proxy",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
 
 
 class ProxyRotationHistory(Base):
@@ -99,3 +106,43 @@ class ProxyRotationHistory(Base):
         nullable=False,
     )
     proxy: Mapped[Proxy] = relationship(back_populates="rotation_history", lazy="selectin")
+
+
+class ProxyHealthCheckResult(Base):
+    __tablename__ = "proxy_health_check_results"
+    __table_args__ = (
+        CheckConstraint(
+            "check_type in ('simulated', 'connectivity', 'location', 'full')",
+            name="ck_proxy_health_check_results_check_type",
+        ),
+        CheckConstraint(
+            "status in ('passed', 'failed', 'warning', 'skipped')",
+            name="ck_proxy_health_check_results_status",
+        ),
+        Index("ix_proxy_health_check_results_proxy_id", "proxy_id"),
+        Index("ix_proxy_health_check_results_check_type", "check_type"),
+        Index("ix_proxy_health_check_results_status", "status"),
+        Index("ix_proxy_health_check_results_created_at", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    proxy_id: Mapped[int] = mapped_column(
+        ForeignKey("proxies.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    check_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    detected_ip_masked: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    detected_country: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    detected_state: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    detected_city: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    target_match: Mapped[bool | None] = mapped_column(nullable=True)
+    error_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    proxy: Mapped[Proxy] = relationship(back_populates="health_check_results", lazy="selectin")

@@ -63,6 +63,7 @@ from app.bot.menu import (
     model_team_menu,
     models_menu,
     notification_target_detail_menu,
+    notification_group_setup_menu,
     notification_target_purpose_menu,
     notification_digest_mode_menu,
     notification_targets_menu,
@@ -247,9 +248,11 @@ from app.services.team_experience import (
     scheduled_automation_summary,
 )
 from app.services.notifications import (
+    latest_delivery_attempt,
     latest_delivery_attempts_for_target,
     list_notification_targets,
     mask_target_chat_id,
+    notification_group_setup_status,
 )
 from app.services.proxies import (
     accounts_for_proxy,
@@ -257,7 +260,9 @@ from app.services.proxies import (
     affected_models_for_proxy,
     calculate_proxy_health,
     infrastructure_stats,
+    latest_proxy_health_check_results,
     list_proxies,
+    proxy_check_mode,
     recent_proxy_audit_logs,
     simulation_mode_summary,
 )

@@ -18,7 +18,7 @@ from app.models.learning import ConfidenceRecord, LearningEvent, OutcomeMemory, 
 from app.models.model_brand import ModelBrand, ModelBrandMember
 from app.models.opportunity import CommentStrategy, CreatorWatch, Opportunity, OpportunityResult, OpportunitySource, PostWatch
 from app.models.permissions import Permission, Role, RolePermission, UserRole
-from app.models.proxy import Proxy, ProxyRotationHistory
+from app.models.proxy import Proxy, ProxyHealthCheckResult, ProxyRotationHistory
 from app.models.recommendation import Recommendation
 from app.models.reporting import AccountabilitySnapshot, DailyBriefing, NotificationDeliveryAttempt, NotificationTarget
 from app.models.system import SystemHeartbeat
@@ -81,6 +81,7 @@ __all__ = [
     "PostWatch",
     "PriorityItem",
     "Proxy",
+    "ProxyHealthCheckResult",
     "ProxyRotationHistory",
     "Recommendation",
     "Report",

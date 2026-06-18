@@ -75,6 +75,7 @@ pytest
 - Fortuna COO Layer: persistent priority engine, Today's Top 5 Actions, owner/admin/manager routing, Manager Queue, My Work queue, COO Briefing, Team Load Balancer, Readiness Score V2, Executive Mode, and professional Fortuna messages.
 - Full System Audit and Intelligence Verification: recursive safe metadata redaction, Fortuna branding cleanup, intelligence/learning data-flow tests, proxy UI safety tests, and audit documentation.
 - Telegram Architecture and Production Observability: Telegram screen renderers split by domain, owner-only Production Observability, safe build metadata, Alembic revision display, improved bot heartbeat metadata, notification target readiness, and clear simulated proxy-health labeling.
+- Notification Target Activation and Real Proxy Health Adapter: Notification Group Setup, safe Testing Sandbox routing smoke tests, encrypted/masked chat IDs, owner-enabled real Olympix SOCKS5 health/location checks, and durable proxy health check result history.
 
 ## Railway Deployment
 

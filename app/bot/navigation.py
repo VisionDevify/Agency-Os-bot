@@ -48,10 +48,14 @@ from app.services.proxies import (
     assign_proxy_to_account,
     create_default_proxy,
     get_proxy,
+    proxy_check_mode,
     remove_proxy_from_account,
     repair_proxy,
     rollback_session,
     rotate_session,
+    run_real_proxy_check,
+    run_simulated_proxy_check,
+    set_proxy_real_check_flags,
     verify_location_with_rotation,
 )
 from app.services.incidents import (
@@ -78,6 +82,7 @@ from app.services.notifications import (
     create_placeholder_notification_target,
     disable_notification_target,
     get_notification_target,
+    run_notification_routing_smoke_test,
     set_notification_target_purpose,
     test_notification_target,
 )
@@ -293,7 +298,7 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         return ("manage_users",)
     if page.startswith("role:") or page == "permissions":
         return ("manage_roles",)
-    if page.startswith("notification_targets") or page.startswith("notification_target:"):
+    if page == "notification_group_setup" or page.startswith("notification_targets") or page.startswith("notification_target:"):
         return ("manage_reports", "manage_roles")
     if page in {"bot_status", "production_status"}:
         return ("view_dashboard", "manage_reports", "manage_roles")
@@ -761,6 +766,50 @@ def _perform_admin_action(
                 ),
             )
             return f"proxy:{proxy.id}"
+        if action == "check" and len(parts) >= 4:
+            if parts[3] == "simulated":
+                run_simulated_proxy_check(session, proxy, actor=actor)
+            if parts[3] == "real":
+                run_real_proxy_check(session, proxy, actor=actor)
+            return f"proxy:{proxy.id}"
+        if action == "enable_real":
+            set_proxy_real_check_flags(session, proxy, actor=actor, health_enabled=True, location_enabled=True)
+            return f"proxy:{proxy.id}"
+        if action == "disable_real":
+            set_proxy_real_check_flags(session, proxy, actor=actor, health_enabled=False, location_enabled=False)
+            return f"proxy:{proxy.id}"
+        if action == "rotate_until_match":
+            mode = proxy_check_mode(proxy)
+            if mode.real_health_enabled and not actor.is_owner:
+                audit_action(
+                    session,
+                    actor=actor,
+                    action="access.denied",
+                    resource_type="proxy",
+                    resource_id=str(proxy.id),
+                    status="denied",
+                    details={"permission": "owner", "action": "rotate_until_target_match"},
+                )
+                return f"proxy:{proxy.id}"
+            if mode.real_health_enabled:
+                rotate_session(session, proxy, actor=actor)
+                run_real_proxy_check(session, proxy, actor=actor)
+            else:
+                verify_location_with_rotation(
+                    session,
+                    proxy,
+                    actor=actor,
+                    attempts=[
+                        ProxyTestResult(
+                            success=True,
+                            latency_ms=250,
+                            detected_country=proxy.target_country,
+                            detected_state=proxy.target_state,
+                            detected_city=proxy.target_city,
+                        )
+                    ],
+                )
+            return f"proxy:{proxy.id}"
         if action == "assign" and len(parts) >= 4 and parts[3].isdigit():
             account = get_account(session, int(parts[3]))
             if account is not None:
@@ -890,6 +939,9 @@ def _perform_admin_action(
     if page == "notification_targets:add":
         target = create_placeholder_notification_target(session, actor=actor)
         return f"notification_target:{target.id}"
+    if page == "notification_targets:routing_test":
+        run_notification_routing_smoke_test(session, actor=actor, send_testing=True)
+        return "notification_targets:routing_test"
     if page == "notification_targets:add_current" and chat_id is not None:
         target_type = "telegram_group" if chat_title else "telegram_user"
         target = add_current_chat_as_target(
@@ -1083,6 +1135,7 @@ def screen_for_page(
         or normalized.startswith("role:")
         or normalized.startswith("notification_targets")
         or normalized.startswith("notification_target:")
+        or normalized == "notification_group_setup"
         or normalized == "bot_status"
         or normalized == "production_status"
         or normalized == "production_observability"

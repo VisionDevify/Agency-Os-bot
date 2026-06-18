@@ -33,10 +33,11 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Sprint 24: Fortuna COO layer with persistent priority items, Today's Top 5 Actions, owner-vs-manager routing, Manager Queue, My Work queue, COO Briefing, Team Load Balancer, Readiness Score V2, Executive Mode, team activation recommendations, and professional Fortuna messages.
 - Sprint 25: Full system audit and intelligence verification with recursive metadata redaction, Fortuna branding cleanup, data-flow verification from DB records through audit/event/learning/memory/confidence, proxy screen safety checks, and production/Telegram verification documentation.
 - Sprint 26: Telegram architecture split and production observability with domain screen modules, owner-only Production Observability, safe build metadata, Alembic revision checks, bot heartbeat metadata, notification readiness, and simulated proxy-health labels.
+- Sprint 27: Notification Target Activation and Real Proxy Health Adapter with Notification Group Setup, safe routing smoke tests, owner-enabled real Olympix SOCKS5 checks, proxy health check result history, learning/recommendation integration, and observability updates.
 
 ## Roadmap
 
-- Sprint 26: team data onboarding, notification group registration, and operator-approved production routines against real agency records.
+- Sprint 28: operator-guided notification group rollout, proxy adapter hardening with owner-provided real credentials, and production routines against real agency records.
 - Future: AI Operations Brain for natural-language summaries, anomaly explanations, and operator-approved next actions.
 
 ## Core Modules

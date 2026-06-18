@@ -1,7 +1,17 @@
 from .formatting import *
 from .accounts import render_account_list_page
 
-PROXY_REALITY_NOTE = "Verification Mode: simulated provider check. Real provider adapter is not enabled yet."
+PROXY_REALITY_NOTE = "Verification Mode: simulated by default. Real provider checks must be owner-enabled per proxy."
+
+
+def _yes_no(value: bool) -> str:
+    return "enabled" if value else "disabled"
+
+
+def _result_location(result) -> str:
+    return ", ".join(
+        item for item in [result.detected_city, result.detected_state, result.detected_country] if item
+    ) or "Unknown"
 
 def render_proxies_home() -> Screen:
     return Screen(
@@ -28,7 +38,9 @@ def render_proxy_list_page(session: Session) -> Screen:
         lines.append(f"{proxy.id}. {proxy.provider} {proxy.host}:{proxy.port}")
         lines.append(f"   Status: {proxy.status} | Health: {health.label} {health.score}/100")
         lines.append(f"   Target: {proxy.target_state or proxy.target_country or 'Not set'}")
-        lines.append("   Check Mode: simulated until a real provider adapter is enabled")
+        mode = proxy_check_mode(proxy)
+        lines.append(f"   Real Checks: {_yes_no(mode.real_health_enabled)} | Location: {_yes_no(mode.real_location_enabled)}")
+        lines.append("   Default Mode: simulated unless real checks are owner-enabled")
         buttons.append(_proxy_button(proxy))
     return Screen(text="\n".join(lines), reply_markup=proxy_list_menu(buttons))
 
@@ -76,6 +88,9 @@ def render_proxy_detail_page(session: Session, proxy_id: int) -> Screen:
     if proxy is None:
         return Screen(text="Proxy not found.", reply_markup=page_menu(back_to="proxies:list"))
     health = calculate_proxy_health(proxy)
+    mode = proxy_check_mode(proxy)
+    recent_results = latest_proxy_health_check_results(session, proxy, limit=5)
+    last_result = recent_results[0] if recent_results else None
     assigned_accounts = accounts_for_proxy(session, proxy)
     affected_models = affected_models_for_proxy(session, proxy)
     target_location = ", ".join(
@@ -91,8 +106,11 @@ def render_proxy_detail_page(session: Session, proxy_id: int) -> Screen:
         f"Host: {proxy.host}:{proxy.port}",
         f"Status: {proxy.status}",
         f"Health: {health.label} {health.score}/100",
-        "Provider Check: simulated",
-        "Location Verification: simulated unless a provider adapter is enabled",
+        f"Real Checks: {_yes_no(mode.real_health_enabled)}",
+        f"Real Location Checks: {_yes_no(mode.real_location_enabled)}",
+        "Default Mode: simulated unless real checks are owner-enabled",
+        f"Provider Adapter: Olympix Mobile SOCKS5",
+        f"Check Timeout: {mode.timeout_seconds}s",
         f"Current Session: {_mask_proxy_value(proxy.session_suffix)}",
         f"Previous Session: {_mask_proxy_value(proxy.previous_session_suffix)}",
         f"Rotation Count: {proxy.rotation_count}",
@@ -108,6 +126,30 @@ def render_proxy_detail_page(session: Session, proxy_id: int) -> Screen:
         f"Accounts Missing Proxy: {len(accounts_missing_proxy(session))}",
         f"Models Affected: {len(affected_models)}",
     ]
+    if last_result is None:
+        lines.extend(
+            [
+                "",
+                "Latest Check:",
+                "- No health check results stored yet.",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "",
+                "Latest Check:",
+                f"- Type: {last_result.check_type}",
+                f"- Status: {last_result.status}",
+                f"- Latency: {last_result.latency_ms if last_result.latency_ms is not None else 'Unknown'} ms",
+                f"- Detected IP: {last_result.detected_ip_masked or 'Unknown'}",
+                f"- Detected Location: {_result_location(last_result)}",
+                f"- Target Match: {last_result.target_match if last_result.target_match is not None else 'Unknown'}",
+                f"- Checked: {last_result.created_at.isoformat() if last_result.created_at else 'Unknown'}",
+            ]
+        )
+        if last_result.error_message:
+            lines.append(f"- Note: {last_result.error_message}")
     if health.reasons:
         lines.extend(["", "Health Reasons:"])
         lines.extend(f"- {reason}" for reason in health.reasons)
@@ -223,6 +265,32 @@ def render_proxy_audit_page(session: Session, proxy_id: int) -> Screen:
         timestamp = log.created_at.isoformat() if log.created_at else "pending timestamp"
         lines.append(f"{timestamp}")
         lines.append(f"Action: {log.action} | Status: {log.status}")
+        lines.append("")
+    return Screen(text="\n".join(lines).strip(), reply_markup=page_menu(back_to=f"proxy:{proxy.id}"))
+
+
+def render_proxy_check_history_page(session: Session, proxy_id: int) -> Screen:
+    proxy = session.get(Proxy, proxy_id)
+    if proxy is None:
+        return Screen(text="Proxy not found.", reply_markup=page_menu(back_to="proxies:list"))
+    results = latest_proxy_health_check_results(session, proxy, limit=10)
+    lines = [
+        "Proxy Check History",
+        "",
+        f"Proxy: {proxy.provider} {proxy.host}:{proxy.port}",
+        "Password: encrypted and hidden",
+        "",
+    ]
+    if not results:
+        lines.append("No check history yet. Run a simulated check first, or enable real checks and run a real check.")
+    for result in results:
+        when = result.created_at.isoformat() if result.created_at else "Unknown"
+        lines.append(f"{when}")
+        lines.append(f"   {result.check_type}: {result.status}")
+        lines.append(f"   Latency: {result.latency_ms if result.latency_ms is not None else 'Unknown'} ms")
+        lines.append(f"   Location: {_result_location(result)} | Target Match: {result.target_match if result.target_match is not None else 'Unknown'}")
+        if result.error_message:
+            lines.append(f"   Note: {result.error_message}")
         lines.append("")
     return Screen(text="\n".join(lines).strip(), reply_markup=page_menu(back_to=f"proxy:{proxy.id}"))
 

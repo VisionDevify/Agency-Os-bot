@@ -8,6 +8,7 @@ from aiogram import Bot, Dispatcher
 from aiogram import F
 from aiogram.filters import CommandStart
 from aiogram.types import CallbackQuery, Message
+from sqlalchemy import select
 
 from app.bot.navigation import screen_for_page
 from app.bot.menu import choice_menu
@@ -30,6 +31,7 @@ from app.db.migrations import run_migrations
 from app.db.session import SessionLocal
 from app.models.account import AccountAuthSession
 from app.models.opportunity import CREATOR_WATCH_PRIORITIES, OPPORTUNITY_PRIORITIES, POST_WATCH_TYPES, CreatorWatch, PostWatch
+from app.models.reporting import NotificationDeliveryAttempt
 from app.models.user import User
 from app.services.auth import (
     USER_STATUS_DISABLED,
@@ -315,6 +317,32 @@ def _notification_target_id_for_send_test(page: str) -> int | None:
     if len(parts) >= 3 and parts[0] == "notification_target" and parts[1].isdigit() and parts[2] == "send_test":
         return int(parts[1])
     return None
+
+
+async def _send_pending_routing_smoke_tests(bot: Bot, session, actor: User) -> None:
+    attempts = list(
+        session.scalars(
+            select(NotificationDeliveryAttempt)
+            .where(
+                NotificationDeliveryAttempt.event_type == "notification.routing_smoke_test",
+                NotificationDeliveryAttempt.status == "pending",
+            )
+            .order_by(NotificationDeliveryAttempt.id)
+            .limit(5)
+        ).all()
+    )
+    for attempt in attempts:
+        target = attempt.target
+        raw_chat_id = decrypt_target_chat_id(target) if target else None
+        if target is None or not target.is_active or target.purpose != "testing" or raw_chat_id is None:
+            mark_delivery_skipped(session, attempt, actor=actor, reason="test target not eligible")
+            continue
+        try:
+            await bot.send_message(int(raw_chat_id), "Fortuna OS routing smoke test: Testing Sandbox target is active.")
+            mark_delivery_sent(session, attempt, actor=actor)
+        except Exception:
+            mark_delivery_failed(session, attempt, actor=actor, error_message="telegram_send_failed")
+            logger.warning("Unable to send routing smoke test to configured testing target")
 
 
 def _apply_onboarding_callback(session, user: User, page: str) -> str | None:
@@ -1043,6 +1071,8 @@ async def navigate(callback: CallbackQuery) -> None:
                     if attempt is not None:
                         mark_delivery_failed(session, attempt, actor=user, error_message="telegram_send_failed")
                     logger.warning("Unable to send test notification to configured target")
+            if page == "notification_targets:routing_test":
+                await _send_pending_routing_smoke_tests(callback.bot, session, user)
             await callback.answer()
             session.commit()
         except PermissionError:

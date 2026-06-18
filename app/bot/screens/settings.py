@@ -206,6 +206,9 @@ def render_bot_status_page(session: Session) -> Screen:
 def _observability_time(value) -> str:
     return value.isoformat() if value else "Unknown"
 
+def _yes_no(value) -> str:
+    return "yes" if value else "no"
+
 def render_production_observability_page(session: Session) -> Screen:
     summary = production_observability_summary(session)
     migration_status = summary["alembic_status"]
@@ -255,6 +258,13 @@ def render_production_observability_page(session: Session) -> Screen:
         f"Intelligence Run: {summary['last_intelligence_run']} at {_observability_time(summary['last_intelligence_run_at'])}",
         f"Last Delivery: {summary['last_delivery_status']}",
         f"Failed Notifications: {summary['failed_notification_count']}",
+        f"Notification Targets Configured: {summary['notification_targets_configured_count']}",
+        "",
+        "Proxy Health Reality:",
+        f"Real Health Checks: {_yes_no(summary['proxy_real_health_checks_enabled'])}",
+        f"Real Location Checks: {_yes_no(summary['proxy_real_location_checks_enabled'])}",
+        f"Last Real Proxy Check: {summary['last_real_proxy_check_status']} at {_observability_time(summary['last_real_proxy_check_at'])}",
+        f"Recent Proxy Health Failures: {_yes_no(summary['recent_proxy_health_failures'])}",
         "",
         "Notification Group Readiness:",
         *notification_lines,
@@ -368,6 +378,73 @@ def render_notification_targets_page(session: Session) -> Screen:
         lines.append(f"   Last Tested: {target.last_tested_at.isoformat() if target.last_tested_at else 'Never'}")
         buttons.append((f"{target.id}. {target.name} ({status})", f"nav:notification_target:{target.id}"))
     return Screen(text="\n".join(lines), reply_markup=notification_targets_menu(buttons))
+
+
+def render_notification_group_setup_page(session: Session) -> Screen:
+    statuses = notification_group_setup_status(session)
+    latest = latest_delivery_attempt(session)
+    latest_line = "No delivery attempts yet."
+    if latest is not None:
+        latest_line = f"{latest.event_type}: {latest.status} at {latest.attempted_at.isoformat()}"
+    lines = [
+        "Notification Group Setup",
+        "",
+        "Required Fortuna spaces:",
+        "- Fortuna OS - HQ",
+        "- Fortuna OS - Operations",
+        "- Fortuna OS - Incidents",
+        "- Fortuna OS - Automation Logs",
+        "- Fortuna OS - Testing Sandbox",
+        "",
+        "Readiness:",
+    ]
+    for status in statuses:
+        marker = "Configured" if status.configured else "Missing"
+        when = status.last_delivery_at.isoformat() if status.last_delivery_at else "never"
+        lines.append(
+            f"- {status.label}: {marker} ({status.active_count} active) | Last delivery: {status.last_delivery_status} at {when}"
+        )
+    lines.extend(
+        [
+            "",
+            "How to register:",
+            "1. Open the Fortuna Telegram group or channel.",
+            "2. Add @FortunaSolstice_Bot if it is not already there.",
+            "3. Tap Register Current Chat as Fortuna Target.",
+            "4. Choose the matching purpose.",
+            "5. Send real test messages only to Testing Sandbox by default.",
+            "",
+            f"Latest Delivery Attempt: {latest_line}",
+        ]
+    )
+    return Screen(text="\n".join(lines), reply_markup=notification_group_setup_menu())
+
+
+def render_notification_routing_test_page(session: Session) -> Screen:
+    statuses = notification_group_setup_status(session)
+    configured = [status.label for status in statuses if status.configured]
+    missing = [status.label for status in statuses if not status.configured]
+    latest = latest_delivery_attempt(session)
+    latest_line = "No routing test delivery attempt yet."
+    if latest is not None:
+        latest_line = f"{latest.event_type}: {latest.status} at {latest.attempted_at.isoformat()}"
+    lines = [
+        "Notification Routing Test",
+        "",
+        "Safe behavior:",
+        "- Testing Sandbox gets one real test message if configured.",
+        "- HQ, Operations, Incidents, and Automation Logs are simulated only.",
+        "- Raw chat IDs are never shown.",
+        "",
+        "Would Send To:",
+        *(f"- {label}" for label in (configured or ["No active targets configured"])),
+        "",
+        "Skipped or Missing:",
+        *(f"- {label}" for label in (missing or ["None"])),
+        "",
+        f"Latest Attempt: {latest_line}",
+    ]
+    return Screen(text="\n".join(lines), reply_markup=notification_group_setup_menu())
 
 def render_notification_target_detail_page(session: Session, target_id: int) -> Screen:
     target = session.get(NotificationTarget, target_id)

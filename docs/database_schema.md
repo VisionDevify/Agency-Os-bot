@@ -537,6 +537,32 @@ Indexes and constraints:
 - `ix_proxy_rotation_history_status`.
 - `ix_proxy_rotation_history_created_at`.
 
+### proxy_health_check_results
+
+Append-style proxy health check history. Sprint 27 adds this table so simulated checks, real SOCKS5 connectivity checks, and optional location checks are persisted instead of only updating counters on `proxies`.
+
+Columns:
+
+- `id`: primary key.
+- `proxy_id`: foreign key to `proxies.id`, cascade delete.
+- `check_type`: one of `simulated`, `connectivity`, `location`, or `full`.
+- `status`: one of `passed`, `failed`, `warning`, or `skipped`.
+- `latency_ms`: observed latency when available.
+- `detected_ip_masked`: masked outgoing IP, never the full raw IP.
+- `detected_country`, `detected_state`, `detected_city`: coarse location when available.
+- `target_match`: nullable boolean showing whether detected location matched configured target.
+- `error_message`: safe redacted error message.
+- `created_at`: timestamp.
+
+Indexes and constraints:
+
+- `ck_proxy_health_check_results_check_type`.
+- `ck_proxy_health_check_results_status`.
+- `ix_proxy_health_check_results_proxy_id`.
+- `ix_proxy_health_check_results_check_type`.
+- `ix_proxy_health_check_results_status`.
+- `ix_proxy_health_check_results_created_at`.
+
 ### tasks
 
 Operational task queue. The production table retains legacy `name` and `metadata_json` columns from the Sprint 1 placeholder resource migration for compatibility, but the current model uses the domain columns below.
@@ -1256,6 +1282,7 @@ Indexes and constraints:
 - A model/brand can have many accounts through `accounts.model_brand_id`.
 - A proxy can have many accounts through `accounts.assigned_proxy_id`.
 - A proxy can have many rotation history rows through `proxy_rotation_history.proxy_id`.
+- A proxy can have many health check rows through `proxy_health_check_results.proxy_id`.
 - A task can attach to a model/brand, account, proxy, owner user, assigned user, and creator.
 - An incident can attach to a model/brand, account, proxy, owner user, assigned user, creator, and resolver.
 - An incident can have many timeline entries through `incident_timeline.incident_id`.

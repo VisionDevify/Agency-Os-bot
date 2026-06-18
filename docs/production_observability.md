@@ -24,6 +24,10 @@ The screen shows safe operational metadata only:
 - last automation run
 - last intelligence run
 - notification group readiness
+- configured notification target count
+- proxy real-check flags
+- last real proxy health check
+- recent proxy health warnings/failures
 
 It does not show:
 
@@ -76,6 +80,10 @@ Registration still happens from Telegram:
 
 1. Open the target group or channel.
 2. Add `@FortunaSolstice_Bot`.
-3. Use Settings -> Notification Targets -> Register Current Chat as Fortuna Target.
+3. Use Settings -> Notification Group Setup -> Register Current Chat as Fortuna Target.
 4. Select the correct purpose.
 5. Send test notifications only to Testing Sandbox until owner approval.
+
+## Proxy Health Reality
+
+Production Observability shows whether global real proxy health and location checks are enabled, the last real proxy check status/time, and whether recent proxy health failures exist. Real checks remain disabled by default. Per-proxy owner enablement and check history are shown in Proxy Detail.

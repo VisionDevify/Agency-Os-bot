@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from sqlalchemy import desc, func, select
@@ -45,6 +46,32 @@ NOTIFICATION_ROUTING_RULES: dict[str, tuple[str, ...]] = {
     "post_watch.created": ("operations",),
     "opportunity.digest": ("operations",),
 }
+
+PURPOSE_LABELS: dict[str, str] = {
+    "owner": "HQ",
+    "operations": "Operations",
+    "incidents": "Incidents",
+    "automation_logs": "Automation Logs",
+    "testing": "Testing Sandbox",
+}
+
+
+@dataclass(frozen=True)
+class NotificationPurposeStatus:
+    purpose: str
+    label: str
+    configured: bool
+    active_count: int
+    last_delivery_status: str
+    last_delivery_at: datetime | None
+
+
+@dataclass(frozen=True)
+class RoutingSmokeTestResult:
+    would_send: tuple[str, ...]
+    actual_sends: tuple[str, ...]
+    skipped: tuple[str, ...]
+    failures: tuple[str, ...]
 
 
 def _now() -> datetime:
@@ -449,4 +476,104 @@ def record_notification_routed(
         resource_type="notification",
         resource_id=event_type,
         payload={"target_count": target_count, "purpose": purpose},
+    )
+
+
+def notification_group_setup_status(session: Session) -> list[NotificationPurposeStatus]:
+    rows: list[NotificationPurposeStatus] = []
+    for purpose, label in PURPOSE_LABELS.items():
+        targets = list(
+            session.scalars(
+                select(NotificationTarget).where(
+                    NotificationTarget.is_active.is_(True),
+                    NotificationTarget.purpose == purpose,
+                )
+            ).all()
+        )
+        latest = session.scalar(
+            select(NotificationDeliveryAttempt)
+            .join(NotificationTarget)
+            .where(NotificationTarget.purpose == purpose)
+            .order_by(desc(NotificationDeliveryAttempt.attempted_at), desc(NotificationDeliveryAttempt.id))
+            .limit(1)
+        )
+        rows.append(
+            NotificationPurposeStatus(
+                purpose=purpose,
+                label=label,
+                configured=bool(targets),
+                active_count=len(targets),
+                last_delivery_status=latest.status if latest else "none",
+                last_delivery_at=latest.attempted_at if latest else None,
+            )
+        )
+    return rows
+
+
+def run_notification_routing_smoke_test(
+    session: Session,
+    *,
+    actor: User,
+    send_testing: bool = True,
+) -> RoutingSmokeTestResult:
+    _require_notification_admin(session, actor)
+    would_send: list[str] = []
+    actual_sends: list[str] = []
+    skipped: list[str] = []
+    failures: list[str] = []
+
+    for purpose, label in PURPOSE_LABELS.items():
+        targets = list(
+            session.scalars(
+                select(NotificationTarget).where(
+                    NotificationTarget.is_active.is_(True),
+                    NotificationTarget.purpose == purpose,
+                )
+            ).all()
+        )
+        if not targets:
+            skipped.append(f"{label}: no active target")
+            continue
+        would_send.append(label)
+        for target in targets:
+            if purpose == "testing" and send_testing:
+                create_delivery_attempt(
+                    session,
+                    target,
+                    event_type="notification.routing_smoke_test",
+                    actor=actor,
+                    status="pending",
+                    metadata={"purpose": purpose, "smoke_test": True},
+                )
+                actual_sends.append(label)
+            else:
+                create_delivery_attempt(
+                    session,
+                    target,
+                    event_type="notification.routing_smoke_test",
+                    actor=actor,
+                    status="skipped",
+                    error_message="simulation only; no send outside Testing Sandbox",
+                    metadata={"purpose": purpose, "smoke_test": True, "simulated": True},
+                )
+                skipped.append(f"{label}: simulated only")
+
+    emit_event(
+        session,
+        actor=actor,
+        event_name="notification.routing_smoke_test",
+        resource_type="notification",
+        resource_id="routing_smoke_test",
+        payload={
+            "would_send_count": len(would_send),
+            "actual_send_count": len(actual_sends),
+            "skipped_count": len(skipped),
+            "failure_count": len(failures),
+        },
+    )
+    return RoutingSmokeTestResult(
+        would_send=tuple(would_send),
+        actual_sends=tuple(actual_sends),
+        skipped=tuple(skipped),
+        failures=tuple(failures),
     )

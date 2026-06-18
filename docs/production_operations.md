@@ -91,7 +91,7 @@ If Telegram Web requires manual group creation, use these steps:
 5. Create `Fortuna OS - Testing Sandbox`.
 6. Add `@FortunaSolstice_Bot` to each Fortuna OS group/channel.
 7. Open each group/channel in Telegram.
-8. Use Settings -> Notification Targets -> Add Current Chat As Target from inside that group/channel.
+8. Use Settings -> Notification Group Setup -> Register Current Chat as Fortuna Target from inside that group/channel.
 9. Set the matching purpose:
    - HQ -> owner.
    - Operations -> operations.
@@ -99,6 +99,8 @@ If Telegram Web requires manual group creation, use these steps:
    - Automation Logs -> automation_logs.
    - Testing Sandbox -> testing.
 10. Send a test notification only to Testing Sandbox until the owner approves real routing.
+
+Use Settings -> Notification Group Setup -> Run Routing Test after at least the Testing Sandbox target is registered. The smoke test sends only to Testing Sandbox by default and records simulated/skipped attempts for the other purposes.
 
 Do not use unrelated Telegram chats as notification targets. Do not send test notifications to HQ, Operations, Incidents, or Automation Logs until routing is intentionally activated.
 

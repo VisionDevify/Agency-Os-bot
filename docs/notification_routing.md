@@ -1,6 +1,6 @@
 ﻿# Notification Routing
 
-Sprint 9 introduces safe notification routing without spamming real groups or exposing Telegram chat IDs. Sprint 10 adds durable delivery-attempt records for actual send attempts. Sprint 11 adds availability-aware routing and Daily Digest delivery attempts. Sprint 12 adds critical intelligence signal routing through the same safe delivery-attempt path. Sprint 16 adds Notification Digest Mode for bundling low-priority updates. Sprint 17 adds opportunity and creator-watch routing keys. Sprint 18 adds digestable creator, own-post, assignment, high-priority opportunity, and result-recorded events.
+Sprint 9 introduces safe notification routing without spamming real groups or exposing Telegram chat IDs. Sprint 10 adds durable delivery-attempt records for actual send attempts. Sprint 11 adds availability-aware routing and Daily Digest delivery attempts. Sprint 12 adds critical intelligence signal routing through the same safe delivery-attempt path. Sprint 16 adds Notification Digest Mode for bundling low-priority updates. Sprint 17 adds opportunity and creator-watch routing keys. Sprint 18 adds digestable creator, own-post, assignment, high-priority opportunity, and result-recorded events. Sprint 27 adds Notification Group Setup and a safe routing smoke test.
 
 ## Goals
 
@@ -70,6 +70,14 @@ Settings -> Notification Targets supports:
 - Daily Digest delivery history.
 - Notification Digest Mode for bundled low-priority updates.
 
+Settings -> Notification Group Setup supports:
+
+- Required target readiness for HQ, Operations, Incidents, Automation Logs, and Testing Sandbox.
+- Register Current Chat as Fortuna Target from the Telegram group/channel being registered.
+- Run Routing Test.
+- Last delivery status per purpose.
+- Direct link to the manual group-registration help.
+
 ## Manual Group Registration
 
 Fortuna OS notification groups/channels are not auto-created by the app. Create and register them manually:
@@ -105,6 +113,16 @@ It checks whether active targets exist for:
 The card never shows raw Telegram chat IDs. Use Settings -> Notification Targets for target details and masked identifiers.
 
 Do not register unrelated Telegram chats. Do not expose raw chat IDs in screenshots, audits, events, or support messages.
+
+## Routing Smoke Test
+
+Settings -> Notification Group Setup -> Run Routing Test creates durable delivery-attempt records:
+
+- Testing Sandbox: one real safe test message if configured.
+- HQ, Operations, Incidents, Automation Logs: simulated/skipped delivery attempts only.
+- Missing targets: shown as skipped/missing.
+
+Every attempt is audited and event-logged. Raw chat IDs remain encrypted at rest and masked in Telegram.
 
 ## Safety Rules
 

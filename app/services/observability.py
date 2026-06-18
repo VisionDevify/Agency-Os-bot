@@ -5,7 +5,7 @@ from typing import Any
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
-from sqlalchemy import desc, select, text
+from sqlalchemy import desc, func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -14,6 +14,7 @@ from app.models.audit import AuditLog
 from app.models.automation import AutomationRun
 from app.models.event_log import EventLog
 from app.models.intelligence import IntelligenceRun
+from app.models.proxy import ProxyHealthCheckResult
 from app.models.reporting import NotificationTarget
 from app.services.heartbeats import list_heartbeats, system_status_summary
 
@@ -100,6 +101,24 @@ def production_observability_summary(session: Session) -> dict[str, object]:
     latest_event = _latest(session, EventLog, desc(EventLog.created_at), desc(EventLog.id))
     latest_automation_run = _latest(session, AutomationRun, desc(AutomationRun.started_at), desc(AutomationRun.id))
     latest_intelligence_run = _latest(session, IntelligenceRun, desc(IntelligenceRun.started_at), desc(IntelligenceRun.id))
+    latest_real_proxy_check = session.scalar(
+        select(ProxyHealthCheckResult)
+        .where(ProxyHealthCheckResult.check_type.in_(("connectivity", "location", "full")))
+        .order_by(desc(ProxyHealthCheckResult.created_at), desc(ProxyHealthCheckResult.id))
+        .limit(1)
+    )
+    recent_proxy_failures = (
+        session.scalar(
+            select(ProxyHealthCheckResult.id)
+            .where(ProxyHealthCheckResult.status.in_(("failed", "warning")))
+            .order_by(desc(ProxyHealthCheckResult.created_at), desc(ProxyHealthCheckResult.id))
+            .limit(1)
+        )
+        is not None
+    )
+    configured_notification_targets = (
+        session.scalar(select(func.count(NotificationTarget.id)).where(NotificationTarget.is_active.is_(True))) or 0
+    )
 
     return {
         "app_display_name": settings.app_display_name,
@@ -134,4 +153,10 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         "last_delivery_status": status["last_delivery_status"],
         "failed_notification_count": status["failed_notification_count"],
         "notification_readiness": notification_target_readiness(session),
+        "notification_targets_configured_count": configured_notification_targets,
+        "proxy_real_health_checks_enabled": settings.proxy_real_health_checks_enabled,
+        "proxy_real_location_checks_enabled": settings.proxy_real_location_checks_enabled,
+        "last_real_proxy_check_status": latest_real_proxy_check.status if latest_real_proxy_check else "None",
+        "last_real_proxy_check_at": latest_real_proxy_check.created_at if latest_real_proxy_check else None,
+        "recent_proxy_health_failures": recent_proxy_failures,
     }
