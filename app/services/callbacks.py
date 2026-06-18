@@ -4,10 +4,14 @@ from dataclasses import dataclass, field
 import re
 from typing import Iterable
 
-from sqlalchemy import desc, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
+from app.models.audit import AuditLog
 from app.models.callback_error import CallbackErrorLog
+from app.models.event_log import EventLog
+from app.models.friction import FrictionItem
+from app.models.recommendation import Recommendation
 from app.models.user import User
 from app.services.audit import sanitize_details
 from app.services.auth import audit_action
@@ -27,6 +31,7 @@ SAFE_SMOKE_PAGES = {
     "accounts:list",
     "agency_activation",
     "assistant_next",
+    "callback_failure_review",
     "coo:readiness",
     "debug_last_error",
     "first_workspace",
@@ -87,6 +92,26 @@ class CallbackHealthReport:
         if tested == 0:
             return 0
         return round((len(self.working) / tested) * 100)
+
+
+@dataclass(frozen=True)
+class CallbackFailureReviewItem:
+    error_id: int
+    page: str
+    callback_data: str
+    exception_type: str
+    root_cause: str
+    recommended_fix: str
+    created_at: object
+
+
+@dataclass(frozen=True)
+class CallbackFailureReview:
+    items: list[CallbackFailureReviewItem]
+    friction_count: int
+    recommendation_count: int
+    audit_count: int
+    event_count: int
 
 
 SECRET_PATTERNS = (
@@ -199,6 +224,69 @@ def recent_callback_errors(session: Session, *, limit: int = 10) -> list[Callbac
             .order_by(desc(CallbackErrorLog.created_at), desc(CallbackErrorLog.id))
             .limit(limit)
         ).all()
+    )
+
+
+def _classify_root_cause(error: CallbackErrorLog) -> tuple[str, str]:
+    exception = error.exception_type
+    page = error.page or "unknown"
+    message = error.error_message.casefold()
+    if exception == "PermissionError":
+        return (
+            "Permission route blocked the callback.",
+            "Confirm the button is hidden from users without access or that the permission message is clear.",
+        )
+    if exception in {"ValueError", "TypeError", "IndexError", "KeyError"}:
+        return (
+            "Callback payload or renderer input was malformed.",
+            f"Add a regression test for `{page}` and make the renderer handle missing or invalid data.",
+        )
+    if "database" in message or "integrity" in message or exception.endswith("Error") and "sql" in message:
+        return (
+            "Database action failed while loading the button.",
+            "Check the service action, constraints, and transaction rollback path for this callback.",
+        )
+    if "telegram" in message or "message" in message and "edit" in message:
+        return (
+            "Telegram message update failed.",
+            "Keep the edit-or-send fallback active and inspect whether the screen text/markup is too large or stale.",
+        )
+    if page.startswith("proxy"):
+        return (
+            "Proxy screen or proxy action failed.",
+            "Review the proxy route, ensure secrets stay masked, and add a focused proxy callback regression test.",
+        )
+    return (
+        "Renderer or action raised an unexpected exception.",
+        f"Reproduce `{page}` through `screen_for_page`, fix the failing route, and add a regression test.",
+    )
+
+
+def callback_failure_review(session: Session, *, limit: int = 10) -> CallbackFailureReview:
+    errors = recent_callback_errors(session, limit=limit)
+    items: list[CallbackFailureReviewItem] = []
+    for error in errors:
+        root_cause, recommended_fix = _classify_root_cause(error)
+        items.append(
+            CallbackFailureReviewItem(
+                error_id=error.id,
+                page=error.page or "unknown",
+                callback_data=error.callback_data or "unknown",
+                exception_type=error.exception_type,
+                root_cause=root_cause,
+                recommended_fix=recommended_fix,
+                created_at=error.created_at,
+            )
+        )
+    return CallbackFailureReview(
+        items=items,
+        friction_count=session.scalar(select(func.count(FrictionItem.id))) or 0,
+        recommendation_count=session.scalar(
+            select(func.count(Recommendation.id)).where(Recommendation.recommendation_type == "callback_failure")
+        )
+        or 0,
+        audit_count=session.scalar(select(func.count(AuditLog.id)).where(AuditLog.action == "callback.failed")) or 0,
+        event_count=session.scalar(select(func.count(EventLog.id)).where(EventLog.event_type == "callback.failed")) or 0,
     )
 
 

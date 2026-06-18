@@ -1,5 +1,10 @@
 from app.bot.navigation import screen_for_page
-from app.bot.screens import render_callback_error_page, render_debug_last_error_page
+from app.bot.screens import (
+    render_button_health_report_page,
+    render_callback_error_page,
+    render_callback_failure_review_page,
+    render_debug_last_error_page,
+)
 from app.models.audit import AuditLog
 from app.models.callback_error import CallbackErrorLog
 from app.models.event_log import EventLog
@@ -95,7 +100,59 @@ def test_button_health_report_route_renders() -> None:
         assert "Button Health Report" in screen.text
         assert "Working:" in screen.text
         assert "Failing:" in screen.text
+        assert "Recent Production Failure Logs:" in screen.text
         assert "nav:button_health:run" in _callbacks(screen.reply_markup)
+        assert "nav:callback_failure_review" in _callbacks(screen.reply_markup)
+
+
+def test_callback_failure_review_renders_empty_state() -> None:
+    with session_scope() as session:
+        owner = setup_owner_if_needed(session, telegram_user_id=1, owner_telegram_id=1)
+
+        screen = render_callback_failure_review_page(session, owner)
+
+        assert "Callback Failure Review" in screen.text
+        assert "No callback failures are currently logged" in screen.text
+        assert "nav:button_health:run" in _callbacks(screen.reply_markup)
+
+
+def test_callback_failure_review_classifies_logged_failures() -> None:
+    with session_scope() as session:
+        owner = setup_owner_if_needed(session, telegram_user_id=1, owner_telegram_id=1)
+        log_callback_failure(
+            session,
+            actor=owner,
+            callback_data="nav:proxy:1:rotate",
+            page="proxy:1:rotate",
+            exc=RuntimeError("proxy renderer failed"),
+            affected_screen="proxy:1:rotate",
+        )
+
+        screen = render_callback_failure_review_page(session, owner)
+
+        assert "proxy:1:rotate" in screen.text
+        assert "Exception: RuntimeError" in screen.text
+        assert "Root cause: Proxy screen or proxy action failed." in screen.text
+        assert "proxy renderer failed" not in screen.text
+
+
+def test_button_health_report_includes_recent_failure_counts() -> None:
+    with session_scope() as session:
+        owner = setup_owner_if_needed(session, telegram_user_id=1, owner_telegram_id=1)
+        log_callback_failure(
+            session,
+            actor=owner,
+            callback_data="nav:reports",
+            page="reports",
+            exc=ValueError("bad report payload"),
+            affected_screen="reports",
+        )
+
+        screen = render_button_health_report_page(session, owner)
+
+        assert "Callback errors: 1" in screen.text
+        assert "Callback recommendations: 1" in screen.text
+        assert "reports: ValueError" in screen.text
 
 
 def test_callback_problem_report_route_is_safe() -> None:
@@ -108,3 +165,14 @@ def test_callback_problem_report_route_is_safe() -> None:
         assert "Problem Reported" in screen.text
         assert "nav:menu" in _callbacks(screen.reply_markup)
         assert session.query(AuditLog).filter_by(action="callback.problem_reported").count() == 1
+
+
+def test_callback_failure_review_route_renders() -> None:
+    with session_scope() as session:
+        owner = setup_owner_if_needed(session, telegram_user_id=1, owner_telegram_id=1)
+        principal = PermissionPrincipal(telegram_id=owner.telegram_id, is_owner=True, role=RoleName.OWNER)
+
+        screen = screen_for_page("callback_failure_review", principal, session=session, user=owner)
+
+        assert "Callback Failure Review" in screen.text
+        assert "Callback errors:" in screen.text

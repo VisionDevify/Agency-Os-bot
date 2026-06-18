@@ -121,6 +121,8 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_ui_self_test_page(session, user, run_now=True)
     if page in {"button_health", "button_health:run"} and session is not None:
         return render_button_health_report_page(session, user, run_now=page.endswith(":run"))
+    if page == "callback_failure_review" and session is not None:
+        return render_callback_failure_review_page(session, user)
     if page == "debug_last_error" and session is not None:
         return render_debug_last_error_page(session, user)
     if page.startswith("callback_error:report"):

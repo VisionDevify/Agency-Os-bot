@@ -317,7 +317,12 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         or page.startswith("notification_target:")
     ):
         return ("manage_reports", "manage_roles")
-    if page.startswith("ui_self_test") or page.startswith("button_health") or page == "debug_last_error":
+    if (
+        page.startswith("ui_self_test")
+        or page.startswith("button_health")
+        or page == "callback_failure_review"
+        or page == "debug_last_error"
+    ):
         return ("manage_roles",)
     if page.startswith("callback_error:report"):
         return None
@@ -1077,6 +1082,7 @@ def screen_for_page(
         "ui_self_test:run",
         "button_health",
         "button_health:run",
+        "callback_failure_review",
         "debug_last_error",
     } and not (
         principal.is_owner or (user is not None and user.is_owner)
@@ -1229,6 +1235,7 @@ def screen_for_page(
         or normalized == "first_workspace"
         or normalized.startswith("ui_self_test")
         or normalized.startswith("button_health")
+        or normalized == "callback_failure_review"
         or normalized == "debug_last_error"
         or normalized.startswith("callback_error:report")
         or normalized == "owner_daily_checklist"

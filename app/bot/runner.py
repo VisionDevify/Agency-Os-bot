@@ -27,6 +27,7 @@ from app.bot.screens import (
     render_proxy_import_success_page,
     render_botstatus_page,
     render_callback_error_page,
+    render_callback_failure_review_page,
     render_debug_last_error_page,
     render_integrity_page,
     render_ui_self_test_page,
@@ -635,6 +636,39 @@ async def debug_last_error(message: Message) -> None:
             await message.answer("Debug last error is owner-only.")
             return
         screen = render_debug_last_error_page(session, user)
+        session.commit()
+    await message.answer(screen.text, reply_markup=screen.reply_markup)
+
+
+@dp.message(Command("callback_failures"))
+async def callback_failures(message: Message) -> None:
+    if message.from_user is None or SessionLocal is None:
+        await message.answer("Callback failure review is owner-only.")
+        return
+
+    with SessionLocal() as session:
+        telegram_id = message.from_user.id
+        _record_bot_heartbeat(session, status="healthy", source="telegram_callback_failures")
+        user = get_or_create_telegram_user(
+            session,
+            telegram_user_id=telegram_id,
+            display_name=_display_name_from_message_user(message.from_user),
+            username=_username_from_message_user(message.from_user),
+            owner_telegram_id=settings.owner_telegram_id,
+        )
+        if not user.is_owner:
+            audit_action(
+                session,
+                actor=user,
+                action="access.denied",
+                resource_type="callback_failure_review",
+                status="denied",
+                details={"permission": "owner"},
+            )
+            session.commit()
+            await message.answer("Callback failure review is owner-only.")
+            return
+        screen = render_callback_failure_review_page(session, user)
         session.commit()
     await message.answer(screen.text, reply_markup=screen.reply_markup)
 
