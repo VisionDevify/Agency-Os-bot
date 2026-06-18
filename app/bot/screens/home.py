@@ -1,6 +1,8 @@
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from sqlalchemy import func, select
+
 from .formatting import *
 
 def _owner_display_name(user: User) -> str:
@@ -29,24 +31,123 @@ def _readiness_marker(score: int) -> str:
     return "\U0001f534"
 
 
+def _setup_progress(session: Session, report: dict | None = None) -> dict:
+    report = report or build_activation_report(session)
+    blockers = report["blockers"]
+    codes = {blocker.get("code", "") for blocker in blockers}
+    model_count = session.scalar(select(func.count(ModelBrand.id))) or 0
+    account_count = session.scalar(select(func.count(Account.id))) or 0
+    team_count = session.scalar(select(func.count(ModelBrandMember.user_id))) or 0
+    creator_count = session.scalar(select(func.count(CreatorWatch.id)).where(CreatorWatch.is_active.is_(True))) or 0
+    opportunity_count = session.scalar(select(func.count(Opportunity.id))) or 0
+    proxy_count = session.scalar(select(func.count(Proxy.id))) or 0
+    notification_count = session.scalar(select(func.count(NotificationTarget.id)).where(NotificationTarget.is_active.is_(True))) or 0
+    sections = [
+        {
+            "label": "Model Setup",
+            "complete": bool(model_count) and not any(code.startswith("model.missing") for code in codes),
+            "attention": bool(model_count),
+            "fix": "agency_activation:models",
+            "view": "models",
+            "missing": "Model profile",
+        },
+        {
+            "label": "Accounts",
+            "complete": bool(account_count) and int(report["accounts_ready"]) == 100,
+            "attention": bool(account_count),
+            "fix": "agency_activation:accounts",
+            "view": "accounts",
+            "missing": "Accounts",
+        },
+        {
+            "label": "Team",
+            "complete": bool(team_count) and int(report["teams_ready"]) == 100,
+            "attention": bool(team_count),
+            "fix": "agency_activation:team",
+            "view": "manager_qa",
+            "missing": "Team",
+        },
+        {
+            "label": "Creators",
+            "complete": bool(creator_count) and int(report["creators_ready"]) == 100,
+            "attention": bool(creator_count),
+            "fix": "agency_activation:creators",
+            "view": "opportunities:creators",
+            "missing": "Creators",
+        },
+        {
+            "label": "Notifications",
+            "complete": bool(notification_count) and int(report["notifications_ready"]) == 100,
+            "attention": bool(notification_count),
+            "fix": "notification_group_pilot",
+            "view": "notification_group_setup",
+            "missing": "Notifications",
+        },
+        {
+            "label": "Proxy",
+            "complete": bool(proxy_count),
+            "attention": bool(proxy_count),
+            "fix": "proxies",
+            "view": "proxies:dashboard",
+            "missing": "Proxy",
+        },
+    ]
+    # Opportunities are useful context for the home completeness score even though they live under Growth.
+    base_checks = [
+        bool(model_count),
+        sections[0]["complete"],
+        bool(account_count),
+        sections[1]["complete"],
+        sections[2]["complete"],
+        sections[3]["complete"],
+        bool(opportunity_count),
+        sections[4]["complete"],
+        sections[5]["complete"],
+        int(report["readiness_score"]) >= 70,
+    ]
+    missing = [section["missing"] for section in sections if not section["complete"]][:3]
+    return {
+        "complete_count": sum(1 for item in base_checks if item),
+        "total": len(base_checks),
+        "sections": sections,
+        "missing": missing,
+        "top_blocker": blockers[0] if blockers else None,
+    }
+
+
+def _estimated_minutes(missing_count: int) -> int:
+    if missing_count <= 1:
+        return 2
+    if missing_count <= 3:
+        return 5
+    return 10
+
+
 def render_main_menu(session: Session | None = None, user: User | None = None) -> Screen:
     if session is None or user is None:
         return Screen(text="Fortuna OS\nSelect an area.", reply_markup=main_menu())
     if primary_role(user) in {"Owner", "Admin"}:
         report = build_activation_report(session)
-        blockers = report["blockers"]
-        next_move = blockers[0]["title"] if blockers else "Nothing urgent here."
-        score = int(report["readiness_score"])
+        progress = _setup_progress(session, report)
+        missing = progress["missing"] or ["Nothing urgent"]
+        focus = progress["top_blocker"]["title"] if progress["top_blocker"] else "Nothing urgent here"
         lines = [
-            "\U0001f319 Fortuna OS",
-            f"{_owner_greeting(user)}, {_owner_display_name(user)}.",
+            f"\U0001f319 {_owner_greeting(user).title()}, {_owner_display_name(user)}",
             "",
-            f"Readiness: {score}% {_readiness_marker(score)}",
-            f"Today: {len(blockers[:5])} actions waiting",
-            "Production: \U0001f7e2 Healthy",
+            "Fortuna Status:",
+            "\U0001f7e2 Production Healthy",
             "",
-            "Next best move:",
-            next_move,
+            "Agency Setup:",
+            f"{progress['complete_count']}/{progress['total']} Complete",
+            "",
+            "Today\u2019s Focus:",
+            focus,
+            "",
+            "Missing:",
+            *[f"- {item}" for item in missing],
+            "",
+            "Estimated Time:",
+            f"{_estimated_minutes(len(progress['missing']))} min",
             "",
             "Ready when you are.",
         ]
@@ -116,6 +217,104 @@ def render_start_here_page(session: Session, user: User | None = None) -> Screen
             ]
         )
     return Screen(text="\n".join(lines), reply_markup=start_here_menu())
+
+
+def render_today_priorities_page(session: Session, user: User | None = None) -> Screen:
+    actions = todays_top_5_actions(session, actor=user)
+    recent_actions = recent_operations_activity(session)
+    approvals = pending_approvals(session)
+    followups = outstanding_blockers(session)
+    recommendations = list_recommendations(session, status="open", limit=5)
+    next_action = actions[0].title if actions else (recommendations[0].title if recommendations else "Nothing urgent here.")
+    buttons = [(f"Open {index}: {action.title[:24]}", action.action_page) for index, action in enumerate(actions[:3], start=1)]
+    lines = [
+        "Today's Priorities",
+        "",
+        "Recommended Next Action:",
+        next_action,
+        "",
+        "Top 5 Actions:",
+    ]
+    if actions:
+        for index, action in enumerate(actions[:5], start=1):
+            lines.append(f"{index}. {action.title}")
+    else:
+        lines.append("- Nothing urgent here.")
+    lines.extend(["", "Urgent Items:"])
+    urgent = [rec for rec in recommendations if rec.severity == "critical"]
+    lines.extend(f"- {rec.title}" for rec in urgent[:3]) if urgent else lines.append("- None right now.")
+    lines.extend(["", "Things Fortuna Did:"])
+    lines.extend(f"- {item}" for item in recent_actions[:3]) if recent_actions else lines.append("- No actions recorded today.")
+    lines.extend(["", "Pending Approvals:"])
+    lines.extend(f"- {approval.rule.name if approval.rule else approval.automation_rule_id}" for approval in approvals[:3]) if approvals else lines.append("- No approvals waiting.")
+    lines.extend(["", "Follow-Ups:"])
+    lines.extend(f"- {item}" for item in followups[:3]) if followups else lines.append("- No follow-ups due.")
+    return Screen("\n".join(lines), today_priorities_menu(buttons))
+
+
+def render_setup_progress_page(session: Session, user: User | None = None) -> Screen:
+    report = build_activation_report(session)
+    progress = _setup_progress(session, report)
+    lines = [
+        "Setup Progress",
+        "",
+        f"Agency Setup: {progress['complete_count']}/{progress['total']} Complete",
+        "",
+        "Fortuna noticed these setup areas:",
+    ]
+    rows: list[tuple[str, str, str]] = []
+    for section in progress["sections"]:
+        if section["complete"]:
+            marker = "\u2705 Complete"
+        elif section["attention"]:
+            marker = "\u26a0 Needs Attention"
+        else:
+            marker = "\U0001f534 Missing"
+        lines.append(f"- {section['label']}: {marker}")
+        rows.append((section["label"], section["fix"], section["view"]))
+    lines.extend(
+        [
+            "",
+            "What should I do next?",
+            progress["top_blocker"]["title"] if progress["top_blocker"] else "Nothing urgent here.",
+        ]
+    )
+    return Screen("\n".join(lines), setup_progress_menu(rows))
+
+
+def render_assistant_next_page(session: Session, user: User | None = None) -> Screen:
+    report = build_activation_report(session)
+    progress = _setup_progress(session, report)
+    actions = todays_top_5_actions(session, actor=user)
+    recommendations = list_recommendations(session, status="open", limit=3)
+    target = "setup_progress"
+    if progress["top_blocker"]:
+        title = progress["top_blocker"]["title"]
+        reason = "Fortuna noticed this setup blocker is holding readiness down."
+        target = progress["top_blocker"].get("action_page") or "setup_progress"
+    elif actions:
+        title = actions[0].title
+        reason = actions[0].explanation
+        target = actions[0].action_page
+    elif recommendations:
+        title = recommendations[0].title
+        reason = recommendations[0].description
+        target = "reports:executive:recommendations"
+    else:
+        title = "Nothing urgent here."
+        reason = "Fortuna does not see a setup blocker or urgent operational item right now."
+    lines = [
+        "What Should I Do Next?",
+        "",
+        "Fortuna recommends:",
+        title,
+        "",
+        "Why:",
+        reason,
+        "",
+        "Ready when you are.",
+    ]
+    return Screen("\n".join(lines), assistant_next_menu(target))
 
 def render_dashboard(
     stats: DashboardStats | None = None,

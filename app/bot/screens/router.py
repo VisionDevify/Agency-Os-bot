@@ -19,6 +19,12 @@ from .help import *
 def render_page(page: str, session: Session | None = None, user: User | None = None) -> Screen:
     if page == "owner_advanced":
         return render_owner_advanced_page()
+    if page == "today_priorities" and session is not None:
+        return render_today_priorities_page(session, user)
+    if page == "setup_progress" and session is not None:
+        return render_setup_progress_page(session, user)
+    if page == "assistant_next" and session is not None:
+        return render_assistant_next_page(session, user)
     if page == "start_here" and session is not None:
         return render_start_here_page(session, user)
     if page == "structure":
@@ -139,7 +145,7 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
     if page == "automations:daily_autopilot" and session is not None:
         return render_daily_autopilot_page(session, user=user)
     if page == "proxies":
-        return render_proxies_home()
+        return render_proxies_home(session)
     if page == "proxies:advanced":
         return render_proxy_advanced_page()
     if page == "proxies:list" and session is not None:

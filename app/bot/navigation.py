@@ -220,7 +220,7 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         return None
     if page == "structure":
         return None
-    if page in {"start_here", "owner_advanced"}:
+    if page in {"start_here", "owner_advanced", "today_priorities", "setup_progress", "assistant_next"}:
         return ("view_dashboard", "manage_reports")
     if page.startswith("coo"):
         return ("view_dashboard", "manage_reports", "manage_tasks", "manage_users")

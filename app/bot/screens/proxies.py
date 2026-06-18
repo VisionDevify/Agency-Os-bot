@@ -13,21 +13,37 @@ def _result_location(result) -> str:
         item for item in [result.detected_city, result.detected_state, result.detected_country] if item
     ) or "Unknown"
 
-def render_proxies_home() -> Screen:
+def render_proxies_home(session: Session | None = None) -> Screen:
+    if session is not None:
+        proxies = list_proxies(session)
+        healthy = 0
+        needs_attention = 0
+        real_enabled = 0
+        for proxy in proxies:
+            health = calculate_proxy_health(proxy)
+            if proxy.status == "healthy" and health.score >= 80:
+                healthy += 1
+            else:
+                needs_attention += 1
+            if proxy_check_mode(proxy).real_health_enabled:
+                real_enabled += 1
+        missing_proxy = len(accounts_missing_proxy(session))
+        total = len(proxies)
+    else:
+        total = healthy = needs_attention = missing_proxy = real_enabled = 0
     return Screen(
         text="\n".join(
             [
                 "\U0001f6e1 Proxy Vault",
                 "",
-                "Status: saved proxies stay encrypted",
-                "Real Checks: Off by default",
-                "Mode: Simulated until enabled",
+                f"Total Proxies: {total}",
+                f"Healthy: {healthy}",
+                f"Needs Attention: {needs_attention}",
+                f"Missing Accounts: {missing_proxy}",
+                f"Real Checks: {'Enabled' if real_enabled else 'Disabled'}",
                 "",
-                "What you can do:",
-                "1. Add a proxy",
-                "2. Assign proxy to account",
-                "3. Test proxy",
-                "4. Enable real checks",
+                "Fortuna noticed proxy setup matters before accounts go live.",
+                "Add a proxy, assign accounts, then test safely.",
                 "",
                 "Fortuna will never show proxy passwords back in Telegram.",
             ]

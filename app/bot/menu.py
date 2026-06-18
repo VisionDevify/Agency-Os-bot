@@ -41,15 +41,15 @@ def role_home_menu(items: list[tuple[str, str]] | tuple[tuple[str, str], ...]) -
 def owner_simple_home_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [InlineKeyboardButton(text="Continue Setup", callback_data=callback_for("setup_progress"))],
             [
-                InlineKeyboardButton(text="Start Here", callback_data=callback_for("start_here")),
-                InlineKeyboardButton(text="Today", callback_data=callback_for("owner_daily_checklist")),
-            ],
-            [
-                InlineKeyboardButton(text="Setup", callback_data=callback_for("setup:wizard")),
+                InlineKeyboardButton(text="Today\u2019s Priorities", callback_data=callback_for("today_priorities")),
                 InlineKeyboardButton(text="Opportunities", callback_data=callback_for("opportunities")),
             ],
-            [InlineKeyboardButton(text="Help", callback_data=callback_for("help"))],
+            [
+                InlineKeyboardButton(text="Proxy Vault", callback_data=callback_for("proxies")),
+                InlineKeyboardButton(text="Help", callback_data=callback_for("help")),
+            ],
             [InlineKeyboardButton(text="Advanced", callback_data=callback_for("owner_advanced"))],
         ]
     )
@@ -86,6 +86,53 @@ def start_here_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Fix Top Blocker", callback_data=callback_for("agency_activation"))],
             [InlineKeyboardButton(text="View Progress", callback_data=callback_for("coo:readiness"))],
             [InlineKeyboardButton(text="Ask Fortuna", callback_data=callback_for("help_copilot:finish_setup"))],
+            *page_controls(back_to="menu"),
+        ]
+    )
+
+
+def today_priorities_menu(action_buttons: list[tuple[str, str]] | None = None) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text="What Should I Do Next?", callback_data=callback_for("assistant_next"))]]
+    for label, page in (action_buttons or [])[:4]:
+        rows.append([InlineKeyboardButton(text=label, callback_data=callback_for(page))])
+    rows.extend(
+        [
+            [
+                InlineKeyboardButton(text="Setup Progress", callback_data=callback_for("setup_progress")),
+                InlineKeyboardButton(text="Recommendations", callback_data=callback_for("reports:executive:recommendations")),
+            ],
+            *page_controls(back_to="menu"),
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def setup_progress_menu(rows_data: list[tuple[str, str, str]] | None = None) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    for label, fix_page, view_page in (rows_data or [])[:6]:
+        rows.append(
+            [
+                InlineKeyboardButton(text=f"Fix {label}", callback_data=callback_for(fix_page)),
+                InlineKeyboardButton(text="View", callback_data=callback_for(view_page)),
+            ]
+        )
+    rows.extend(
+        [
+            [InlineKeyboardButton(text="What Should I Do Next?", callback_data=callback_for("assistant_next"))],
+            *page_controls(back_to="menu"),
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def assistant_next_menu(target_page: str = "setup_progress") -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Do This Now", callback_data=callback_for(target_page))],
+            [
+                InlineKeyboardButton(text="Today", callback_data=callback_for("today_priorities")),
+                InlineKeyboardButton(text="Help", callback_data=callback_for("help_copilot:next_action")),
+            ],
             *page_controls(back_to="menu"),
         ]
     )
@@ -652,12 +699,12 @@ def account_detail_menu(account_id: int) -> InlineKeyboardMarkup:
 def proxies_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Add Olympix Proxy", callback_data=callback_for("proxies:olympix"))],
-            [InlineKeyboardButton(text="View Proxies", callback_data=callback_for("proxies:list"))],
+            [InlineKeyboardButton(text="Add Proxy", callback_data=callback_for("proxies:olympix"))],
             [InlineKeyboardButton(text="Accounts Missing Proxy", callback_data=callback_for("proxies:missing"))],
             [InlineKeyboardButton(text="Proxy Health", callback_data=callback_for("proxies:dashboard"))],
+            [InlineKeyboardButton(text="Proxy Assignments", callback_data=callback_for("proxies:list"))],
             [InlineKeyboardButton(text="Help", callback_data=callback_for("help_copilot:add_proxy"))],
-            [InlineKeyboardButton(text="Advanced", callback_data=callback_for("proxies:advanced"))],
+            [InlineKeyboardButton(text="Advanced Tools", callback_data=callback_for("proxies:advanced"))],
             *page_controls(back_to="menu"),
         ]
     )

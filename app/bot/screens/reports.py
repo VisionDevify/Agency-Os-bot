@@ -325,15 +325,15 @@ def _recommendation_group(recommendation: Recommendation) -> tuple[str, str]:
     rec_type = recommendation.recommendation_type
     title = recommendation.title.lower()
     if recommendation.severity == "critical" or "critical" in title:
-        return "\U0001f534 Urgent Setup Blockers", "Fix Now"
-    if rec_type.startswith("activation_model") or "model" in title:
-        return "\U0001f7e1 Model Setup", "Fix Now"
+        return "\U0001f534 Urgent", "Fix Now"
+    if "notification" in title or "notification" in rec_type:
+        return "\U0001f535 System", "Fix Now"
+    if rec_type.startswith("activation_") or "missing" in title or "setup" in title or "model" in title or "account" in title:
+        return "\U0001f7e1 Needs Setup", "Fix Now"
     if "creator" in title or "opportun" in title:
-        return "\U0001f7e1 Growth Setup", "Fix Now"
-    if "notification" in title:
-        return "\U0001f535 System Setup", "Fix Now"
+        return "\U0001f7e1 Growth", "Fix Now"
     if "production" in title or "automation" in title or "proxy" in title:
-        return "\u2699 Production", "Review"
+        return "\u2699 System", "Review"
     return "\U0001f535 Recommended Next Moves", "Review"
 
 
@@ -357,6 +357,8 @@ def render_recommendations_page(session: Session, user: User | None = None) -> S
     lines = [
         "Fortuna Recommendations",
         "",
+        "Fortuna recommends focusing on one clear fix at a time.",
+        "",
         "Recommended Next Move:",
     ]
     buttons: list[tuple[str, str]] = []
@@ -369,20 +371,26 @@ def render_recommendations_page(session: Session, user: User | None = None) -> S
         for recommendation in recommendations:
             group, _ = _recommendation_group(recommendation)
             grouped.setdefault(group, []).append(recommendation)
-        shown = 0
-        for group, group_items in grouped.items():
-            if shown >= 3:
-                break
+        for group in (
+            "\U0001f534 Urgent",
+            "\U0001f7e1 Needs Setup",
+            "\U0001f7e1 Growth",
+            "\U0001f535 System",
+            "\u2699 System",
+            "\U0001f535 Recommended Next Moves",
+        ):
+            group_items = grouped.get(group, [])
+            if not group_items:
+                continue
             lines.append(group)
-            for recommendation in group_items[: 3 - shown]:
-                marker = _status_marker(recommendation.severity)
-                lines.append(f"- {marker} {_friendly_recommendation_title(recommendation)}")
-                buttons.append((f"Fix Now: {_friendly_recommendation_title(recommendation)[:36]}", f"nav:recommendation:{recommendation.id}"))
-                shown += 1
+            recommendation = group_items[0]
+            marker = _status_marker(recommendation.severity)
+            lines.append(f"- {marker} {_friendly_recommendation_title(recommendation)}")
+            lines.append(f"  Why it matters: {recommendation.description}")
+            buttons.append((f"Fix: {_friendly_recommendation_title(recommendation)[:38]}", f"nav:recommendation:{recommendation.id}"))
+            if len(group_items) > 1:
+                lines.append(f"  View All: {len(group_items)} items in this group")
             lines.append("")
-        hidden_count = max(0, len(recommendations) - shown)
-        if hidden_count:
-            lines.append(f"{hidden_count} more are tucked away to keep this calm.")
     return Screen(text="\n".join(lines), reply_markup=recommendations_menu(buttons))
 
 def render_recommendation_detail_page(session: Session, recommendation_id: int) -> Screen:

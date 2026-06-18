@@ -3,13 +3,16 @@ import re
 
 from app.bot.screens import (
     render_account_detail_page,
+    render_assistant_next_page,
     render_main_menu,
     render_olympix_proxy_wizard_page,
     render_production_observability_page,
     render_proxies_home,
     render_proxy_detail_page,
     render_recommendations_page,
+    render_setup_progress_page,
     render_start_here_page,
+    render_today_priorities_page,
 )
 from app.models.recommendation import Recommendation
 from app.services.accounts import create_account
@@ -40,16 +43,29 @@ def test_owner_home_is_simple_and_advanced_menu_exists() -> None:
         screen = render_main_menu(session, owner)
         labels = _button_text(screen)
 
-        assert "Fortuna OS" in screen.text
-        assert "Next best move:" in screen.text
-        assert "Start Here" in labels
+        assert "Fortuna Status" in screen.text
+        assert "Today\u2019s Focus:" in screen.text
+        assert "Continue Setup" in labels
+        assert "Today\u2019s Priorities" in labels
+        assert "Proxy Vault" in labels
         assert "Advanced" in labels
-        assert "Proxy Vault" not in labels
         assert "Automation" not in labels
 
         start = render_start_here_page(session, owner)
         assert "Top Setup Steps" in start.text
         assert "Continue Setup" in _button_text(start)
+
+        today = render_today_priorities_page(session, owner)
+        assert "Today's Priorities" in today.text
+        assert "Things Fortuna Did" in today.text
+
+        setup = render_setup_progress_page(session, owner)
+        assert "Setup Progress" in setup.text
+        assert "Model Setup" in setup.text
+
+        assistant = render_assistant_next_page(session, owner)
+        assert "What Should I Do Next?" in assistant.text
+        assert "Fortuna recommends" in assistant.text
 
 
 def test_recommendations_are_grouped_and_hide_raw_types() -> None:
@@ -79,7 +95,8 @@ def test_recommendations_are_grouped_and_hide_raw_types() -> None:
 
         assert "Fortuna Recommendations" in screen.text
         assert "Recommended Next Move" in screen.text
-        assert "Model Setup" in screen.text
+        assert "Needs Setup" in screen.text
+        assert "Why it matters" in screen.text
         assert "activation_model_missing_team" not in screen.text
         assert "Type:" not in screen.text
 
@@ -111,11 +128,13 @@ def test_proxy_vault_and_detail_are_clean_and_secret_safe() -> None:
         )
         assert decrypt_secret(proxy.encrypted_password) == "super-secret"
 
-        home = render_proxies_home()
+        home = render_proxies_home(session)
         detail = render_proxy_detail_page(session, proxy.id)
 
-        assert "What you can do:" in home.text
-        assert "Add Olympix Proxy" in _button_text(home)
+        assert "Total Proxies:" in home.text
+        assert "Missing Accounts:" in home.text
+        assert "Add Proxy" in _button_text(home)
+        assert "Advanced Tools" in _button_text(home)
         assert "Type: SOCKS5 Mobile" in detail.text
         assert "Real Check: Off" in detail.text
         assert "super-secret" not in detail.text

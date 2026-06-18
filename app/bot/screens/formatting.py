@@ -15,6 +15,7 @@ from app.bot.menu import (
     activation_blocker_detail_menu,
     activation_section_menu,
     agency_activation_menu,
+    assistant_next_menu,
     automation_approval_detail_menu,
     automation_approvals_menu,
     automation_rule_detail_menu,
@@ -106,6 +107,7 @@ from app.bot.menu import (
     scheduled_automations_menu,
     settings_menu,
     start_here_menu,
+    setup_progress_menu,
     simulation_run_detail_menu,
     simulation_runs_menu,
     setup_finish_menu,
@@ -125,6 +127,7 @@ from app.bot.menu import (
     fortuna_action_log_menu,
     my_work_menu,
     top5_actions_menu,
+    today_priorities_menu,
     ui_self_test_menu,
 )
 from app.models.account import ACCOUNT_PLATFORMS, Account
