@@ -29,10 +29,11 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Sprint 20: Production Data Activation readiness with first-day operations smoke-test guidance, team invite packet, clearer account setup empty states, and explicit manual notification group registration steps.
 - Sprint 21: Self-operational agency activation with readiness scoring, setup gap detection, owner Agency Activation dashboard, model completion wizard, account setup states, Olympix proxy wizard, activation recommendations, deduped setup task creation, and live-state Help Copilot answers.
 - Sprint 22: Fortuna OS autonomous operations layer with durable operations workflows, workflow actions, follow-ups, account/model/opportunity/creator autopilots, readiness autopilot, daily autonomous cycle records, owner attention routing, multiple-owner management, proxy navigation repair, and user-facing Fortuna OS branding.
+- Sprint 23: Production activation and Daily Autopilot scheduling with one-tap readiness blocker fix paths, persisted skip/not-needed decisions, smoother model completion routing, proxy setup check, Owner Daily Checklist, team invite activation guidance, notification target registration guidance, and What Fortuna Did action log.
 
 ## Roadmap
 
-- Sprint 23: operator-ready notification group activation, production daily-cycle scheduling, and real team rollout against approved agency data.
+- Sprint 24: team data onboarding, notification group registration, and operator-approved production routines against real agency records.
 - Future: AI Operations Brain for natural-language summaries, anomaly explanations, and operator-approved next actions.
 
 ## Core Modules
@@ -63,8 +64,9 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Opportunities: manual, human-approved opportunity records, Creator Watch, Own Post Watch, guided intake flows, queue summaries, comment strategy prompts, assignment workflows, and opportunity results for future funnel intelligence without scraping or automatic posting.
 - Help Copilot: role-aware deterministic guidance that explains common workflows and points users to the next Fortuna OS screen.
 - Team Activation: friendly readiness scoring and QA flags for onboarding, pending approval, role/timezone/availability setup, assigned work, chatter model assignment, opportunity assignment, first task completion, first opportunity review, and Help Center usage.
-- Agency Activation: owner/admin readiness engine that inspects live models, accounts, teams, creators, opportunities, and notification targets; persists readiness snapshots; detects setup blockers; creates safe recommendations; and creates deduped setup tasks.
+- Agency Activation: owner/admin readiness engine that inspects live models, accounts, teams, creators, opportunities, and notification targets; persists readiness snapshots; detects setup blockers; creates safe recommendations; creates deduped setup tasks; and supports blocker fix, explanation, skip, and not-needed decisions.
 - Autonomous Operations: durable workflows, actions, routing decisions, and follow-ups created when accounts, models, creators, opportunities, readiness scans, or the daily cycle need a next step.
+- Daily Autopilot: owner-facing daily cycle scheduler that stores timezone, next run, last result, included safe actions, and can run readiness, recommendation, intelligence, follow-up digest, and automation health checks on demand.
 - System Status: service heartbeats for API, bot, db, redis, and Railway deployment state.
 - Settings: administrative utilities including audit log access, Bot Status, and Notification Targets.
 

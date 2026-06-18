@@ -33,6 +33,7 @@ from app.services.accounts import (
 )
 from app.services.agency_activation import run_activation_scan
 from app.services.autonomous_operations import run_daily_autonomous_cycle
+from app.services.production_activation import decide_activation_blocker, find_activation_blocker, run_daily_autopilot_now, toggle_daily_autopilot
 from app.services.model_brands import (
     archive_model_brand,
     assign_model_member,
@@ -156,6 +157,9 @@ PAGE_PERMISSIONS: dict[str, str] = {
     "team_qa": "manage_users",
     "manager_qa": "manage_users",
     "first_day_plan": "view_dashboard",
+    "owner_daily_checklist": "view_dashboard",
+    "team_onboarding_activation": "manage_users",
+    "fortuna_action_log": "view_dashboard",
 }
 
 
@@ -203,6 +207,12 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         return ("manage_accounts", "manage_users")
     if page.startswith("agency_activation"):
         return ("manage_accounts", "manage_users")
+    if page.startswith("owner_daily_checklist"):
+        return ("view_dashboard", "manage_accounts", "manage_users")
+    if page == "team_onboarding_activation":
+        return ("manage_users",)
+    if page.startswith("fortuna_action_log"):
+        return ("view_dashboard", "manage_accounts", "manage_users")
     if page in {
         "daily_experience",
         "performance",
@@ -296,6 +306,45 @@ def _perform_admin_action(
     if page == "agency_activation:daily_cycle":
         run_daily_autonomous_cycle(session, actor=actor)
         return "agency_activation"
+    if page.startswith("agency_activation:blocker:"):
+        parts = page.split(":")
+        if len(parts) >= 5:
+            section = parts[2]
+            index = int(parts[3]) if parts[3].isdigit() else 0
+            action = parts[4]
+            if action == "fix":
+                blocker = find_activation_blocker(session, section, index)
+                return blocker.get("action_page") if blocker and blocker.get("action_page") else f"agency_activation:{section}"
+            if action == "skip":
+                decide_activation_blocker(session, actor=actor, section=section, index=index, status="skipped")
+                run_activation_scan(session, actor=actor, create_tasks=False)
+                return f"agency_activation:{section}"
+            if action == "not_needed":
+                decide_activation_blocker(session, actor=actor, section=section, index=index, status="not_needed")
+                run_activation_scan(session, actor=actor, create_tasks=False)
+                return f"agency_activation:{section}"
+            if action == "explain":
+                return page
+    if page == "automations:daily_autopilot:toggle":
+        toggle_daily_autopilot(session, actor=actor)
+        return "automations:daily_autopilot"
+    if page == "automations:daily_autopilot:run":
+        run_daily_autopilot_now(session, actor=actor)
+        return "automations:daily_autopilot"
+    if page == "owner_daily_checklist:run_daily_cycle":
+        run_daily_autopilot_now(session, actor=actor)
+        return "owner_daily_checklist"
+    if page == "owner_daily_checklist:fix_top":
+        blocker = find_activation_blocker(session, "models", 0)
+        if blocker is None:
+            report_target = None
+            for section in ("accounts", "team", "creators", "opportunities", "notifications"):
+                blocker = find_activation_blocker(session, section, 0)
+                if blocker is not None:
+                    report_target = blocker.get("action_page")
+                    break
+            return report_target or "agency_activation"
+        return blocker.get("action_page") or "agency_activation"
     if page == "setup:wizard:finish":
         state = latest_setup_state(session, actor)
         if state is not None:
@@ -993,6 +1042,9 @@ def screen_for_page(
         or normalized.startswith("notification_target:")
         or normalized == "bot_status"
         or normalized == "production_status"
+        or normalized == "owner_daily_checklist"
+        or normalized == "team_onboarding_activation"
+        or normalized.startswith("fortuna_action_log")
         or normalized.startswith("availability")
         or normalized.startswith("onboarding")
         or normalized.startswith("setup:")

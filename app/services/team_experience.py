@@ -148,6 +148,7 @@ def role_home_items(user: User | None) -> list[tuple[str, str]]:
         return [
             ("Setup Fortuna", "setup:wizard"),
             ("Fortuna Activation", "agency_activation"),
+            ("Owner Daily Checklist", "owner_daily_checklist"),
             ("First Day Plan", "first_day_plan"),
             ("Fortuna HQ", "reports:executive"),
             ("Fortuna Intelligence", "intelligence"),

@@ -146,8 +146,10 @@ def setup_wizard_menu() -> InlineKeyboardMarkup:
 def agency_activation_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [InlineKeyboardButton(text="Owner Daily Checklist", callback_data=callback_for("owner_daily_checklist"))],
             [InlineKeyboardButton(text="Run Activation Scan", callback_data=callback_for("agency_activation:scan"))],
             [InlineKeyboardButton(text="Run Daily Cycle", callback_data=callback_for("agency_activation:daily_cycle"))],
+            [InlineKeyboardButton(text="Daily Autopilot", callback_data=callback_for("automations:daily_autopilot"))],
             [
                 InlineKeyboardButton(text="Fix Models", callback_data=callback_for("agency_activation:models")),
                 InlineKeyboardButton(text="Fix Accounts", callback_data=callback_for("agency_activation:accounts")),
@@ -156,7 +158,14 @@ def agency_activation_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="Fix Team", callback_data=callback_for("agency_activation:team")),
                 InlineKeyboardButton(text="Fix Creators", callback_data=callback_for("agency_activation:creators")),
             ],
-            [InlineKeyboardButton(text="Fix Notifications", callback_data=callback_for("notification_targets"))],
+            [
+                InlineKeyboardButton(text="Fix Notifications", callback_data=callback_for("notification_targets")),
+                InlineKeyboardButton(text="Proxy Setup Check", callback_data=callback_for("proxies:entry_check")),
+            ],
+            [
+                InlineKeyboardButton(text="Invite Team", callback_data=callback_for("team_onboarding_activation")),
+                InlineKeyboardButton(text="What Fortuna Did", callback_data=callback_for("fortuna_action_log")),
+            ],
             [InlineKeyboardButton(text="Ask Help Copilot", callback_data=callback_for("help_copilot:activation"))],
             *page_controls(back_to="menu"),
         ]
@@ -178,6 +187,24 @@ def activation_section_menu(section: str) -> InlineKeyboardMarkup:
         rows.append([InlineKeyboardButton(text="Open Fix Screen", callback_data=callback_for(target))])
     rows.append([InlineKeyboardButton(text="Run Activation Scan", callback_data=callback_for("agency_activation:scan"))])
     rows.extend(page_controls(back_to="agency_activation"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def activation_blocker_detail_menu(section: str, index: int, action_page: str | None) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    if action_page:
+        rows.append([InlineKeyboardButton(text="Fix Now", callback_data=callback_for(f"agency_activation:blocker:{section}:{index}:fix"))])
+    rows.append([InlineKeyboardButton(text="Explain", callback_data=callback_for(f"agency_activation:blocker:{section}:{index}:explain"))])
+    rows.append(
+        [
+            InlineKeyboardButton(text="Skip for Later", callback_data=callback_for(f"agency_activation:blocker:{section}:{index}:skip")),
+            InlineKeyboardButton(
+                text="Mark Not Needed",
+                callback_data=callback_for(f"agency_activation:blocker:{section}:{index}:not_needed"),
+            ),
+        ]
+    )
+    rows.extend(page_controls(back_to=f"agency_activation:{section}"))
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -309,11 +336,72 @@ def team_qa_detail_menu(user_id: int) -> InlineKeyboardMarkup:
 def scheduled_automations_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [InlineKeyboardButton(text="Daily Autopilot", callback_data=callback_for("automations:daily_autopilot"))],
             [InlineKeyboardButton(text="Run Due Safe Automations", callback_data=callback_for("automations:scheduled:run_due"))],
             [InlineKeyboardButton(text="Automation Health", callback_data=callback_for("automations:health"))],
             *page_controls(back_to="automations"),
         ]
     )
+
+
+def daily_autopilot_menu(enabled: bool) -> InlineKeyboardMarkup:
+    toggle_label = "Disable Daily Autopilot" if enabled else "Enable Daily Autopilot"
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=toggle_label, callback_data=callback_for("automations:daily_autopilot:toggle"))],
+            [InlineKeyboardButton(text="Run Now", callback_data=callback_for("automations:daily_autopilot:run"))],
+            [InlineKeyboardButton(text="Automation Health", callback_data=callback_for("automations:health"))],
+            *page_controls(back_to="automations"),
+        ]
+    )
+
+
+def owner_daily_checklist_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Fix Top Blocker", callback_data=callback_for("owner_daily_checklist:fix_top"))],
+            [InlineKeyboardButton(text="Run Daily Cycle", callback_data=callback_for("owner_daily_checklist:run_daily_cycle"))],
+            [
+                InlineKeyboardButton(text="View Approvals", callback_data=callback_for("automations:approvals")),
+                InlineKeyboardButton(text="View Readiness", callback_data=callback_for("agency_activation")),
+            ],
+            [InlineKeyboardButton(text="View Opportunities", callback_data=callback_for("opportunities:command"))],
+            *page_controls(back_to="menu"),
+        ]
+    )
+
+
+def team_onboarding_activation_menu(has_pending: bool) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text="Invite Team", callback_data=callback_for("team_onboarding_activation"))]]
+    if has_pending:
+        rows.append([InlineKeyboardButton(text="Approve Users", callback_data=callback_for("users:pending"))])
+        rows.append([InlineKeyboardButton(text="Assign Role After Approval", callback_data=callback_for("users"))])
+    rows.append([InlineKeyboardButton(text="Team Activation QA", callback_data=callback_for("team_activation"))])
+    rows.extend(page_controls(back_to="agency_activation"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def fortuna_action_log_menu(window: str = "today") -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Today", callback_data=callback_for("fortuna_action_log:today")),
+                InlineKeyboardButton(text="7 Days", callback_data=callback_for("fortuna_action_log:7d")),
+                InlineKeyboardButton(text="All", callback_data=callback_for("fortuna_action_log:all")),
+            ],
+            *page_controls(back_to="agency_activation"),
+        ]
+    )
+
+
+def proxy_entry_check_menu(needs_setup: bool) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    if needs_setup:
+        rows.append([InlineKeyboardButton(text="Open Olympix Wizard", callback_data=callback_for("proxies:olympix"))])
+    rows.append([InlineKeyboardButton(text="Accounts Missing Proxy", callback_data=callback_for("proxies:missing"))])
+    rows.append([InlineKeyboardButton(text="View Proxies", callback_data=callback_for("proxies:list"))])
+    rows.extend(page_controls(back_to="proxies"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def page_menu(back_to: str = "menu") -> InlineKeyboardMarkup:
@@ -414,6 +502,7 @@ def proxies_menu() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="View Proxies", callback_data=callback_for("proxies:list"))],
             [InlineKeyboardButton(text="Create Proxy", callback_data=callback_for("proxies:create"))],
+            [InlineKeyboardButton(text="Proxy Setup Check", callback_data=callback_for("proxies:entry_check"))],
             [InlineKeyboardButton(text="Olympix Mobile SOCKS5 Wizard", callback_data=callback_for("proxies:olympix"))],
             [InlineKeyboardButton(text="Accounts Missing Proxy", callback_data=callback_for("proxies:missing"))],
             [InlineKeyboardButton(text="Simulation Mode", callback_data=callback_for("proxies:simulation"))],
@@ -946,7 +1035,10 @@ def automations_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="Run History", callback_data=callback_for("automations:runs")),
                 InlineKeyboardButton(text="Automation Health", callback_data=callback_for("automations:health")),
             ],
-            [InlineKeyboardButton(text="Scheduled Runs", callback_data=callback_for("automations:scheduled"))],
+            [
+                InlineKeyboardButton(text="Daily Autopilot", callback_data=callback_for("automations:daily_autopilot")),
+                InlineKeyboardButton(text="Scheduled Runs", callback_data=callback_for("automations:scheduled")),
+            ],
             *page_controls(back_to="menu"),
         ]
     )
@@ -1287,7 +1379,14 @@ def settings_menu() -> InlineKeyboardMarkup:
 def notification_targets_menu(target_buttons: list[tuple[str, str]]) -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in target_buttons]
     rows.append([InlineKeyboardButton(text="Add Target", callback_data=callback_for("notification_targets:add"))])
-    rows.append([InlineKeyboardButton(text="Add Current Chat As Target", callback_data=callback_for("notification_targets:add_current"))])
+    rows.append(
+        [
+            InlineKeyboardButton(
+                text="Register Current Chat as Fortuna Target",
+                callback_data=callback_for("notification_targets:add_current"),
+            )
+        ]
+    )
     rows.extend(page_controls(back_to="settings"))
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -1309,7 +1408,7 @@ def notification_target_detail_menu(target_id: int) -> InlineKeyboardMarkup:
 def notification_target_purpose_menu(target_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Owner", callback_data=f"nav:notification_target:{target_id}:purpose:owner")],
+            [InlineKeyboardButton(text="HQ", callback_data=f"nav:notification_target:{target_id}:purpose:owner")],
             [InlineKeyboardButton(text="Operations", callback_data=f"nav:notification_target:{target_id}:purpose:operations")],
             [InlineKeyboardButton(text="Incidents", callback_data=f"nav:notification_target:{target_id}:purpose:incidents")],
             [
@@ -1318,7 +1417,7 @@ def notification_target_purpose_menu(target_id: int) -> InlineKeyboardMarkup:
                     callback_data=f"nav:notification_target:{target_id}:purpose:automation_logs",
                 )
             ],
-            [InlineKeyboardButton(text="Testing", callback_data=f"nav:notification_target:{target_id}:purpose:testing")],
+            [InlineKeyboardButton(text="Testing Sandbox", callback_data=f"nav:notification_target:{target_id}:purpose:testing")],
             *page_controls(back_to=f"notification_target:{target_id}"),
         ]
     )

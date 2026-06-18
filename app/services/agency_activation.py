@@ -9,7 +9,7 @@ from app.models.model_brand import ModelBrand, ModelBrandMember
 from app.models.opportunity import CreatorWatch, Opportunity
 from app.models.reporting import NotificationTarget
 from app.models.task import Task
-from app.models.team_rollout import AgencyActivationState
+from app.models.team_rollout import ActivationBlockerDecision, AgencyActivationState
 from app.models.user import User
 from app.services.auth import USER_STATUS_ACTIVE, audit_action, user_has_permission
 from app.services.events import emit_event
@@ -61,6 +61,80 @@ class AccountSetupState:
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+def activation_gap_key(gap: ActivationGap | dict) -> tuple[str, str, str]:
+    if isinstance(gap, ActivationGap):
+        code = gap.code
+        entity_type = gap.entity_type or ""
+        entity_id = str(gap.entity_id or "")
+    else:
+        code = str(gap.get("code") or "")
+        entity_type = str(gap.get("entity_type") or "")
+        entity_id = str(gap.get("entity_id") or "")
+    return code, entity_type, entity_id
+
+
+def activation_gap_key_string(gap: ActivationGap | dict) -> str:
+    return "|".join(activation_gap_key(gap))
+
+
+def _blocker_decisions(session: Session) -> dict[tuple[str, str, str], str]:
+    rows = session.scalars(select(ActivationBlockerDecision)).all()
+    return {
+        (row.blocker_code, row.entity_type or "", row.entity_id or ""): row.status
+        for row in rows
+    }
+
+
+def set_activation_blocker_decision(
+    session: Session,
+    blocker: ActivationGap | dict,
+    *,
+    actor: User,
+    status: str,
+    reason: str | None = None,
+) -> ActivationBlockerDecision:
+    if status not in {"skipped", "not_needed"}:
+        raise ValueError(f"Invalid blocker decision: {status}")
+    code, entity_type, entity_id = activation_gap_key(blocker)
+    decision = session.scalar(
+        select(ActivationBlockerDecision).where(
+            ActivationBlockerDecision.blocker_code == code,
+            ActivationBlockerDecision.entity_type == entity_type,
+            ActivationBlockerDecision.entity_id == entity_id,
+        )
+    )
+    if decision is None:
+        decision = ActivationBlockerDecision(
+            blocker_code=code,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            status=status,
+            decided_by_user_id=actor.id,
+        )
+        session.add(decision)
+    decision.status = status
+    decision.reason = reason
+    decision.decided_by_user_id = actor.id
+    session.flush()
+    audit_action(
+        session,
+        actor=actor,
+        action=f"activation.blocker_{status}",
+        resource_type=entity_type or "agency_activation",
+        resource_id=entity_id or code,
+        details={"blocker_code": code, "status": status},
+    )
+    emit_event(
+        session,
+        actor=actor,
+        event_name=f"activation.blocker_{status}",
+        resource_type=entity_type or "agency_activation",
+        resource_id=entity_id or code,
+        payload={"blocker_code": code, "status": status},
+    )
+    return decision
 
 
 def _percent(ready: int, total: int) -> int:
@@ -417,7 +491,7 @@ def build_activation_report(session: Session) -> dict:
         session.scalars(select(NotificationTarget.purpose).where(NotificationTarget.is_active.is_(True))).all()
     )
 
-    gaps = [
+    raw_gaps = [
         *_build_model_gaps(models, accounts, creators, opportunities),
         *_build_account_gaps(accounts),
         *_build_notification_gaps(active_notification_purposes),
@@ -429,7 +503,7 @@ def build_activation_report(session: Session) -> dict:
         if opportunity.model_brand_id is None and opportunity.status != "archived"
     ]
     if unlinked_opportunities:
-        gaps.append(
+        raw_gaps.append(
             ActivationGap(
                 code="opportunity.unlinked",
                 title="Opportunities not linked to a model",
@@ -441,6 +515,12 @@ def build_activation_report(session: Session) -> dict:
             )
         )
 
+    decisions = _blocker_decisions(session)
+    skipped_keys = {key for key, status in decisions.items() if status == "skipped"}
+    not_needed_keys = {key for key, status in decisions.items() if status == "not_needed"}
+    suppressed_keys = skipped_keys | not_needed_keys
+    gaps = [gap for gap in raw_gaps if activation_gap_key(gap) not in suppressed_keys]
+
     scores = _section_scores(
         models=models,
         accounts=accounts,
@@ -448,6 +528,19 @@ def build_activation_report(session: Session) -> dict:
         opportunities=opportunities,
         active_notification_purposes=active_notification_purposes,
     )
+    score_key_by_section = {
+        "models": "models_ready",
+        "accounts": "accounts_ready",
+        "team": "teams_ready",
+        "creators": "creators_ready",
+        "opportunities": "opportunities_ready",
+        "notifications": "notifications_ready",
+    }
+    for section, score_key in score_key_by_section.items():
+        raw_section = [gap for gap in raw_gaps if gap.section == section]
+        open_section = [gap for gap in raw_section if activation_gap_key(gap) not in not_needed_keys]
+        if raw_section and not open_section:
+            scores[score_key] = 100
     readiness_score = round(sum(scores.values()) / len(scores)) if scores else 0
     recommendations = [
         {
@@ -455,6 +548,7 @@ def build_activation_report(session: Session) -> dict:
             "next_step": gap.description,
             "action_page": gap.action_page,
             "severity": gap.severity,
+            "key": activation_gap_key_string(gap),
         }
         for gap in gaps[:10]
     ]
@@ -462,6 +556,8 @@ def build_activation_report(session: Session) -> dict:
         **scores,
         "readiness_score": readiness_score,
         "blockers": [gap.as_dict() for gap in gaps],
+        "skipped_blockers": len(skipped_keys),
+        "not_needed_blockers": len(not_needed_keys),
         "recommendations": recommendations,
         "counts": {
             "models": len(models),

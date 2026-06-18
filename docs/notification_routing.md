@@ -61,7 +61,7 @@ Settings -> Notification Targets supports:
 
 - View Targets.
 - Add Target placeholder.
-- Add Current Chat As Target.
+- Register Current Chat as Fortuna Target (formerly Add Current Chat As Target).
 - Set Purpose.
 - Disable Target.
 - Test Send metadata update.
@@ -81,7 +81,7 @@ Agency OS notification groups/channels are not auto-created by the app. Create a
 5. Create `Agency OS — Testing Sandbox`.
 6. Add `@FortunaSolstice_Bot`.
 7. Open each group/channel.
-8. Use Settings -> Notification Targets -> Add Current Chat As Target.
+8. Use Settings -> Notification Targets -> Register Current Chat as Fortuna Target.
 9. Set purpose:
    - HQ -> `owner`.
    - Operations -> `operations`.

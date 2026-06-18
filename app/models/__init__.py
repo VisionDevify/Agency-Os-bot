@@ -23,7 +23,9 @@ from app.models.reporting import AccountabilitySnapshot, DailyBriefing, Notifica
 from app.models.system import SystemHeartbeat
 from app.models.task import Task
 from app.models.team_rollout import (
+    ActivationBlockerDecision,
     AgencyActivationState,
+    DailyAutopilotSetting,
     FirstDayChecklist,
     NotificationDigest,
     SetupWizardState,
@@ -36,6 +38,7 @@ __all__ = [
     "AccountAuthSession",
     "AccountVerificationCode",
     "AccountabilitySnapshot",
+    "ActivationBlockerDecision",
     "AgencyActivationState",
     "AuditLog",
     "Automation",
@@ -47,6 +50,7 @@ __all__ = [
     "AutomationSimulationRun",
     "CommentStrategy",
     "CreatorWatch",
+    "DailyAutopilotSetting",
     "DailyBriefing",
     "EventLog",
     "ExecutiveInsight",

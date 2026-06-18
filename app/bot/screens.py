@@ -12,6 +12,7 @@ from app.bot.menu import (
     account_platform_menu,
     account_proxy_choice_menu,
     accounts_menu,
+    activation_blocker_detail_menu,
     activation_section_menu,
     agency_activation_menu,
     automation_approval_detail_menu,
@@ -32,6 +33,7 @@ from app.bot.menu import (
     dashboard_menu,
     daily_experience_menu,
     daily_digest_menu,
+    daily_autopilot_menu,
     demo_seed_menu,
     executive_dashboard_menu,
     first_day_plan_menu,
@@ -79,6 +81,7 @@ from app.bot.menu import (
     proxies_menu,
     proxy_account_choice_menu,
     proxy_detail_menu,
+    proxy_entry_check_menu,
     proxy_list_menu,
     reports_menu,
     recommendation_detail_menu,
@@ -97,12 +100,15 @@ from app.bot.menu import (
     task_list_menu,
     task_user_choice_menu,
     team_qa_detail_menu,
+    team_onboarding_activation_menu,
     team_activation_menu,
     team_qa_menu,
     tasks_menu,
     user_detail_menu,
     users_menu,
     structure_map_menu,
+    owner_daily_checklist_menu,
+    fortuna_action_log_menu,
 )
 from app.models.account import ACCOUNT_PLATFORMS, Account
 from app.models.audit import AuditLog
@@ -235,6 +241,14 @@ from app.services.proxies import (
     list_proxies,
     recent_proxy_audit_logs,
     simulation_mode_summary,
+)
+from app.services.production_activation import (
+    autonomous_action_log,
+    daily_autopilot_summary,
+    find_activation_blocker,
+    owner_daily_checklist,
+    proxy_entry_status,
+    team_onboarding_activation,
 )
 from app.services.tasks import (
     assigned_tasks,
@@ -641,15 +655,47 @@ def render_activation_section_page(session: Session, section: str) -> Screen:
     for blocker in blockers[:10]:
         lines.append(f"- {blocker['title']}")
         lines.append(f"  Next: {blocker['description']}")
-    choices = [
-        (blocker["title"][:40], f"nav:{blocker['action_page']}")
-        for blocker in blockers[:8]
-        if blocker.get("action_page")
-    ]
+    choices: list[tuple[str, str]] = []
+    for index, blocker in enumerate(blockers[:8]):
+        choices.append((blocker["title"][:40], f"nav:agency_activation:blocker:{section}:{index}"))
+        if blocker.get("action_page"):
+            choices.append((f"Fix Now: {blocker['title'][:31]}", f"nav:{blocker['action_page']}"))
     choices.append(("Run Activation Scan", "nav:agency_activation:scan"))
     if not choices:
         return Screen("\n".join(lines), activation_section_menu(section))
     return Screen("\n".join(lines), choice_menu(choices, back_to="agency_activation"))
+
+
+def render_activation_blocker_detail_page(session: Session, section: str, index: int, *, explain: bool = False) -> Screen:
+    blocker = find_activation_blocker(session, section, index)
+    if blocker is None:
+        return Screen("This blocker is no longer active.", activation_section_menu(section))
+    lines = [
+        "Setup Blocker",
+        "",
+        blocker["title"],
+        "",
+        f"Status: {_status_marker(blocker.get('severity', 'warning'))} {blocker.get('severity', 'warning').title()}",
+        f"Area: {section.title()}",
+        "",
+        "What is happening:",
+        blocker["description"],
+        "",
+        "What to do next:",
+        "Use Fix Now to open the exact setup screen. Use Skip for Later if this is real but not today's priority. Use Mark Not Needed only when this blocker does not apply to your agency.",
+    ]
+    if explain:
+        lines.extend(
+            [
+                "",
+                "Why this matters:",
+                "Fortuna OS uses this signal to decide readiness, create setup tasks, and route work to the right person. Closing irrelevant blockers keeps the owner checklist focused.",
+            ]
+        )
+    return Screen(
+        "\n".join(lines),
+        activation_blocker_detail_menu(section, index, blocker.get("action_page")),
+    )
 
 
 def render_model_completion_page(session: Session, model_id: int) -> Screen:
@@ -1759,6 +1805,30 @@ def render_olympix_proxy_wizard_page() -> Screen:
     return Screen("\n".join(lines), page_menu(back_to="proxies"))
 
 
+def _mask_proxy_value(value: str | None) -> str:
+    if not value:
+        return "Not set"
+    if len(value) <= 6:
+        return "hidden"
+    return f"{value[:3]}...{value[-3:]}"
+
+
+def render_proxy_entry_check_page(session: Session) -> Screen:
+    status = proxy_entry_status(session)
+    lines = [
+        "Proxy Setup Check",
+        "",
+        f"Saved Proxies: {status.total_proxies}",
+        f"Encrypted Ready Proxies: {status.real_proxies}",
+        f"Accounts Missing Proxy: {status.accounts_missing_proxy}",
+        "",
+        status.guidance,
+        "",
+        "Secrets stay hidden. Passwords are stored encrypted and are never displayed back in Telegram.",
+    ]
+    return Screen("\n".join(lines), proxy_entry_check_menu(status.needs_setup))
+
+
 def render_proxy_detail_page(session: Session, proxy_id: int) -> Screen:
     proxy = session.scalar(
         select(Proxy)
@@ -1783,10 +1853,10 @@ def render_proxy_detail_page(session: Session, proxy_id: int) -> Screen:
         f"Host: {proxy.host}:{proxy.port}",
         f"Status: {proxy.status}",
         f"Health: {health.label} {health.score}/100",
-        f"Current Session: {proxy.session_suffix}",
-        f"Previous Session: {proxy.previous_session_suffix or 'None'}",
+        f"Current Session: {_mask_proxy_value(proxy.session_suffix)}",
+        f"Previous Session: {_mask_proxy_value(proxy.previous_session_suffix)}",
         f"Rotation Count: {proxy.rotation_count}",
-        f"Generated Username: {proxy.generated_username}",
+        f"Generated Username: {_mask_proxy_value(proxy.generated_username)}",
         "Password: encrypted and hidden",
         f"Target Location: {target_location}",
         f"Detected Location: {detected_location}",
@@ -3398,16 +3468,33 @@ def render_onboarding_page(session: Session, user: User, *, step: str | None = N
     )
 
 
+def _notification_purpose_label(purpose: str) -> str:
+    purpose_labels = {
+        "owner": "HQ",
+        "operations": "Operations",
+        "incidents": "Incidents",
+        "automation_logs": "Automation Logs",
+        "testing": "Testing Sandbox",
+    }
+    return purpose_labels.get(purpose, purpose)
+
+
 def render_notification_targets_page(session: Session) -> Screen:
     targets = list_notification_targets(session)
-    lines = ["Notification Targets", ""]
+    lines = [
+        "Notification Targets",
+        "",
+        "To register a group or channel, open that Telegram space first, then tap Register Current Chat as Fortuna Target.",
+        "Chat IDs stay masked in the UI.",
+        "",
+    ]
     buttons: list[tuple[str, str]] = []
     if not targets:
-        lines.append("No notification targets yet.")
+        lines.append("No notification targets yet. Start with Testing Sandbox, then add HQ, Operations, Incidents, and Automation Logs.")
     for target in targets[:15]:
         status = "active" if target.is_active else "disabled"
         lines.append(f"{target.id}. {target.name}")
-        lines.append(f"   Type: {target.target_type} | Purpose: {target.purpose} | Status: {status}")
+        lines.append(f"   Type: {target.target_type} | Purpose: {_notification_purpose_label(target.purpose)} | Status: {status}")
         lines.append(f"   Chat: {mask_target_chat_id(target)}")
         lines.append(f"   Last Tested: {target.last_tested_at.isoformat() if target.last_tested_at else 'Never'}")
         buttons.append((f"{target.id}. {target.name} ({status})", f"nav:notification_target:{target.id}"))
@@ -3424,7 +3511,7 @@ def render_notification_target_detail_page(session: Session, target_id: int) -> 
         "",
         f"Name: {target.name}",
         f"Type: {target.target_type}",
-        f"Purpose: {target.purpose}",
+        f"Purpose: {_notification_purpose_label(target.purpose)}",
         f"Status: {status}",
         f"Telegram Chat ID: {mask_target_chat_id(target)}",
         f"Last Tested: {target.last_tested_at.isoformat() if target.last_tested_at else 'Never'}",
@@ -4156,13 +4243,138 @@ def render_scheduled_automations_page(session: Session, user: User | None = None
     return Screen(text="\n".join(lines), reply_markup=scheduled_automations_menu())
 
 
+def render_daily_autopilot_page(session: Session, user: User | None = None) -> Screen:
+    summary = daily_autopilot_summary(session, user)
+    next_run = summary["next_run"].isoformat() if summary["next_run"] else "Disabled"
+    last_run = summary["last_run"].isoformat() if summary["last_run"] else "Not run yet"
+    lines = [
+        "Daily Autopilot",
+        "",
+        f"Status: {'Enabled' if summary['enabled'] else 'Disabled'}",
+        f"Owner Timezone: {summary['timezone']}",
+        f"Run Time: {summary['run_time_local']}",
+        f"Next Run: {next_run}",
+        f"Last Run: {last_run}",
+        f"Last Result: {summary['last_result']}",
+        "",
+        "Included Actions:",
+    ]
+    lines.extend(f"- {action}" for action in summary["included_actions"])
+    lines.extend(
+        [
+            "",
+            "Only safe daily checks are enabled here. High-risk automations still require explicit owner approval.",
+        ]
+    )
+    return Screen("\n".join(lines), daily_autopilot_menu(summary["enabled"]))
+
+
+def render_owner_daily_checklist_page(session: Session, user: User) -> Screen:
+    checklist = owner_daily_checklist(session, user)
+    next_run = checklist["daily_autopilot_next_run"]
+    lines = [
+        "Owner Daily Checklist",
+        "",
+        f"Readiness Score: {checklist['readiness_score']}%",
+        f"Owner Approvals Needed: {checklist['approvals_needed']}",
+        f"Critical Incidents: {checklist['critical_incidents']}",
+        f"Accounts Needing Setup: {checklist['accounts_needing_setup']}",
+        f"Opportunities Needing Assignment: {checklist['opportunities_needing_assignment']}",
+        f"Follow-Ups Due: {checklist['followups_due']}",
+        f"Daily Autopilot: {'Enabled' if checklist['daily_autopilot_enabled'] else 'Disabled'}",
+        f"Next Daily Run: {next_run.isoformat() if next_run else 'Disabled'}",
+        f"Last Daily Result: {checklist['daily_autopilot_last_result']}",
+        "",
+        "Top Blockers:",
+    ]
+    if not checklist["top_blockers"]:
+        lines.append("- None right now.")
+    for blocker in checklist["top_blockers"]:
+        lines.append(f"- {blocker['title']}")
+    return Screen("\n".join(lines), owner_daily_checklist_menu())
+
+
+def render_team_onboarding_activation_page(session: Session) -> Screen:
+    data = team_onboarding_activation(session)
+    pending = data["pending_users"]
+    lines = [
+        "Team Onboarding Activation",
+        "",
+        f"Active Team Members: {data['active_team_count']}",
+        f"Pending Users: {len(pending)}",
+        f"Users Missing Timezone/Country: {data['missing_localization']}",
+        "",
+    ]
+    if data["active_team_count"] == 0:
+        lines.extend(
+            [
+                "No real team users are active yet.",
+                "",
+                "Invite packet:",
+            ]
+        )
+        for role, message in data["invite_packet"].items():
+            first_line = message.splitlines()[0]
+            lines.append(f"- {role.title()}: {first_line}")
+        lines.extend(
+            [
+                "",
+                "Owner copy path: send the role-specific invite text from docs/team_invite_packet.md or Help Center. Team members press /start, finish language/timezone, then wait for approval.",
+            ]
+        )
+    elif pending:
+        lines.append("Pending users are waiting for approval. Approve only known team members, then assign a role immediately.")
+        for user_item in pending[:8]:
+            lines.append(f"- {user_item.display_name or user_item.username or 'Telegram user'}")
+    else:
+        lines.append("Team activation is started. Keep checking timezone, availability, and assigned work.")
+    return Screen("\n".join(lines), team_onboarding_activation_menu(bool(pending)))
+
+
+def render_fortuna_action_log_page(session: Session, window: str = "today") -> Screen:
+    log = autonomous_action_log(session, window=window)
+    lines = [
+        "What Fortuna Did",
+        "",
+        f"Window: {log['window']}",
+        f"Actions Created: {log['actions_created']}",
+        f"Tasks Created: {log['tasks_created']}",
+        f"Recommendations Created: {log['recommendations_created']}",
+        f"Follow-Ups Created: {log['followups_created']}",
+        f"Automations Run: {log['automations_run']}",
+        f"Errors Detected: {log['errors_detected']}",
+        "",
+        "Recent Actions:",
+    ]
+    if not log["recent_actions"]:
+        lines.append("- No autonomous actions in this window.")
+    for action in log["recent_actions"][:8]:
+        lines.append(f"- {action['status']}: {action['type']}")
+        if action.get("summary"):
+            lines.append(f"  {action['summary']}")
+    return Screen("\n".join(lines), fortuna_action_log_menu(window))
+
+
 def render_page(page: str, session: Session | None = None, user: User | None = None) -> Screen:
     if page == "structure":
         return render_structure_map_page()
+    if page == "owner_daily_checklist" and session is not None and user is not None:
+        return render_owner_daily_checklist_page(session, user)
+    if page == "team_onboarding_activation" and session is not None:
+        return render_team_onboarding_activation_page(session)
+    if page.startswith("fortuna_action_log") and session is not None:
+        parts = page.split(":")
+        window = parts[1] if len(parts) > 1 else "today"
+        return render_fortuna_action_log_page(session, window)
     if page == "agency_activation" and session is not None:
         return render_agency_activation_page(session)
     if page.startswith("agency_activation:") and session is not None:
         parts = page.split(":")
+        if len(parts) >= 4 and parts[1] == "blocker":
+            section = parts[2]
+            index = int(parts[3]) if parts[3].isdigit() else 0
+            explain = len(parts) >= 5 and parts[4] == "explain"
+            return render_activation_blocker_detail_page(session, section, index, explain=explain)
         if len(parts) >= 2 and parts[1] == "accounts":
             return render_account_setup_state_page(session)
         section = parts[1] if len(parts) >= 2 else "models"
@@ -4237,10 +4449,14 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_scheduled_automations_page(session, user=user)
     if page == "automations:scheduled:run_due" and session is not None:
         return render_scheduled_automations_page(session, user=user, run_due=True)
+    if page == "automations:daily_autopilot" and session is not None:
+        return render_daily_autopilot_page(session, user=user)
     if page == "proxies":
         return render_proxies_home()
     if page == "proxies:list" and session is not None:
         return render_proxy_list_page(session)
+    if page == "proxies:entry_check" and session is not None:
+        return render_proxy_entry_check_page(session)
     if page == "proxies:olympix":
         return render_olympix_proxy_wizard_page()
     if page == "proxies:missing" and session is not None:

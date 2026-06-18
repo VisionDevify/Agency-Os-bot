@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, JSON, String, Text, func
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -162,3 +162,53 @@ class AgencyActivationState(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+
+class ActivationBlockerDecision(TimestampMixin, Base):
+    __tablename__ = "activation_blocker_decisions"
+    __table_args__ = (
+        CheckConstraint(
+            "status in ('skipped', 'not_needed')",
+            name="ck_activation_blocker_decisions_status",
+        ),
+        UniqueConstraint(
+            "blocker_code",
+            "entity_type",
+            "entity_id",
+            name="uq_activation_blocker_decisions_key",
+        ),
+        Index("ix_activation_blocker_decisions_status", "status"),
+        Index("ix_activation_blocker_decisions_blocker_code", "blocker_code"),
+        Index("ix_activation_blocker_decisions_decided_by", "decided_by_user_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    blocker_code: Mapped[str] = mapped_column(String(120), nullable=False)
+    entity_type: Mapped[str] = mapped_column(String(80), default="", nullable=False)
+    entity_id: Mapped[str] = mapped_column(String(120), default="", nullable=False)
+    status: Mapped[str] = mapped_column(String(40), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    decided_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    decided_by: Mapped["User | None"] = relationship("User", lazy="selectin")
+
+
+class DailyAutopilotSetting(TimestampMixin, Base):
+    __tablename__ = "daily_autopilot_settings"
+    __table_args__ = (
+        Index("ix_daily_autopilot_settings_owner_user_id", "owner_user_id", unique=True),
+        Index("ix_daily_autopilot_settings_is_enabled", "is_enabled"),
+        Index("ix_daily_autopilot_settings_next_run_at", "next_run_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    owner_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    timezone: Mapped[str] = mapped_column(String(80), default="UTC", nullable=False)
+    run_time_local: Mapped[str] = mapped_column(String(10), default="09:00", nullable=False)
+    included_actions_json: Mapped[list] = mapped_column(JSON, default=list, nullable=False)
+    next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_result: Mapped[str | None] = mapped_column(String(240), nullable=True)
+
+    owner: Mapped["User | None"] = relationship("User", lazy="selectin")

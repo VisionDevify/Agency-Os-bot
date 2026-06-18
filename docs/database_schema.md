@@ -122,6 +122,62 @@ Notes:
 - Activation scans are safe summaries. They must not include secrets, raw chat IDs, proxy passwords, platform passwords, or 2FA codes.
 - The scan can generate recommendations and deduped setup tasks so the owner does not need to manually discover missing setup work.
 
+### activation_blocker_decisions
+
+Stores owner/admin decisions to hide or close specific readiness blockers.
+
+Columns:
+
+- `id`: primary key.
+- `blocker_code`: stable blocker code, such as `model.missing_country`.
+- `entity_type`: optional related entity type.
+- `entity_id`: optional related entity id as text.
+- `status`: `skipped` or `not_needed`.
+- `reason`: optional safe operator note.
+- `decided_by_user_id`: nullable foreign key to `users.id`.
+- `created_at`, `updated_at`: timestamps.
+
+Indexes and constraints:
+
+- `uq_activation_blocker_decisions_key`.
+- `ck_activation_blocker_decisions_status`.
+- `ix_activation_blocker_decisions_status`.
+- `ix_activation_blocker_decisions_blocker_code`.
+- `ix_activation_blocker_decisions_decided_by`.
+
+Notes:
+
+- `skipped` suppresses the blocker from immediate owner focus.
+- `not_needed` suppresses the blocker and can improve the readiness view when that setup item is intentionally out of scope.
+- Decisions never store secrets or raw Telegram data.
+
+### daily_autopilot_settings
+
+Stores the owner-facing Daily Autopilot schedule and last-run status.
+
+Columns:
+
+- `id`: primary key.
+- `owner_user_id`: nullable unique foreign key to `users.id`.
+- `is_enabled`: whether the daily cycle is enabled.
+- `timezone`: owner timezone for scheduling.
+- `run_time_local`: local run time, stored as `HH:MM`.
+- `included_actions_json`: safe list of daily cycle action names.
+- `next_run_at`: next scheduled UTC run time.
+- `last_run_at`: latest UTC run time.
+- `last_result`: safe last result summary.
+- `created_at`, `updated_at`: timestamps.
+
+Indexes:
+
+- `ix_daily_autopilot_settings_owner_user_id`.
+- `ix_daily_autopilot_settings_is_enabled`.
+- `ix_daily_autopilot_settings_next_run_at`.
+
+Notes:
+
+- Daily Autopilot uses safe internal scans and setup guidance. High-risk automations still require explicit owner approval.
+
 ### roles
 
 Stores role definitions.

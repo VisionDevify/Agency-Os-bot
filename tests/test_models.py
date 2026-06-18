@@ -17,7 +17,9 @@ def test_model_tables_are_registered() -> None:
         Incident,
         AccountAuthSession,
         AccountVerificationCode,
+        ActivationBlockerDecision,
         DailyBriefing,
+        DailyAutopilotSetting,
         EventLog,
         ExecutiveInsight,
         IntelligenceRun,
@@ -53,6 +55,7 @@ def test_model_tables_are_registered() -> None:
         "account_auth_sessions",
         "account_verification_codes",
         "accountability_snapshots",
+        "activation_blocker_decisions",
         "audit_logs",
         "automations",
         "automation_approvals",
@@ -64,6 +67,7 @@ def test_model_tables_are_registered() -> None:
         "comment_strategies",
         "creator_watches",
         "daily_briefings",
+        "daily_autopilot_settings",
         "event_logs",
         "executive_insights",
         "incidents",
@@ -105,6 +109,8 @@ def test_model_tables_are_registered() -> None:
     assert EventLog.__tablename__ == "event_logs"
     assert DailyBriefing.__tablename__ == "daily_briefings"
     assert AccountabilitySnapshot.__tablename__ == "accountability_snapshots"
+    assert ActivationBlockerDecision.__tablename__ == "activation_blocker_decisions"
+    assert DailyAutopilotSetting.__tablename__ == "daily_autopilot_settings"
     assert NotificationTarget.__tablename__ == "notification_targets"
     assert NotificationDigest.__tablename__ == "notification_digests"
     assert Account.__tablename__ == "accounts"

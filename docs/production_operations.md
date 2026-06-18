@@ -122,6 +122,10 @@ Repeated failures create a warning recommendation for the affected Notification 
 
 Daily agency usage should start from:
 
+- Owner Home -> Owner Daily Checklist.
+- Owner Home -> Fortuna Activation.
+- Fortuna Automation -> Daily Autopilot.
+- Fortuna Activation -> What Fortuna Did.
 - Reports -> Manager Command View.
 - Reports -> Executive Intelligence Briefing.
 - Reports -> Workload Intelligence.
@@ -131,6 +135,20 @@ Daily agency usage should start from:
 - Incidents -> Open Incidents and Critical Incidents.
 - Settings -> My Availability.
 - Settings -> Production Status.
+
+## Production Activation And Daily Autopilot
+
+Sprint 23 turns activation into a guided daily operator loop:
+
+- Fortuna Activation shows readiness blockers with `Fix Now`, `Explain`, `Skip for Later`, and `Mark Not Needed`.
+- `Skip for Later` suppresses a blocker from immediate owner focus.
+- `Mark Not Needed` suppresses a blocker when that setup item is intentionally out of scope.
+- Owner Daily Checklist summarizes readiness score, owner approvals, critical incidents, accounts needing setup, unassigned opportunities, follow-ups due, and Daily Autopilot status.
+- Daily Autopilot stores owner timezone, local run time, next run, last run, last result, and included safe actions in `daily_autopilot_settings`.
+- Daily Autopilot Run Now executes the safe daily cycle, refreshes recommendations, runs intelligence checks, prepares a follow-up digest, and records automation health.
+- What Fortuna Did summarizes autonomous actions, tasks, recommendations, follow-ups, automation runs, and errors for today, seven days, or all time.
+
+High-risk automations, proxy repair mutations, and owner approvals remain gated. Daily Autopilot does not authorize social posting, scraping, credential handling, or platform security bypassing.
 
 ## Intelligence Operations
 
