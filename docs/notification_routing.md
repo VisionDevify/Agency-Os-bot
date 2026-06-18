@@ -90,6 +90,20 @@ Fortuna OS notification groups/channels are not auto-created by the app. Create 
    - Testing Sandbox -> `testing`.
 10. Send test notifications only to the Testing Sandbox target until the owner approves broader delivery.
 
+## Production Readiness Card
+
+Sprint 26 adds a notification readiness card to Settings -> Production Observability.
+
+It checks whether active targets exist for:
+
+- HQ
+- Operations
+- Incidents
+- Automation Logs
+- Testing Sandbox
+
+The card never shows raw Telegram chat IDs. Use Settings -> Notification Targets for target details and masked identifiers.
+
 Do not register unrelated Telegram chats. Do not expose raw chat IDs in screenshots, audits, events, or support messages.
 
 ## Safety Rules

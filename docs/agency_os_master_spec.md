@@ -32,6 +32,7 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Sprint 23: Production activation and Daily Autopilot scheduling with one-tap readiness blocker fix paths, persisted skip/not-needed decisions, smoother model completion routing, proxy setup check, Owner Daily Checklist, team invite activation guidance, notification target registration guidance, and What Fortuna Did action log.
 - Sprint 24: Fortuna COO layer with persistent priority items, Today's Top 5 Actions, owner-vs-manager routing, Manager Queue, My Work queue, COO Briefing, Team Load Balancer, Readiness Score V2, Executive Mode, team activation recommendations, and professional Fortuna messages.
 - Sprint 25: Full system audit and intelligence verification with recursive metadata redaction, Fortuna branding cleanup, data-flow verification from DB records through audit/event/learning/memory/confidence, proxy screen safety checks, and production/Telegram verification documentation.
+- Sprint 26: Telegram architecture split and production observability with domain screen modules, owner-only Production Observability, safe build metadata, Alembic revision checks, bot heartbeat metadata, notification readiness, and simulated proxy-health labels.
 
 ## Roadmap
 
@@ -71,6 +72,7 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Daily Autopilot: owner-facing daily cycle scheduler that stores timezone, next run, last result, included safe actions, and can run readiness, recommendation, intelligence, follow-up digest, and automation health checks on demand.
 - Fortuna COO Layer: ranks blockers, overdue work, critical incidents, unassigned opportunities, failed automations, and notification failures into persistent `priority_items`; generates Today Top 5; routes work to Owner/Admin/Manager; and presents manager/chatter queues without taking risky actions automatically.
 - System Verification: audit reports and deterministic tests proving intelligence, learning, proxy safety, branding, metadata redaction, and core Telegram callbacks remain connected to live data.
+- Production Observability: owner-only operational view for safe build metadata, service heartbeat state, DB migration revision, notification target readiness, and recent operational records.
 - System Status: service heartbeats for API, bot, db, redis, and Railway deployment state.
 - Settings: administrative utilities including audit log access, Bot Status, and Notification Targets.
 

@@ -53,6 +53,10 @@ HELP_TOPICS: dict[str, str] = {
     "complete_work": "Open your task, start it, add notes if needed, then mark it complete when the work is done.",
     "recommendations": "Recommendations are calm prompts from Fortuna OS about what may need attention next.",
     "get_help": "Use Help, ask your manager, or escalate a task or incident when you are blocked.",
+    "notification_groups": (
+        "Create the Fortuna OS Telegram groups manually, add @FortunaSolstice_Bot, open each group, "
+        "then use Settings -> Notification Targets -> Register Current Chat as Fortuna Target."
+    ),
 }
 
 TEAM_INVITE_ROLES = ("chatter", "va", "manager")

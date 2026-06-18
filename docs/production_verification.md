@@ -13,6 +13,7 @@ Sprint 25 production checks focus on safe, non-destructive verification.
 - Railway start commands remain service-specific:
   - API: `uvicorn app.main:app --host 0.0.0.0 --port 8000`
   - Bot Worker: `python -m app.bot.runner`
+- Owner-only Production Observability is available from Settings -> Production Observability.
 
 ## Safe Checks
 
@@ -39,6 +40,20 @@ Telegram verification should use only the Fortuna OS bot and approved Fortuna OS
 
 ## Current Observability Limits
 
-- Production Alembic head is normally enforced by startup migrations, but the public health endpoint does not expose revision details.
-- Railway deployment status is still inspected through Railway UI unless a future safe status integration is added.
+- Public `/health` remains intentionally simple. Use the owner-only Production Observability screen for Alembic revision, bot heartbeat, latest audit/event, latest automation run, latest intelligence run, and notification target readiness.
+- Railway deployment logs are still inspected through Railway UI unless a future safe status integration is added.
 - Notification group delivery remains pending until Fortuna OS groups/channels are created and registered.
+
+## Sprint 26 Observability Checklist
+
+Open Settings -> Production Observability and confirm:
+
+- app display name renders
+- environment renders
+- missing build metadata renders as `Unknown`
+- Alembic current and expected revision render
+- API, bot, Postgres, Redis, and Railway status render
+- bot startup, polling-loop, and last-update heartbeat fields render
+- latest audit/event/automation/intelligence rows render or say `None`
+- notification target readiness renders without raw chat IDs
+- Railway logs note says logs must be viewed in Railway

@@ -1462,6 +1462,7 @@ def settings_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Setup Wizard", callback_data=callback_for("setup:wizard"))],
             [InlineKeyboardButton(text="Bot Status", callback_data=callback_for("bot_status"))],
             [InlineKeyboardButton(text="Production Status", callback_data=callback_for("production_status"))],
+            [InlineKeyboardButton(text="Production Observability", callback_data=callback_for("production_observability"))],
             [InlineKeyboardButton(text="My Availability", callback_data=callback_for("availability"))],
             [InlineKeyboardButton(text="Team Availability", callback_data=callback_for("availability:team"))],
             [InlineKeyboardButton(text="Notification Digest Mode", callback_data=callback_for("notification_digest"))],
@@ -1526,6 +1527,25 @@ def bot_status_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="Refresh", callback_data=callback_for("bot_status"))],
+            [InlineKeyboardButton(text="Production Observability", callback_data=callback_for("production_observability"))],
+            *page_controls(back_to="settings"),
+        ]
+    )
+
+
+def production_observability_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Refresh", callback_data=callback_for("production_observability"))],
+            [
+                InlineKeyboardButton(text="Bot Status", callback_data=callback_for("bot_status")),
+                InlineKeyboardButton(text="Notification Targets", callback_data=callback_for("notification_targets")),
+            ],
+            [
+                InlineKeyboardButton(text="How to Register Groups", callback_data=callback_for("help:notification_groups")),
+                InlineKeyboardButton(text="Add Current Chat as Target", callback_data=callback_for("notification_targets:add_current")),
+            ],
+            [InlineKeyboardButton(text="Test Sandbox Target", callback_data=callback_for("notification_targets"))],
             *page_controls(back_to="settings"),
         ]
     )

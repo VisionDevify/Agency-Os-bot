@@ -74,6 +74,7 @@ pytest
 - Production Activation and Daily Autopilot: one-tap readiness blocker fix paths, owner daily checklist, persisted Daily Autopilot settings, team invite activation guidance, notification target registration guidance, proxy setup check, masked proxy session details, and "What Fortuna Did" autonomous action log.
 - Fortuna COO Layer: persistent priority engine, Today's Top 5 Actions, owner/admin/manager routing, Manager Queue, My Work queue, COO Briefing, Team Load Balancer, Readiness Score V2, Executive Mode, and professional Fortuna messages.
 - Full System Audit and Intelligence Verification: recursive safe metadata redaction, Fortuna branding cleanup, intelligence/learning data-flow tests, proxy UI safety tests, and audit documentation.
+- Telegram Architecture and Production Observability: Telegram screen renderers split by domain, owner-only Production Observability, safe build metadata, Alembic revision display, improved bot heartbeat metadata, notification target readiness, and clear simulated proxy-health labeling.
 
 ## Railway Deployment
 
@@ -128,6 +129,8 @@ Production smoke testing checklist:
 - `docs/intelligence_verification.md`
 - `docs/learning_verification.md`
 - `docs/production_verification.md`
+- `docs/production_observability.md`
+- `docs/telegram_architecture.md`
 - `docs/proxy_vault_user_guide.md`
 - `docs/railway_deployment.md`
 - `docs/notification_routing.md`

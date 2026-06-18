@@ -63,6 +63,14 @@ Current proxy health is deterministic and based on stored counters:
 
 Provider-level network checks and location verification are still adapter placeholders unless explicitly integrated later. Simulation views must clearly say they are simulations when no real provider test is running.
 
+Sprint 26 requires every proxy health/location surface to label the verification reality:
+
+- whether a real provider check is enabled
+- whether the current check is simulated
+- the last verified timestamp when available
+
+Current production behavior is simulated provider check. This avoids fake certainty until a real Olympix/provider adapter exists.
+
 ## Safety
 
 - Never log proxy passwords.

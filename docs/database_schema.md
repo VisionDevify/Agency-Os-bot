@@ -1689,6 +1689,21 @@ Unsafe values must be redacted before persistence:
 
 The shared sanitizer is recursive, so nested dictionaries and lists are also redacted.
 
+## Production Observability Reads
+
+Sprint 26 does not add new tables. Production Observability reads existing tables:
+
+- `system_heartbeats` for API, bot, DB, Redis, and Railway status labels.
+- `alembic_version` for the current DB migration revision.
+- local Alembic migration files for expected head revision.
+- `audit_logs` for the latest audit event.
+- `event_logs` for the latest system event.
+- `automation_runs` for the latest automation run.
+- `intelligence_runs` for the latest intelligence run.
+- `notification_targets` for notification group readiness.
+
+No secrets or raw environment variables are stored for observability.
+
 ## Future Planned Tables
 
 - `account_credentials`: secret references only, not raw secrets.

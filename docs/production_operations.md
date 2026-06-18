@@ -191,3 +191,26 @@ Production safeguards:
 - Social posting, commenting, liking, following, scraping, credential collection, and security bypass behavior remain out of scope.
 
 Automation health metrics should be checked from Automations -> Automation Health and Executive Command Center. Failed high-risk automations should be reviewed before rerun.
+
+## Production Observability
+
+Sprint 26 adds an owner-only observability screen:
+
+Settings -> Production Observability
+
+This screen shows safe operational labels:
+
+- app display name
+- environment
+- optional version, commit, deploy timestamp, and Railway deployment id
+- Alembic current revision and expected head
+- API, bot, Postgres, Redis, and Railway heartbeat status
+- bot startup, polling-loop, and last Telegram update timestamps
+- last audit, event, automation, and intelligence records
+- notification group readiness
+
+It does not display raw environment variables, tokens, database URLs, Redis URLs, or secret keys.
+
+Railway logs must still be viewed in Railway. The app intentionally shows a placeholder explanation instead of scraping Railway logs.
+
+If the Alembic revision status is `Mismatch`, inspect migration history and run only the normal forward migration command. Do not run destructive downgrade/reset commands.

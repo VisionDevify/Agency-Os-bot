@@ -117,6 +117,23 @@ def _principal_from_user(user: User) -> PermissionPrincipal:
     return PermissionPrincipal(telegram_id=user.telegram_id, is_owner=user.is_owner, role=role)
 
 
+def _bot_heartbeat_metadata(source: str, **extra: str) -> dict[str, str]:
+    now = datetime.now(UTC).isoformat()
+    metadata = {
+        "source": source,
+        "polling_guard": "redis_lock",
+        "redis_lock_status": "held",
+    }
+    if source == "startup":
+        metadata["bot_started_at"] = now
+    elif source == "polling_loop":
+        metadata["last_polling_loop_at"] = now
+    elif source.startswith("telegram_"):
+        metadata["last_telegram_update_at"] = now
+    metadata.update(extra)
+    return metadata
+
+
 def _username_from_message_user(user) -> str | None:
     return user.username if user and user.username else None
 
@@ -333,7 +350,7 @@ async def start(message: Message) -> None:
 
     with SessionLocal() as session:
         telegram_id = message.from_user.id
-        record_heartbeat(session, service_name="bot", status="healthy", metadata={"source": "telegram_start"})
+        record_heartbeat(session, service_name="bot", status="healthy", metadata=_bot_heartbeat_metadata("telegram_start"))
         if telegram_id == settings.owner_telegram_id:
             user = setup_owner_if_needed(
                 session,
@@ -377,7 +394,7 @@ async def text_input(message: Message) -> None:
 
     telegram_id = message.from_user.id
     with SessionLocal() as session:
-        record_heartbeat(session, service_name="bot", status="healthy", metadata={"source": "telegram_text"})
+        record_heartbeat(session, service_name="bot", status="healthy", metadata=_bot_heartbeat_metadata("telegram_text"))
         user = get_or_create_telegram_user(
             session,
             telegram_user_id=telegram_id,
@@ -921,7 +938,7 @@ async def navigate(callback: CallbackQuery) -> None:
         return
 
     with SessionLocal() as session:
-        record_heartbeat(session, service_name="bot", status="healthy", metadata={"source": "telegram_callback"})
+        record_heartbeat(session, service_name="bot", status="healthy", metadata=_bot_heartbeat_metadata("telegram_callback"))
         user = get_or_create_telegram_user(
             session,
             telegram_user_id=callback.from_user.id,
@@ -1053,6 +1070,18 @@ async def main() -> None:
                 if main_task is not None:
                     main_task.cancel()
                 return
+            if SessionLocal is not None:
+                try:
+                    with SessionLocal() as session:
+                        record_heartbeat(
+                            session,
+                            service_name="bot",
+                            status="healthy",
+                            metadata=_bot_heartbeat_metadata("polling_loop"),
+                        )
+                        session.commit()
+                except Exception:
+                    logger.warning("Unable to record bot polling heartbeat", exc_info=True)
 
     bot = Bot(token=token)
     try:
@@ -1060,7 +1089,7 @@ async def main() -> None:
         if SessionLocal is not None:
             run_migrations()
             with SessionLocal() as session:
-                record_heartbeat(session, service_name="bot", status="healthy", metadata={"source": "startup"})
+                record_heartbeat(session, service_name="bot", status="healthy", metadata=_bot_heartbeat_metadata("startup"))
                 session.commit()
         refresh_task = asyncio.create_task(refresh_guard())
         await dp.start_polling(bot)

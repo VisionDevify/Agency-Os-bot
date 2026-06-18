@@ -949,6 +949,33 @@ def screen_for_page(
             )
         return render_main_menu(session=session, user=user)
 
+    if normalized == "production_observability" and not (principal.is_owner or (user is not None and user.is_owner)):
+        if session is not None:
+            audit_action(
+                session,
+                actor=user,
+                action="access.denied",
+                resource_type="telegram_page",
+                resource_id=normalized,
+                status="denied",
+                details={
+                    "telegram_id_masked": mask_telegram_id(principal.telegram_id),
+                    "permission": "owner",
+                },
+            )
+        else:
+            recorder.record(
+                actor_user_id=None,
+                action="access.denied",
+                resource_type="telegram_page",
+                resource_id=normalized,
+                details={
+                    "telegram_id_masked": mask_telegram_id(principal.telegram_id),
+                    "permission": "owner",
+                },
+            )
+        raise PermissionError("Production Observability is owner-only.")
+
     permissions = permissions_for_page(normalized)
     if permissions is not None:
         try:
@@ -1058,6 +1085,7 @@ def screen_for_page(
         or normalized.startswith("notification_target:")
         or normalized == "bot_status"
         or normalized == "production_status"
+        or normalized == "production_observability"
         or normalized == "owner_daily_checklist"
         or normalized == "team_onboarding_activation"
         or normalized.startswith("fortuna_action_log")

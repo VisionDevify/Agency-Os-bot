@@ -28,18 +28,19 @@ def record_heartbeat(
 ) -> SystemHeartbeat:
     heartbeat = session.scalar(select(SystemHeartbeat).where(SystemHeartbeat.service_name == service_name))
     changed = heartbeat is None or heartbeat.status != status
+    safe_metadata = sanitize_details(metadata)
     if heartbeat is None:
         heartbeat = SystemHeartbeat(
             service_name=service_name,
             status=status,
             last_seen_at=_now(),
-            metadata_json=sanitize_details(metadata),
+            metadata_json=safe_metadata,
         )
         session.add(heartbeat)
     else:
         heartbeat.status = status
         heartbeat.last_seen_at = _now()
-        heartbeat.metadata_json = sanitize_details(metadata)
+        heartbeat.metadata_json = {**(heartbeat.metadata_json or {}), **safe_metadata}
     session.flush()
     if changed:
         emit_event(
