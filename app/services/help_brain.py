@@ -40,8 +40,8 @@ HELP_KB_SEEDS: tuple[dict[str, str], ...] = (
         "topic": "owner_start",
         "title": "Owner Start Guide",
         "role_scope": "owner,admin",
-        "content": "Start in Fortuna HQ, open Fortuna Activation, then clear the top readiness blocker before adding more data.",
-        "related_route": "executive_mode",
+        "content": "Start with Start Here. Fortuna will show the next missing setup step and keep deeper tools under Advanced.",
+        "related_route": "start_here",
     },
     {
         "topic": "manager_start",
@@ -191,6 +191,14 @@ def help_article_count(session: Session) -> int:
 
 def detect_help_intent(question: str) -> str:
     text = question.casefold()
+    if "postgres" in text or "durable" in text or "persistence" in text:
+        return "postgres_explained"
+    if "broken" in text or "bot down" in text or "not working" in text:
+        return "system_troubleshooting"
+    if "where" in text and "proxy vault" in text:
+        return "proxy_where"
+    if "safe" in text and ("next" in text or "do" in text):
+        return "safe_next"
     if "crowded" in text or "overwhelming" in text or "too much" in text:
         return "screen_crowded"
     if "advanced mode" in text or "simple mode" in text or "switch mode" in text:
@@ -269,6 +277,16 @@ def _readiness_answer(session: Session, user: User | None) -> tuple[str, str]:
 def _user_work_answer(session: Session, user: User | None) -> tuple[str, str]:
     if user is None:
         return "Open /start and complete onboarding first.", "menu"
+    if _adminish(user):
+        report = build_activation_report(session)
+        blockers = report.get("blockers", [])
+        if blockers:
+            first = blockers[0]
+            return (
+                f"Your safest next move is: {first['title']}. {first['description']} "
+                "Open Start Here and fix one item at a time.",
+                first.get("action_page") or "start_here",
+            )
     open_tasks = session.scalar(
         select(func.count(Task.id)).where(Task.assigned_to_user_id == user.id, Task.status.in_(("open", "in_progress", "blocked")))
     ) or 0
@@ -354,6 +372,27 @@ def help_brain_answer(
 
     if intent == "readiness_low":
         answer, next_action = _readiness_answer(session, user)
+    elif intent == "postgres_explained":
+        answer = (
+            "Postgres is Fortuna's durable production database. It keeps users, setup, audit logs, proxies, "
+            "recommendations, and learning records safe across Railway deploys and restarts. SQLite fallback is emergency-only."
+        )
+        next_action = "production_observability" if _adminish(user) else "help"
+    elif intent == "system_troubleshooting":
+        if _adminish(user):
+            answer = (
+                "If something feels broken, check Settings -> Production Observability first. "
+                "Then run /integrity and /botstatus to confirm durable storage, Redis, and duplicate polling."
+            )
+            next_action = "production_observability"
+        else:
+            answer = "Tell a manager which button or screen failed. Production diagnostics are owner/admin-only."
+            next_action = "help"
+    elif intent == "proxy_where":
+        answer = "Proxy Vault is on Owner Home. Tap Proxy Vault, then Paste Olympix Proxy String or Add Proxy."
+        next_action = "proxies"
+    elif intent == "safe_next":
+        answer, next_action = _user_work_answer(session, user)
     elif intent == "screen_crowded":
         answer = (
             "Fortuna now starts in Simple Mode so the daily view stays calm. "
@@ -630,6 +669,8 @@ def run_ui_self_test(session: Session, *, actor: User | None) -> UISelfTestRun:
     )
     pages = (
         "menu",
+        "start_here",
+        "first_workspace",
         "executive_mode",
         "agency_activation",
         "models",

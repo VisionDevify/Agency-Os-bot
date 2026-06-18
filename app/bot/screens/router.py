@@ -27,6 +27,8 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_assistant_next_page(session, user)
     if page == "start_here" and session is not None:
         return render_start_here_page(session, user)
+    if page == "first_workspace" and session is not None:
+        return render_first_workspace_flow_page(session, user)
     if page == "structure":
         return render_structure_map_page()
     if page == "coo" and session is not None:
@@ -60,13 +62,17 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         if len(parts) >= 4 and parts[1] == "blocker":
             section = parts[2]
             index = int(parts[3]) if parts[3].isdigit() else 0
+            if len(parts) >= 5 and parts[4] == "fix":
+                blocker = find_activation_blocker(session, section, index)
+                if blocker and blocker.get("action_page"):
+                    return render_page(blocker["action_page"], session=session, user=user)
             explain = len(parts) >= 5 and parts[4] == "explain"
             return render_activation_blocker_detail_page(session, section, index, explain=explain)
         if len(parts) >= 2 and parts[1] == "accounts":
             return render_account_setup_state_page(session)
         section = parts[1] if len(parts) >= 2 else "models"
         return render_activation_section_page(session, section)
-    if page == "setup:wizard" and session is not None:
+    if page in {"setup:wizard", "setup:wizard:start"} and session is not None:
         return render_setup_wizard_page(session, user)
     if page == "setup:wizard:model":
         return render_setup_model_prompt_page()
@@ -86,6 +92,8 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_setup_opportunities_page(session, user)
     if page in {"setup:wizard:summary", "setup:wizard:finish"} and session is not None:
         return render_setup_summary_page(session, user)
+    if page in {"setup:cleanup", "setup:cleanup:archive_placeholders"} and session is not None:
+        return render_placeholder_cleanup_page(session)
     if page == "first_day_plan" and session is not None and user is not None:
         return render_first_day_plan_page(session, user)
     if page == "manager_qa" and session is not None:

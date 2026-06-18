@@ -233,6 +233,76 @@ def render_start_here_page(session: Session, user: User | None = None) -> Screen
     return Screen(text="\n".join(lines), reply_markup=start_here_menu())
 
 
+def _workspace_step(label: str, done: bool, page: str, *, waiting: bool = False) -> dict:
+    return {
+        "label": label,
+        "done": done,
+        "page": page,
+        "waiting": waiting,
+        "status": "Done" if done else "Waiting" if waiting else "Needs Attention",
+    }
+
+
+def render_first_workspace_flow_page(session: Session, user: User | None = None) -> Screen:
+    models = list_model_brands(session)
+    accounts = list_accounts(session)
+    proxies = list_proxies(session)
+    creators = list_creator_watches(session, active_only=False, limit=100)
+    opportunities = list_opportunities(session, include_archived=True, limit=100)
+    first_model = models[0] if models else None
+    model_ready = bool(
+        first_model
+        and first_model.country
+        and first_model.timezone
+        and first_model.primary_platform
+        and first_model.status == "active"
+    )
+    model_page = f"model:{first_model.id}:complete" if first_model else "setup:wizard:model"
+    team_count = (
+        session.scalar(
+            select(func.count(ModelBrandMember.user_id)).where(ModelBrandMember.model_brand_id == first_model.id)
+        )
+        if first_model
+        else 0
+    ) or 0
+    accounts_missing = accounts_missing_proxy(session) if accounts else []
+    linked_opportunity_count = sum(1 for item in opportunities if item.model_brand_id)
+    steps = [
+        _workspace_step("Complete model profile", model_ready, model_page),
+        _workspace_step("Add first account", bool(accounts), "setup:wizard:accounts", waiting=not first_model),
+        _workspace_step("Add proxy", bool(proxies), "proxies:add"),
+        _workspace_step("Assign proxy to account", bool(accounts) and not accounts_missing, "proxies:missing", waiting=not accounts),
+        _workspace_step("Assign team", bool(team_count), f"model:{first_model.id}:team" if first_model else "setup:wizard:team", waiting=not first_model),
+        _workspace_step("Add creator", bool(creators), "setup:wizard:creators", waiting=not first_model),
+        _workspace_step("Create opportunity", bool(linked_opportunity_count), "setup:wizard:opportunities", waiting=not first_model),
+    ]
+    next_step = next((step for step in steps if not step["done"] and not step["waiting"]), None)
+    if next_step is None:
+        next_step = next((step for step in steps if not step["done"]), None)
+    action_buttons = [(step["label"], step["page"]) for step in steps if not step["done"]][:7]
+    lines = [
+        "First Workspace Guide",
+        "",
+        "Fortuna will take you from empty workspace to usable daily operations.",
+        "",
+        "Current state:",
+    ]
+    for step in steps:
+        marker = "\u2705" if step["done"] else "\u23f3" if step["waiting"] else "\U0001f534"
+        lines.append(f"{marker} {step['label']}: {step['status']}")
+    lines.extend(
+        [
+            "",
+            "Next best action:",
+            next_step["label"] if next_step else "Run the daily cycle and start operating.",
+            "",
+            "Safe vs risky:",
+            "Setup, simulated checks, and records are safe. Real proxy checks and auth work require owner-controlled confirmation.",
+        ]
+    )
+    return Screen("\n".join(lines), first_workspace_menu(action_buttons))
+
+
 def render_today_priorities_page(session: Session, user: User | None = None) -> Screen:
     actions = todays_top_5_actions(session, actor=user)
     recent_actions = recent_operations_activity(session)

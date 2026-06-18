@@ -579,6 +579,75 @@ def manager_setup_qa(session: Session) -> dict:
     }
 
 
+def placeholder_cleanup_summary(session: Session) -> dict:
+    placeholder_models = list(
+        session.scalars(
+            select(ModelBrand)
+            .where(
+                ModelBrand.is_demo.is_(False),
+                ModelBrand.status != "archived",
+                ModelBrand.display_name.in_(("New Model 1", "Untitled Model", "Default Model")),
+            )
+            .order_by(ModelBrand.id)
+        ).all()
+    )
+    placeholder_opportunities = list(
+        session.scalars(
+            select(Opportunity)
+            .where(
+                Opportunity.is_demo.is_(False),
+                Opportunity.status != "archived",
+                Opportunity.model_brand_id.is_(None),
+                Opportunity.title.in_(("Manual Opportunity 1", "Untitled Opportunity", "Default Opportunity")),
+            )
+            .order_by(Opportunity.id)
+        ).all()
+    )
+    demo_counts = {
+        "models": session.query(ModelBrand).filter(ModelBrand.is_demo.is_(True)).count(),
+        "accounts": session.query(Account).filter(Account.is_demo.is_(True)).count(),
+        "creators": session.query(CreatorWatch).filter(CreatorWatch.is_demo.is_(True)).count(),
+        "opportunities": session.query(Opportunity).filter(Opportunity.is_demo.is_(True)).count(),
+        "posts": session.query(PostWatch).filter(PostWatch.is_demo.is_(True)).count(),
+    }
+    return {
+        "placeholder_models": placeholder_models,
+        "placeholder_opportunities": placeholder_opportunities,
+        "demo_counts": demo_counts,
+        "has_placeholders": bool(placeholder_models or placeholder_opportunities),
+        "has_demo": any(demo_counts.values()),
+    }
+
+
+def archive_placeholder_records(session: Session, *, actor: User) -> dict:
+    _require_setup_access(session, actor)
+    summary = placeholder_cleanup_summary(session)
+    for model in summary["placeholder_models"]:
+        model.status = "archived"
+    for opportunity in summary["placeholder_opportunities"]:
+        opportunity.status = "archived"
+    counts = {
+        "models_archived": len(summary["placeholder_models"]),
+        "opportunities_archived": len(summary["placeholder_opportunities"]),
+    }
+    session.flush()
+    audit_action(
+        session,
+        actor=actor,
+        action="placeholder.archived",
+        resource_type="setup_cleanup",
+        details=counts,
+    )
+    emit_event(
+        session,
+        actor=actor,
+        event_name="placeholder.archived",
+        resource_type="setup_cleanup",
+        payload=counts,
+    )
+    return counts
+
+
 def create_demo_seed(session: Session, *, actor: User) -> dict:
     _require_setup_access(session, actor)
     model = create_setup_model(

@@ -40,6 +40,7 @@ from app.bot.menu import (
     demo_seed_menu,
     executive_mode_menu,
     executive_dashboard_menu,
+    first_workspace_menu,
     first_day_plan_menu,
     help_center_menu,
     help_copilot_menu,
@@ -349,6 +350,7 @@ from app.services.setup_wizard import (
     first_day_plan,
     latest_setup_state,
     manager_setup_qa,
+    placeholder_cleanup_summary,
     summarize_setup_state,
 )
 

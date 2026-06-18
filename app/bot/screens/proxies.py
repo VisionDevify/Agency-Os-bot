@@ -45,7 +45,16 @@ def render_proxies_home(session: Session | None = None) -> Screen:
                 f"Real Checks: {'Enabled' if real_enabled else 'Disabled'}",
                 "",
                 "Fortuna noticed proxy setup matters before accounts go live.",
-                "Add a proxy, assign accounts, then test safely.",
+                (
+                    "Paste your Olympix proxy string to begin."
+                    if total == 0
+                    else "Assign a saved proxy to each account, then test safely."
+                ),
+                (
+                    "Next best move: Add your first proxy."
+                    if total == 0
+                    else "Next best move: Assign this proxy to an account."
+                ),
                 "",
                 "Fortuna will never show proxy passwords back in Telegram.",
             ]
@@ -120,7 +129,7 @@ def render_proxy_list_page(session: Session) -> Screen:
     lines = ["Proxy Vault", ""]
     buttons: list[tuple[str, str]] = []
     if not proxies:
-        lines.append("No proxies yet. Add an encrypted proxy with the Olympix wizard or create a placeholder for testing.")
+        lines.append("No proxies yet. Paste your Olympix proxy string to save the first encrypted proxy.")
     for proxy in proxies[:15]:
         health = calculate_proxy_health(proxy)
         lines.append(f"{proxy.id}. {proxy.provider} {proxy.host}:{proxy.port}")
@@ -473,7 +482,10 @@ def render_proxy_assign_account_page(session: Session, proxy_id: int) -> Screen:
         "",
     ]
     if not buttons:
-        lines.append("No accounts are missing proxies.")
+        if list_accounts(session):
+            lines.append("No accounts are missing proxies. Nothing to assign right now.")
+        else:
+            lines.append("No accounts exist yet. Add an account first, then return here to assign this proxy.")
     return Screen(text="\n".join(lines), reply_markup=proxy_account_choice_menu(proxy.id, buttons, "assign"))
 
 def render_proxy_remove_account_page(session: Session, proxy_id: int) -> Screen:
@@ -493,11 +505,22 @@ def render_proxy_remove_account_page(session: Session, proxy_id: int) -> Screen:
     return Screen(text="\n".join(lines), reply_markup=proxy_account_choice_menu(proxy.id, buttons, "remove"))
 
 def render_accounts_missing_proxy_page(session: Session) -> Screen:
-    return render_account_list_page(
-        session,
-        accounts=accounts_missing_proxy(session),
-        title="Accounts Missing Proxy",
-        back_to="proxies",
+    missing = accounts_missing_proxy(session)
+    if missing:
+        return render_account_list_page(
+            session,
+            accounts=missing,
+            title="Accounts Missing Proxy",
+            back_to="proxies",
+        )
+    if list_accounts(session):
+        return Screen(
+            "Accounts Missing Proxy\n\nNothing urgent here. Every active account already has a proxy assigned.",
+            page_menu(back_to="proxies"),
+        )
+    return Screen(
+        "Accounts Missing Proxy\n\nNo accounts exist yet. Create a model and account first, then assign a proxy.",
+        choice_menu([("Add Account", "nav:accounts:add"), ("Create First Model", "nav:setup:wizard:model")], back_to="proxies"),
     )
 
 def render_proxy_simulation_page(session: Session) -> Screen:

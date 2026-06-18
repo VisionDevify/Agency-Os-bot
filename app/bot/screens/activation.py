@@ -388,6 +388,48 @@ def render_manager_setup_qa_page(session: Session) -> Screen:
     ]
     return Screen("\n".join(lines), manager_setup_qa_menu())
 
+def render_placeholder_cleanup_page(session: Session) -> Screen:
+    summary = placeholder_cleanup_summary(session)
+    placeholder_models = summary["placeholder_models"]
+    placeholder_opportunities = summary["placeholder_opportunities"]
+    demo_counts = summary["demo_counts"]
+    lines = [
+        "Placeholder Cleanup",
+        "",
+        "Use this when starter records are confusing the setup flow.",
+        "Fortuna archives obvious placeholders and keeps real production records safe.",
+        "",
+        "Placeholder records:",
+    ]
+    if not placeholder_models and not placeholder_opportunities:
+        lines.append("- None found.")
+    for model in placeholder_models[:5]:
+        lines.append(f"- Model: {model.display_name}")
+    for opportunity in placeholder_opportunities[:5]:
+        lines.append(f"- Opportunity: {opportunity.title}")
+    lines.extend(["", "Demo records:"])
+    if not any(demo_counts.values()):
+        lines.append("- None found.")
+    else:
+        for label, count in demo_counts.items():
+            if count:
+                lines.append(f"- {label.title()}: {count}")
+    lines.extend(
+        [
+            "",
+            "Safe options:",
+            "- Archive placeholders keeps history but removes them from setup blockers.",
+            "- Clear demo data only removes records explicitly marked as demo.",
+        ]
+    )
+    choices = []
+    if placeholder_models or placeholder_opportunities:
+        choices.append(("Archive Placeholder Records", "nav:setup:cleanup:archive_placeholders"))
+    if any(demo_counts.values()):
+        choices.append(("Clear Demo Data", "nav:demo:clear"))
+    choices.append(("Back to Setup", "nav:setup:wizard"))
+    return Screen("\n".join(lines), choice_menu(choices, back_to="setup:wizard"))
+
 def render_demo_seed_page() -> Screen:
     return Screen(
         "\n".join(

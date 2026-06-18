@@ -41,16 +41,19 @@ def role_home_menu(items: list[tuple[str, str]] | tuple[tuple[str, str], ...]) -
 def owner_simple_home_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Continue Setup", callback_data=callback_for("setup_progress"))],
+            [InlineKeyboardButton(text="Start Here", callback_data=callback_for("start_here"))],
             [
                 InlineKeyboardButton(text="Today\u2019s Priorities", callback_data=callback_for("today_priorities")),
-                InlineKeyboardButton(text="Opportunities", callback_data=callback_for("opportunities")),
+                InlineKeyboardButton(text="Setup", callback_data=callback_for("setup_progress")),
             ],
             [
                 InlineKeyboardButton(text="Proxy Vault", callback_data=callback_for("proxies")),
-                InlineKeyboardButton(text="Help", callback_data=callback_for("help")),
+                InlineKeyboardButton(text="Opportunities", callback_data=callback_for("opportunities")),
             ],
-            [InlineKeyboardButton(text="Advanced", callback_data=callback_for("owner_advanced"))],
+            [
+                InlineKeyboardButton(text="Help", callback_data=callback_for("help")),
+                InlineKeyboardButton(text="Advanced", callback_data=callback_for("owner_advanced")),
+            ],
         ]
     )
 
@@ -82,7 +85,7 @@ def owner_advanced_home_menu() -> InlineKeyboardMarkup:
 def start_here_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Continue Setup", callback_data=callback_for("setup:wizard"))],
+            [InlineKeyboardButton(text="Continue Setup", callback_data=callback_for("first_workspace"))],
             [InlineKeyboardButton(text="Fix Top Blocker", callback_data=callback_for("agency_activation"))],
             [InlineKeyboardButton(text="View Progress", callback_data=callback_for("coo:readiness"))],
             [InlineKeyboardButton(text="Ask Fortuna", callback_data=callback_for("help_copilot:finish_setup"))],
@@ -109,6 +112,7 @@ def today_priorities_menu(action_buttons: list[tuple[str, str]] | None = None) -
 
 def setup_progress_menu(rows_data: list[tuple[str, str, str]] | None = None) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
+    rows.append([InlineKeyboardButton(text="First Workspace Guide", callback_data=callback_for("first_workspace"))])
     for label, fix_page, view_page in (rows_data or [])[:6]:
         rows.append(
             [
@@ -120,6 +124,21 @@ def setup_progress_menu(rows_data: list[tuple[str, str, str]] | None = None) -> 
         [
             [InlineKeyboardButton(text="What Should I Do Next?", callback_data=callback_for("assistant_next"))],
             *page_controls(back_to="menu"),
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def first_workspace_menu(action_buttons: list[tuple[str, str]] | None = None) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=label, callback_data=callback_for(page))] for label, page in (action_buttons or [])[:8]]
+    rows.extend(
+        [
+            [InlineKeyboardButton(text="Run Daily Cycle", callback_data=callback_for("agency_activation:daily_cycle"))],
+            [
+                InlineKeyboardButton(text="Setup Progress", callback_data=callback_for("setup_progress")),
+                InlineKeyboardButton(text="Ask Fortuna", callback_data=callback_for("help_copilot:next")),
+            ],
+            *page_controls(back_to="start_here"),
         ]
     )
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -227,6 +246,7 @@ def setup_wizard_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="Fortuna Activation", callback_data=callback_for("agency_activation"))],
+            [InlineKeyboardButton(text="First Workspace Guide", callback_data=callback_for("first_workspace"))],
             [InlineKeyboardButton(text="Start Setup Wizard", callback_data=callback_for("setup:wizard:start"))],
             [InlineKeyboardButton(text="Create First Model", callback_data=callback_for("setup:wizard:model"))],
             [InlineKeyboardButton(text="Add Accounts", callback_data=callback_for("setup:wizard:accounts"))],
@@ -236,6 +256,9 @@ def setup_wizard_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Review Setup Summary", callback_data=callback_for("setup:wizard:summary"))],
             [
                 InlineKeyboardButton(text="Demo Seed Mode", callback_data=callback_for("demo")),
+                InlineKeyboardButton(text="Cleanup", callback_data=callback_for("setup:cleanup")),
+            ],
+            [
                 InlineKeyboardButton(text="Structure Map", callback_data=callback_for("structure")),
             ],
             *page_controls(back_to="menu"),
@@ -703,6 +726,7 @@ def account_detail_menu(account_id: int) -> InlineKeyboardMarkup:
 def proxies_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [InlineKeyboardButton(text="Paste Olympix Proxy String", callback_data=callback_for("proxies:olympix:paste"))],
             [InlineKeyboardButton(text="Add Proxy", callback_data=callback_for("proxies:add"))],
             [InlineKeyboardButton(text="Accounts Missing Proxy", callback_data=callback_for("proxies:missing"))],
             [InlineKeyboardButton(text="Proxy Health", callback_data=callback_for("proxies:dashboard"))],
@@ -1413,6 +1437,8 @@ def proxy_detail_advanced_menu(proxy_id: int, *, real_enabled: bool) -> InlineKe
             [InlineKeyboardButton(text="Run Real Check", callback_data=f"nav:proxy:{proxy_id}:check:real")],
             [InlineKeyboardButton(text="Rotate Until Match", callback_data=f"nav:proxy:{proxy_id}:rotate_until_match")],
             [InlineKeyboardButton(text="Rollback Last Rotation", callback_data=f"nav:proxy:{proxy_id}:rollback")],
+            [InlineKeyboardButton(text="Disable Proxy", callback_data=f"nav:proxy:{proxy_id}:disable")],
+            [InlineKeyboardButton(text="Reactivate Proxy", callback_data=f"nav:proxy:{proxy_id}:reactivate")],
             [
                 InlineKeyboardButton(text="Assigned Accounts", callback_data=f"nav:proxy:{proxy_id}:accounts"),
                 InlineKeyboardButton(text="Remove Account", callback_data=f"nav:proxy:{proxy_id}:remove"),

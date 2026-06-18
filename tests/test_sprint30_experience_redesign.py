@@ -54,7 +54,8 @@ def test_owner_home_feels_like_a_product_dashboard() -> None:
         assert "Agency Setup:" in screen.text
         assert "Today\u2019s Focus:" in screen.text
         assert "Estimated Time:" in screen.text
-        assert "Continue Setup" in labels
+        assert "Start Here" in labels
+        assert "Setup" in labels
         assert "Today\u2019s Priorities" in labels
         assert "Proxy Vault" in labels
         assert "Advanced" in labels

@@ -139,6 +139,7 @@ from app.services.permissions import PermissionPrincipal, require_permission
 from app.services.team_operations import set_availability
 from app.services.team_experience import update_onboarding_checklist
 from app.services.setup_wizard import (
+    archive_placeholder_records,
     assign_setup_team_member,
     clear_demo_data,
     complete_setup_wizard,
@@ -222,7 +223,7 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         return None
     if page == "structure":
         return None
-    if page in {"start_here", "owner_advanced", "today_priorities", "setup_progress", "assistant_next"}:
+    if page in {"start_here", "first_workspace", "owner_advanced", "today_priorities", "setup_progress", "assistant_next"}:
         return ("view_dashboard", "manage_reports")
     if page.startswith("coo"):
         return ("view_dashboard", "manage_reports", "manage_tasks", "manage_users")
@@ -336,6 +337,9 @@ def _perform_admin_action(
     if page == "setup:wizard:start":
         start_setup_wizard(session, actor=actor)
         return "setup:wizard"
+    if page == "setup:cleanup:archive_placeholders":
+        archive_placeholder_records(session, actor=actor)
+        return "setup:cleanup"
     if len(parts) >= 3 and parts[0] == "help_feedback" and parts[1].isdigit():
         try:
             record_help_feedback(session, log_id=int(parts[1]), feedback=parts[2], actor=actor)
@@ -802,6 +806,28 @@ def _perform_admin_action(
         if action == "disable_real":
             set_proxy_real_check_flags(session, proxy, actor=actor, health_enabled=False, location_enabled=False)
             return f"proxy:{proxy.id}"
+        if action == "disable":
+            proxy.status = "disabled"
+            audit_action(
+                session,
+                actor=actor,
+                action="proxy.disabled",
+                resource_type="proxy",
+                resource_id=str(proxy.id),
+                details={"provider": proxy.provider, "host": proxy.host},
+            )
+            return f"proxy:{proxy.id}"
+        if action == "reactivate":
+            proxy.status = "warning"
+            audit_action(
+                session,
+                actor=actor,
+                action="proxy.reactivated",
+                resource_type="proxy",
+                resource_id=str(proxy.id),
+                details={"provider": proxy.provider, "host": proxy.host},
+            )
+            return f"proxy:{proxy.id}"
         if action == "rotate_until_match":
             mode = proxy_check_mode(proxy)
             if mode.real_health_enabled and not actor.is_owner:
@@ -1179,6 +1205,7 @@ def screen_for_page(
         or normalized == "setup_progress"
         or normalized == "assistant_next"
         or normalized == "start_here"
+        or normalized == "first_workspace"
         or normalized.startswith("ui_self_test")
         or normalized == "owner_daily_checklist"
         or normalized == "team_onboarding_activation"
