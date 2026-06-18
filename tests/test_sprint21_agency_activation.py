@@ -3,6 +3,7 @@ from sqlalchemy import func, select
 from app.bot.screens import (
     render_account_setup_state_page,
     render_agency_activation_page,
+    render_activation_section_page,
     render_model_completion_page,
     render_olympix_proxy_wizard_page,
 )
@@ -31,10 +32,11 @@ def _owner(session):
 def test_agency_readiness_scoring_detects_setup_gaps() -> None:
     with session_scope() as session:
         owner = _owner(session)
-        create_setup_model(session, actor=owner, display_name="New Model 1")
+        model = create_setup_model(session, actor=owner, display_name="New Model 1")
 
         report = build_activation_report(session)
         screen = render_agency_activation_page(session)
+        section_screen = render_activation_section_page(session, "models")
 
         codes = {blocker["code"] for blocker in report["blockers"]}
         assert report["readiness_score"] < 60
@@ -47,6 +49,11 @@ def test_agency_readiness_scoring_detects_setup_gaps() -> None:
         assert "notifications.missing_targets" in codes
         assert "Agency Readiness:" in screen.text
         assert "Top Blockers:" in screen.text
+        assert any(
+            button.callback_data == f"nav:model:{model.id}:complete"
+            for row in section_screen.reply_markup.inline_keyboard
+            for button in row
+        )
 
 
 def test_activation_scan_persists_state_recommendations_tasks_and_avoids_duplicates() -> None:

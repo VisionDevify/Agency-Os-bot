@@ -630,7 +630,15 @@ def render_activation_section_page(session: Session, section: str) -> Screen:
     for blocker in blockers[:10]:
         lines.append(f"- {blocker['title']}")
         lines.append(f"  Next: {blocker['description']}")
-    return Screen("\n".join(lines), activation_section_menu(section))
+    choices = [
+        (blocker["title"][:40], f"nav:{blocker['action_page']}")
+        for blocker in blockers[:8]
+        if blocker.get("action_page")
+    ]
+    choices.append(("Run Activation Scan", "nav:agency_activation:scan"))
+    if not choices:
+        return Screen("\n".join(lines), activation_section_menu(section))
+    return Screen("\n".join(lines), choice_menu(choices, back_to="agency_activation"))
 
 
 def render_model_completion_page(session: Session, model_id: int) -> Screen:
