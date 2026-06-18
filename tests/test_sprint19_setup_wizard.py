@@ -196,12 +196,19 @@ def test_help_copilot_setup_answers_and_empty_state_guidance() -> None:
         edit_model = render_help_copilot_page(session, owner, question="edit_model")
         empty_models = render_model_list_page(session)
         empty_accounts = render_account_list_page(session)
+        model_accounts = render_account_list_page(
+            session,
+            accounts=[],
+            title="Accounts for Existing Model",
+            back_to="model:1",
+        )
 
         assert first_model["next_action"] == "setup:wizard:model"
         assert "Create a model first" in add_accounts["answer"]
         assert "Edit Name" in edit_model.text
         assert "No models yet. Start by creating your first model/brand" in empty_models.text
         assert "No accounts yet. Create a model first" in empty_accounts.text
+        assert "Add an account to this model" in model_accounts.text
 
 
 def test_role_home_visibility_and_setup_summary_are_simple() -> None:

@@ -26,6 +26,7 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Sprint 16: Team Rollout and Human Experience Layer with role-specific homes, personalized dashboards, Daily Experience, Help Center, Team QA readiness, notification digest mode, human-friendly terminology, and low-risk scheduled automation execution.
 - Sprint 17: Team Activation and Opportunity Command Center with Creator Watch, Own Post Watch, opportunity queue summaries, suggested human-only comment strategies, Chatter Workspace, Manager Opportunity View, Help Copilot, activation scoring, and opportunity notification routing.
 - Sprint 18: Real Opportunity Intake and Team Assignment Activation with guided Creator Watch intake, guided Opportunity intake, guided Own Post Watch intake, creator/post-to-opportunity conversion, assignment workflows, result recording, Comment Strategy V2, Help Copilot upgrades, activation QA, and digestable opportunity events.
+- Sprint 20: Production Data Activation readiness with first-day operations smoke-test guidance, team invite packet, clearer account setup empty states, and explicit manual notification group registration steps.
 
 ## Roadmap
 
@@ -626,3 +627,19 @@ Telegram UX principles for Sprint 19:
 - Demo Seed Mode is owner-only and marks demo records so sample data can be cleared safely.
 
 The setup layer still respects the core safety boundary: no platform automation, no scraping, no evasion, no real platform passwords, and no secrets in logs, audits, events, or Telegram UI.
+
+## Production Data Activation
+
+Sprint 20 is the first-day operating checklist for turning a live but mostly empty production workspace into a usable agency workspace.
+
+Activation sequence:
+
+- Inspect production health, owner user, models, accounts, users, roles, notification targets, pending users, and First Day Plan progress before creating data.
+- Create or clean up the first real Model/Brand only after the owner provides display name, stage name, country, timezone, primary platform, and optional internal notes.
+- Add real account records as references only. Do not request passwords or connect platform login during setup.
+- Approve known team users only after they press `/start`, complete localization, and are confirmed by the owner/admin.
+- Assign manager, chatter, VA, and viewer relationships only after user approval.
+- Add initial creators and opportunities only after the owner provides/approves the data.
+- Use Owner-only Demo Seed Mode when the owner wants to test workflows without mixing sample data into real operations.
+
+Team rollout uses `docs/team_invite_packet.md`. Notification routing uses manual group creation and Settings -> Notification Targets -> Add Current Chat As Target from the correct Agency OS group/channel.

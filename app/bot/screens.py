@@ -1399,7 +1399,10 @@ def render_account_list_page(
     lines = [title, ""]
     buttons: list[tuple[str, str]] = []
     if not current_accounts:
-        lines.append("No accounts yet. Create a model first, then attach IG/X/OF/Email accounts.")
+        if back_to.startswith("model:") or title.startswith("Accounts for "):
+            lines.append("No accounts yet. Add an account to this model from Setup Agency or Accounts -> Add Account.")
+        else:
+            lines.append("No accounts yet. Create a model first, then attach IG/X/OF/Email accounts.")
     for account in current_accounts[:15]:
         health = account_health(account)
         model_name = account.model_brand.display_name if account.model_brand else "Unassigned"

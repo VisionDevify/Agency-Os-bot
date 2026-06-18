@@ -70,6 +70,28 @@ Settings -> Notification Targets supports:
 - Daily Digest delivery history.
 - Notification Digest Mode for bundled low-priority updates.
 
+## Manual Group Registration
+
+Agency OS notification groups/channels are not auto-created by the app. Create and register them manually:
+
+1. Create `Agency OS — HQ`.
+2. Create `Agency OS — Operations`.
+3. Create `Agency OS — Incidents`.
+4. Create `Agency OS — Automation Logs`.
+5. Create `Agency OS — Testing Sandbox`.
+6. Add `@FortunaSolstice_Bot`.
+7. Open each group/channel.
+8. Use Settings -> Notification Targets -> Add Current Chat As Target.
+9. Set purpose:
+   - HQ -> `owner`.
+   - Operations -> `operations`.
+   - Incidents -> `incidents`.
+   - Automation Logs -> `automation_logs`.
+   - Testing Sandbox -> `testing`.
+10. Send test notifications only to the Testing Sandbox target until the owner approves broader delivery.
+
+Do not register unrelated Telegram chats. Do not expose raw chat IDs in screenshots, audits, events, or support messages.
+
 ## Safety Rules
 
 - Only Owner/Admin can manage targets.

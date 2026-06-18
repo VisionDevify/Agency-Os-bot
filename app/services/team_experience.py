@@ -55,6 +55,39 @@ HELP_TOPICS: dict[str, str] = {
     "get_help": "Use Help, ask your manager, or escalate a task or incident when you are blocked.",
 }
 
+TEAM_INVITE_ROLES = ("chatter", "va", "manager")
+
+
+def team_invite_message(role: str, *, bot_username: str = "@FortunaSolstice_Bot") -> str:
+    normalized = role.strip().lower().replace(" ", "_")
+    if normalized not in TEAM_INVITE_ROLES:
+        raise ValueError(f"Unsupported invite role: {role}")
+    role_label = {
+        "chatter": "Chatter",
+        "va": "VA",
+        "manager": "Manager",
+    }[normalized]
+    first_area = {
+        "chatter": "My Models, My Opportunities, My Tasks, Availability, and Help",
+        "va": "My Models, My Accounts, My Tasks, Availability, and Help",
+        "manager": "Team, Models, Tasks, Incidents, Opportunities, Reports, and Help",
+    }[normalized]
+    return "\n".join(
+        [
+            f"Agency OS invite for {role_label}",
+            f"1. Open {bot_username} in Telegram.",
+            "2. Press /start.",
+            "3. Choose your language, country, timezone, and 12h/24h time format.",
+            "4. Wait for approval. You will see Access pending approval until an owner/admin approves you.",
+            f"5. After approval, your {role_label} home will show: {first_area}.",
+            "Do not send passwords or verification codes in onboarding.",
+        ]
+    )
+
+
+def team_invite_packet(*, bot_username: str = "@FortunaSolstice_Bot") -> dict[str, str]:
+    return {role: team_invite_message(role, bot_username=bot_username) for role in TEAM_INVITE_ROLES}
+
 
 @dataclass(frozen=True)
 class ScheduledAutomationResult:
@@ -357,6 +390,7 @@ def help_topics_for_role(user: User | None) -> list[tuple[str, str]]:
     role = primary_role(user)
     if role in {"Owner", "Admin", "Manager", "Chatter Manager"}:
         topics.append(("manager", "Manager Help"))
+        topics.append(("team_invites", "Team Invite Packet"))
     if role in {"Senior Chatter", "Chatter"}:
         topics.append(("chatter", "Chatter Help"))
     if role == "VA":
@@ -371,6 +405,9 @@ def help_text(topic: str, user: User | None = None) -> str:
         return "Chatters focus on assigned models, tasks, opportunities, availability, and clean handoffs."
     if topic == "va":
         return "VAs focus on assigned accounts, task completion, uploads, availability, and overdue cleanup."
+    if topic == "team_invites":
+        packet = team_invite_packet()
+        return "\n\n".join(packet[role] for role in TEAM_INVITE_ROLES)
     return HELP_TOPICS.get(topic, "Agency OS keeps work visible, calm, and accountable.")
 
 

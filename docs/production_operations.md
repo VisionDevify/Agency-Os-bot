@@ -73,22 +73,33 @@ These values are database-backed through `system_heartbeats`, `event_logs`, and 
 
 Recommended Agency OS destinations:
 
-- Agency OS - HQ
-- Agency OS - Operations
-- Agency OS - Incidents
-- Agency OS - Automation Logs
-- Agency OS - Testing Sandbox
+- Agency OS — HQ
+- Agency OS — Operations
+- Agency OS — Incidents
+- Agency OS — Automation Logs
+- Agency OS — Testing Sandbox
 
 Create and configure these only inside the Agency OS scope. Add `@FortunaSolstice_Bot` after confirming group/channel ownership and admin permissions.
 
 If Telegram Web requires manual group creation, use these steps:
 
-1. Create each group/channel with the exact Agency OS name.
-2. Add `@FortunaSolstice_Bot`.
-3. Open the bot UI in that chat.
-4. Use Settings -> Notification Targets -> Add Current Chat As Target.
-5. Set the matching purpose.
-6. Send only one test notification to Testing Sandbox.
+1. Create `Agency OS — HQ`.
+2. Create `Agency OS — Operations`.
+3. Create `Agency OS — Incidents`.
+4. Create `Agency OS — Automation Logs`.
+5. Create `Agency OS — Testing Sandbox`.
+6. Add `@FortunaSolstice_Bot` to each Agency OS group/channel.
+7. Open each group/channel in Telegram.
+8. Use Settings -> Notification Targets -> Add Current Chat As Target from inside that group/channel.
+9. Set the matching purpose:
+   - HQ -> owner.
+   - Operations -> operations.
+   - Incidents -> incidents.
+   - Automation Logs -> automation_logs.
+   - Testing Sandbox -> testing.
+10. Send a test notification only to Testing Sandbox until the owner approves real routing.
+
+Do not use unrelated Telegram chats as notification targets. Do not send test notifications to HQ, Operations, Incidents, or Automation Logs until routing is intentionally activated.
 
 ## Delivery Attempts
 

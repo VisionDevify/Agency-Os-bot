@@ -154,6 +154,7 @@ Production smoke testing checklist:
 - `docs/setup_wizard.md`
 - `docs/first_day_plan.md`
 - `docs/ui_structure.md`
+- `docs/team_invite_packet.md`
 
 ## First Agency Setup
 
@@ -173,3 +174,5 @@ The setup wizard guides the first useful production setup:
 - review missing setup items before finishing
 
 If no model exists yet, account and own-post screens intentionally explain that the model comes first. Demo Seed Mode is owner-only and creates records marked as demo data so the UI can be tested without mixing sample records with real operations.
+
+Team rollout should use `docs/team_invite_packet.md`. Teammates should press `/start`, choose language/country/timezone/time format, wait for approval, and never send platform passwords or verification codes during onboarding.
