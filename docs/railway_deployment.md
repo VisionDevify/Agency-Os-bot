@@ -81,10 +81,10 @@ curl https://<api-service-domain>/health
 Expected response:
 
 ```json
-{"status":"ok","api":"healthy","db":"healthy","redis":"healthy"}
+{"status":"ok","api":"healthy","db":"healthy","db_backend":"postgresql","redis":"healthy"}
 ```
 
-If PostgreSQL or Redis are not attached yet, `/health` may return `unknown` or `unhealthy` for those dependencies while still avoiding secret output.
+If PostgreSQL or Redis are not attached yet, `/health` must say so. Emergency SQLite in Railway returns `status=degraded`, `db=degraded`, and `db_backend=sqlite_fallback`. Do not treat a production bot as durable until `db_backend=postgresql` and `redis=healthy`.
 
 ## Bot Worker Service
 
@@ -101,8 +101,7 @@ Do not expose an HTTP domain for the worker unless a future webhook mode is adde
 
 ## Migration Strategy
 
-Migrations run at API and bot startup after database variables are present. A manual migration command
-is still safe when needed:
+Migrations run at API startup after database variables are present. The bot worker should not own migrations. A manual migration command is still safe when needed:
 
 ```bash
 alembic upgrade head
@@ -126,6 +125,7 @@ After deploy, run the checklist in `docs/production_smoke_test.md`.
 
 ## Current Blockers
 
-- Public API `/health` must return healthy after the final networking/start-command deploy.
+- Public API `/health` must return `db_backend=postgresql` and `redis=healthy` for production-ready persistence.
+- If Railway resource limits block PostgreSQL/Redis, follow `docs/postgres_recovery_plan.md`.
 - Telegram production `/start` should be smoke-tested after the Railway bot worker is confirmed active.
 - Telegram groups/channels and notification target registration are still manual/future production setup items.

@@ -16,9 +16,12 @@ from app.models.event_log import EventLog
 from app.models.help import UISelfTestRun
 from app.models.intelligence import IntelligenceRun
 from app.models.proxy import ProxyHealthCheckResult
+from app.models.permissions import Role
 from app.models.reporting import NotificationTarget
+from app.models.user import User
 from app.services.help_brain import help_questions_today, notification_pilot_status, proxy_pilot_status
 from app.services.heartbeats import list_heartbeats, system_status_summary
+from app.services.persistence import storage_status
 
 REQUIRED_NOTIFICATION_PURPOSES: tuple[tuple[str, str], ...] = (
     ("owner", "HQ"),
@@ -95,9 +98,11 @@ def _latest(session: Session, model, *order_columns):
 
 def production_observability_summary(session: Session) -> dict[str, object]:
     revision = alembic_revision_status(session)
+    storage = storage_status()
     status = system_status_summary(session)
     heartbeats = {heartbeat.service_name: heartbeat for heartbeat in list_heartbeats(session)}
     bot_heartbeat = heartbeats.get("bot")
+    redis_heartbeat = heartbeats.get("redis")
     bot_metadata = bot_heartbeat.metadata_json if bot_heartbeat else {}
     latest_audit = _latest(session, AuditLog, desc(AuditLog.created_at), desc(AuditLog.id))
     latest_event = _latest(session, EventLog, desc(EventLog.created_at), desc(EventLog.id))
@@ -125,6 +130,25 @@ def production_observability_summary(session: Session) -> dict[str, object]:
     notification_pilot = notification_pilot_status(session)
     proxy_pilot = proxy_pilot_status(session)
     latest_self_test = _latest(session, UISelfTestRun, desc(UISelfTestRun.created_at), desc(UISelfTestRun.id))
+    owner_count = session.scalar(select(func.count(User.id)).where(User.is_owner.is_(True))) or 0
+    role_count = session.scalar(select(func.count(Role.id))) or 0
+    audit_count = session.scalar(select(func.count(AuditLog.id))) or 0
+    event_count = session.scalar(select(func.count(EventLog.id))) or 0
+    latest_db_write = None
+    if latest_audit and latest_event:
+        latest_db_write = max(latest_audit.created_at, latest_event.created_at)
+    elif latest_audit:
+        latest_db_write = latest_audit.created_at
+    elif latest_event:
+        latest_db_write = latest_event.created_at
+    redis_connected = status["redis_status"] == "healthy"
+    polling_guard_active = bot_metadata.get("polling_guard") == "redis_lock" and bot_metadata.get("redis_lock_status") == "held"
+    if storage.risk == "ready" and redis_connected:
+        production_risk = "Production Ready"
+    elif storage.risk == "unsafe":
+        production_risk = "Unsafe"
+    else:
+        production_risk = "Degraded"
 
     return {
         "app_display_name": settings.app_display_name,
@@ -139,6 +163,22 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         "redis_status": status["redis_status"],
         "railway_status": status["railway_deployment_status"],
         "railway_note": "Railway logs must be viewed in Railway dashboard.",
+        "storage_backend": storage.display_backend,
+        "storage_backend_key": storage.backend,
+        "storage_driver": storage.scheme,
+        "storage_durable": storage.durable,
+        "storage_risk": production_risk,
+        "storage_warning": storage.warning or "None",
+        "sqlite_fallback_allowed": storage.sqlite_fallback_allowed,
+        "sqlite_file_location": storage.file_location,
+        "last_db_write_at": latest_db_write,
+        "owner_count": owner_count,
+        "role_count": role_count,
+        "audit_count": audit_count,
+        "event_count": event_count,
+        "redis_connected": redis_connected,
+        "polling_guard_active": polling_guard_active,
+        "last_redis_ping_at": redis_heartbeat.last_seen_at if redis_heartbeat else None,
         "alembic_current": revision.current,
         "alembic_expected": revision.expected_head,
         "alembic_status": revision.status,

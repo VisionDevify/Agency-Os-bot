@@ -1768,6 +1768,7 @@ def production_observability_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="Refresh", callback_data=callback_for("production_observability"))],
+            [InlineKeyboardButton(text="Run Integrity Check", callback_data=callback_for("integrity"))],
             [
                 InlineKeyboardButton(text="Bot Status", callback_data=callback_for("bot_status")),
                 InlineKeyboardButton(text="Notification Group Setup", callback_data=callback_for("notification_group_setup")),

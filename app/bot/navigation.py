@@ -1031,7 +1031,7 @@ def screen_for_page(
             )
         return render_main_menu(session=session, user=user)
 
-    if normalized in {"production_observability", "ui_self_test", "ui_self_test:run"} and not (
+    if normalized in {"production_observability", "integrity", "ui_self_test", "ui_self_test:run"} and not (
         principal.is_owner or (user is not None and user.is_owner)
     ):
         if session is not None:
@@ -1172,6 +1172,7 @@ def screen_for_page(
         or normalized == "bot_status"
         or normalized == "production_status"
         or normalized == "production_observability"
+        or normalized == "integrity"
         or normalized == "owner_advanced"
         or normalized == "today_priorities"
         or normalized == "setup_progress"

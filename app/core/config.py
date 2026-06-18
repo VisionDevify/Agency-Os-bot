@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     git_commit: str | None = Field(default=None, alias="GIT_COMMIT")
     deployed_at: str | None = Field(default=None, alias="DEPLOYED_AT")
     railway_deployment_id: str | None = Field(default=None, alias="RAILWAY_DEPLOYMENT_ID")
+    environment: str | None = Field(default=None, alias="APP_ENV")
+    allow_sqlite_fallback: bool = Field(default=False, alias="ALLOW_SQLITE_FALLBACK")
     proxy_real_health_checks_enabled: bool = Field(default=False, alias="PROXY_REAL_HEALTH_CHECKS_ENABLED")
     proxy_real_location_checks_enabled: bool = Field(default=False, alias="PROXY_REAL_LOCATION_CHECKS_ENABLED")
     proxy_health_timeout_seconds: int = Field(default=10, alias="PROXY_HEALTH_TIMEOUT_SECONDS")

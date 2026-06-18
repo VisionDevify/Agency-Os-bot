@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sqlalchemy import func, select
 
 from .formatting import *
+from app.services.persistence import storage_status
 
 def _owner_display_name(user: User) -> str:
     return user.display_name or user.username or "there"
@@ -128,6 +129,18 @@ def render_main_menu(session: Session | None = None, user: User | None = None) -
         return Screen(text="Fortuna OS\nSelect an area.", reply_markup=main_menu())
     if primary_role(user) in {"Owner", "Admin"}:
         report = build_activation_report(session)
+        storage = storage_status()
+        production_status = "\U0001f7e2 Production Healthy"
+        emergency_warning: list[str] = []
+        if storage.backend == "sqlite_fallback" and storage.is_production:
+            production_status = "\U0001f7e1 Production Degraded"
+            emergency_warning = [
+                "",
+                "Storage warning:",
+                "Fortuna is running in emergency storage mode. Data may not persist.",
+            ]
+        elif storage.risk in {"degraded", "unsafe"}:
+            production_status = "\U0001f7e1 Production Degraded"
         progress = _setup_progress(session, report)
         missing = progress["missing"] or ["Nothing urgent"]
         focus = progress["top_blocker"]["title"] if progress["top_blocker"] else "Nothing urgent here"
@@ -135,7 +148,8 @@ def render_main_menu(session: Session | None = None, user: User | None = None) -
             f"\U0001f319 {_owner_greeting(user).title()}, {_owner_display_name(user)}",
             "",
             "Fortuna Status:",
-            "\U0001f7e2 Production Healthy",
+            production_status,
+            *emergency_warning,
             "",
             "Agency Setup:",
             f"{progress['complete_count']}/{progress['total']} Complete",

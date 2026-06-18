@@ -1,4 +1,5 @@
 from .formatting import *
+from app.services.integrity import run_integrity_check
 from app.services.observability import production_observability_summary
 from app.services.help_brain import (
     latest_ui_self_test_run,
@@ -235,11 +236,26 @@ def render_production_observability_page(session: Session, user: User | None = N
         f"Railway Deployment: {summary['railway_deployment_id']}",
         f"Environment: {summary['environment']}",
         "",
+        "Storage:",
+        f"Backend: {summary['storage_backend']}",
+        f"Driver: {summary['storage_driver']}",
+        f"Durable: {_yes_no(summary['storage_durable']) if summary['storage_durable'] is not None else 'unknown'}",
+        f"Risk: {summary['storage_risk']}",
+        f"Warning: {summary['storage_warning']}",
+        f"SQLite Fallback Allowed: {_yes_no(summary['sqlite_fallback_allowed'])}",
+        f"SQLite Location: {summary['sqlite_file_location']}",
+        f"Last DB Write: {_observability_time(summary['last_db_write_at'], user)}",
+        f"Owners: {summary['owner_count']} | Roles: {summary['role_count']}",
+        f"Audit Rows: {summary['audit_count']} | Event Rows: {summary['event_count']}",
+        "",
         "Services:",
         f"API: {summary['api_status']}",
         f"Bot Worker: {summary['bot_status']}",
-        f"Postgres: {summary['postgres_status']}",
+        f"DB Heartbeat: {summary['postgres_status']}",
         f"Redis: {summary['redis_status']}",
+        f"Redis Connected: {_yes_no(summary['redis_connected'])}",
+        f"Polling Guard Active: {_yes_no(summary['polling_guard_active'])}",
+        f"Last Redis Ping: {_observability_time(summary['last_redis_ping_at'], user)}",
         f"Railway Service Status: {summary['railway_status']}",
         "",
         "Database Revision:",
@@ -281,6 +297,36 @@ def render_production_observability_page(session: Session, user: User | None = N
         "Logs:",
         summary["railway_note"],
     ]
+    return Screen(text="\n".join(lines), reply_markup=production_observability_menu())
+
+def render_integrity_page(session: Session, user: User | None = None) -> Screen:
+    result = run_integrity_check(session, actor=user)
+    marker = "PASS" if result["overall"] == "pass" else "WARNING" if result["overall"] == "warning" else "FAIL"
+    lines = [
+        "Production Integrity Check",
+        "",
+        f"Overall: {marker}",
+        f"Storage: {result['storage_display_backend']}",
+        f"Durable: {_yes_no(result['storage_durable']) if result['storage_durable'] is not None else 'unknown'}",
+    ]
+    if result.get("storage_warning"):
+        lines.append(f"Warning: {result['storage_warning']}")
+    lines.extend(
+        [
+            "",
+            "Checks:",
+        ]
+    )
+    for check in result["checks"]:
+        status = "PASS" if check.status == "pass" else "WARN" if check.status == "warning" else "FAIL"
+        lines.append(f"- {status}: {check.name}")
+        lines.append(f"  {check.detail}")
+    lines.extend(
+        [
+            "",
+            "No secrets, tokens, proxy passwords, or raw connection strings are shown here.",
+        ]
+    )
     return Screen(text="\n".join(lines), reply_markup=production_observability_menu())
 
 def render_availability_page(session: Session, user: User) -> Screen:

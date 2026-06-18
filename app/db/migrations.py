@@ -5,6 +5,7 @@ from alembic.config import Config
 
 from app.core.config import settings
 from app.db.session import engine
+from app.services.persistence import enforce_sqlite_fallback_policy, storage_status
 
 
 def _alembic_ini_path() -> Path:
@@ -19,7 +20,9 @@ def _alembic_ini_path() -> Path:
 
 
 def run_migrations() -> None:
-    if settings.database_url.startswith("sqlite") and engine is not None:
+    current_storage = storage_status()
+    enforce_sqlite_fallback_policy(current_storage)
+    if current_storage.backend == "sqlite_fallback" and engine is not None:
         from app.db.base import Base
         import app.models  # noqa: F401
 

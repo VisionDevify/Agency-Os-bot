@@ -42,6 +42,8 @@ pytest
 - `APP_SECRET_KEY`: application signing secret.
 - `ENCRYPTION_KEY`: application encryption secret for future sensitive payloads.
 - `OWNER_TELEGRAM_ID`: Telegram numeric ID allowed to perform owner-only setup.
+- `APP_ENV`: set to `production` in production.
+- `ALLOW_SQLITE_FALLBACK`: keep `false` in production except explicit emergency mode.
 
 ## Security Notes
 
@@ -82,10 +84,10 @@ pytest
 
 Railway production activation has been started for Fortuna OS after owner approval.
 
-Current Railway services:
+Expected Railway services:
 
 - API service from this repo using `railway.json`.
-- Bot worker service from this repo with start command `python -m app.bot.runner`.
+- Bot worker service from this repo, or combined API+bot emergency service when explicitly configured.
 - PostgreSQL.
 - Redis.
 
@@ -113,7 +115,15 @@ Health check:
 GET /health
 ```
 
-The health endpoint returns safe status labels for API, database, and Redis and writes heartbeat records. It never returns secret values.
+The health endpoint returns safe status labels for API, database backend type, database durability, and Redis. It never returns secret values. Production is only truly ready when `/health` shows `db_backend=postgresql`, `db=healthy`, and `redis=healthy`. If emergency SQLite is used in Railway, `/health` returns `status=degraded` and `db_backend=sqlite_fallback`.
+
+Owner-only integrity check:
+
+```bash
+/integrity
+```
+
+This Telegram command checks backend type, Alembic revision, owner/role presence, audit/event writes, key tables, Redis, and duplicate polling guard status without showing secrets.
 
 See `docs/railway_deployment.md` for the full production checklist and blockers.
 
@@ -132,6 +142,8 @@ Production smoke testing checklist:
 - `docs/learning_verification.md`
 - `docs/production_verification.md`
 - `docs/production_observability.md`
+- `docs/production_persistence_report.md`
+- `docs/postgres_recovery_plan.md`
 - `docs/telegram_architecture.md`
 - `docs/proxy_vault_user_guide.md`
 - `docs/help_brain.md`

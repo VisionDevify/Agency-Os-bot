@@ -602,6 +602,8 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_bot_status_page(session, user)
     if page == "production_observability" and session is not None:
         return render_production_observability_page(session, user)
+    if page == "integrity" and session is not None:
+        return render_integrity_page(session, user)
     if page == "availability" and session is not None and user is not None:
         return render_availability_page(session, user)
     if page == "availability:team" and session is not None:
