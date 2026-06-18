@@ -3,6 +3,8 @@ services:
     build: .
     env_file:
       - .env
+    environment:
+      FORTUNA_START_BOT_WITH_API: "false"
     depends_on:
       - db
       - redis

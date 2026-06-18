@@ -16,8 +16,18 @@ def test_runtime_starts_bot_on_railway_when_required_values_exist() -> None:
     assert should_start_bot(env) is True
 
 
-def test_runtime_does_not_start_bot_locally_by_default() -> None:
+def test_runtime_starts_bot_when_required_values_exist_without_railway_markers() -> None:
     env = {"TELEGRAM_BOT_TOKEN": "masked", "REDIS_URL": "redis://example"}
+
+    assert should_start_bot(env) is True
+
+
+def test_runtime_bot_start_can_be_disabled_for_local_api_container() -> None:
+    env = {
+        "TELEGRAM_BOT_TOKEN": "masked",
+        "REDIS_URL": "redis://example",
+        "FORTUNA_START_BOT_WITH_API": "false",
+    }
 
     assert should_start_bot(env) is False
 
