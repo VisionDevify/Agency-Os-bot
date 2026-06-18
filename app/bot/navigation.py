@@ -317,8 +317,10 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         or page.startswith("notification_target:")
     ):
         return ("manage_reports", "manage_roles")
-    if page.startswith("ui_self_test"):
+    if page.startswith("ui_self_test") or page.startswith("button_health") or page == "debug_last_error":
         return ("manage_roles",)
+    if page.startswith("callback_error:report"):
+        return None
     if page in {"bot_status", "production_status"}:
         return ("view_dashboard", "manage_reports", "manage_roles")
     permission = PAGE_PERMISSIONS.get(page)
@@ -334,6 +336,16 @@ def _perform_admin_action(
     chat_title: str | None = None,
 ) -> str | None:
     parts = page.split(":")
+    if page.startswith("callback_error:report"):
+        audit_action(
+            session,
+            actor=actor,
+            action="callback.problem_reported",
+            resource_type="telegram_callback",
+            resource_id=":".join(parts[2:]) if len(parts) >= 3 else None,
+            details={"source": "fallback_screen"},
+        )
+        return page
     if page == "setup:wizard:start":
         start_setup_wizard(session, actor=actor)
         return "setup:wizard"
@@ -1057,7 +1069,16 @@ def screen_for_page(
             )
         return render_main_menu(session=session, user=user)
 
-    if normalized in {"production_observability", "integrity", "bot_instance_status", "ui_self_test", "ui_self_test:run"} and not (
+    if normalized in {
+        "production_observability",
+        "integrity",
+        "bot_instance_status",
+        "ui_self_test",
+        "ui_self_test:run",
+        "button_health",
+        "button_health:run",
+        "debug_last_error",
+    } and not (
         principal.is_owner or (user is not None and user.is_owner)
     ):
         if session is not None:
@@ -1207,6 +1228,9 @@ def screen_for_page(
         or normalized == "start_here"
         or normalized == "first_workspace"
         or normalized.startswith("ui_self_test")
+        or normalized.startswith("button_health")
+        or normalized == "debug_last_error"
+        or normalized.startswith("callback_error:report")
         or normalized == "owner_daily_checklist"
         or normalized == "team_onboarding_activation"
         or normalized.startswith("fortuna_action_log")

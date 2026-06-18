@@ -26,6 +26,8 @@ from app.bot.screens import (
     render_proxy_detail_page,
     render_proxy_import_success_page,
     render_botstatus_page,
+    render_callback_error_page,
+    render_debug_last_error_page,
     render_integrity_page,
     render_ui_self_test_page,
 )
@@ -96,6 +98,7 @@ from app.services.notifications import (
     mark_delivery_sent,
     mark_delivery_skipped,
 )
+from app.services.callbacks import log_callback_failure
 from app.services.team_operations import BotPollingGuard, update_user_localization
 
 logger = logging.getLogger(__name__)
@@ -390,6 +393,50 @@ async def _send_pending_routing_smoke_tests(bot: Bot, session, actor: User) -> N
             logger.warning("Unable to send routing smoke test to configured testing target")
 
 
+async def _edit_or_send_callback_screen(callback: CallbackQuery, screen) -> None:
+    if callback.message is None:
+        return
+    try:
+        await callback.message.edit_text(screen.text, reply_markup=screen.reply_markup)
+    except Exception:
+        logger.warning("Unable to edit callback message; sending fallback screen", exc_info=True)
+        await callback.message.answer(screen.text, reply_markup=screen.reply_markup)
+
+
+async def _handle_callback_failure(
+    callback: CallbackQuery,
+    session,
+    *,
+    user: User | None,
+    page: str,
+    exc: BaseException,
+) -> None:
+    logger.error("Fortuna callback failed for page %s", page, exc_info=(type(exc), exc, exc.__traceback__))
+    error_id: int | None = None
+    actor = user
+    try:
+        session.rollback()
+        if user is not None and user.id is not None:
+            actor = session.get(User, user.id)
+        error = log_callback_failure(
+            session,
+            actor=actor,
+            callback_data=callback.data,
+            page=page,
+            exc=exc,
+            affected_screen=page,
+        )
+        error_id = error.id
+        session.commit()
+    except Exception:
+        session.rollback()
+        logger.exception("Unable to persist callback failure log")
+    fallback = render_callback_error_page(page, error_id=error_id)
+    await _edit_or_send_callback_screen(callback, fallback)
+    with contextlib.suppress(Exception):
+        await callback.answer("Fortuna logged the problem.", show_alert=True)
+
+
 def _apply_onboarding_callback(session, user: User, page: str) -> str | None:
     parts = page.split(":")
     if len(parts) < 2 or parts[0] != "onboarding":
@@ -555,6 +602,39 @@ async def botstatus(message: Message) -> None:
             await message.answer("Bot status is owner-only.")
             return
         screen = render_botstatus_page(session, user, current_instance_id=CURRENT_BOT_INSTANCE_ID)
+        session.commit()
+    await message.answer(screen.text, reply_markup=screen.reply_markup)
+
+
+@dp.message(Command("debug_last_error"))
+async def debug_last_error(message: Message) -> None:
+    if message.from_user is None or SessionLocal is None:
+        await message.answer("Debug last error is owner-only.")
+        return
+
+    with SessionLocal() as session:
+        telegram_id = message.from_user.id
+        _record_bot_heartbeat(session, status="healthy", source="telegram_debug_last_error")
+        user = get_or_create_telegram_user(
+            session,
+            telegram_user_id=telegram_id,
+            display_name=_display_name_from_message_user(message.from_user),
+            username=_username_from_message_user(message.from_user),
+            owner_telegram_id=settings.owner_telegram_id,
+        )
+        if not user.is_owner:
+            audit_action(
+                session,
+                actor=user,
+                action="access.denied",
+                resource_type="callback_error_log",
+                status="denied",
+                details={"permission": "owner"},
+            )
+            session.commit()
+            await message.answer("Debug last error is owner-only.")
+            return
+        screen = render_debug_last_error_page(session, user)
         session.commit()
     await message.answer(screen.text, reply_markup=screen.reply_markup)
 
@@ -1166,72 +1246,73 @@ async def navigate(callback: CallbackQuery) -> None:
         return
 
     with SessionLocal() as session:
-        _record_bot_heartbeat(session, status="healthy", source="telegram_callback")
-        user = get_or_create_telegram_user(
-            session,
-            telegram_user_id=callback.from_user.id,
-            display_name=_display_name_from_message_user(callback.from_user),
-            username=_username_from_message_user(callback.from_user),
-            owner_telegram_id=settings.owner_telegram_id,
-        )
-        user.last_seen = datetime.now(UTC)
-        principal = _principal_from_user(user)
-        if user.status == USER_STATUS_DISABLED:
-            audit_action(
+        user: User | None = None
+        try:
+            _record_bot_heartbeat(session, status="healthy", source="telegram_callback")
+            user = get_or_create_telegram_user(
                 session,
-                actor=user,
-                action="access.denied",
-                resource_type="telegram_page",
-                resource_id=page,
-                status="denied",
-                details={"reason": "disabled", "telegram_id_masked": mask_telegram_id(user.telegram_id)},
+                telegram_user_id=callback.from_user.id,
+                display_name=_display_name_from_message_user(callback.from_user),
+                username=_username_from_message_user(callback.from_user),
+                owner_telegram_id=settings.owner_telegram_id,
             )
-            screen = render_disabled()
-            await callback.message.edit_text(screen.text, reply_markup=screen.reply_markup)
-            await callback.answer("Access disabled.", show_alert=True)
-            session.commit()
-            return
-        if user.status == USER_STATUS_DENIED:
-            audit_action(
-                session,
-                actor=user,
-                action="access.denied",
-                resource_type="telegram_page",
-                resource_id=page,
-                status="denied",
-                details={"reason": "denied", "telegram_id_masked": mask_telegram_id(user.telegram_id)},
-            )
-            screen = render_denied()
-            await callback.message.edit_text(screen.text, reply_markup=screen.reply_markup)
-            await callback.answer("Access denied.", show_alert=True)
-            session.commit()
-            return
-        if user.status == USER_STATUS_PENDING:
-            if page.startswith("onboarding"):
-                try:
-                    forced_step = _apply_onboarding_callback(session, user, page)
-                    screen = render_onboarding_page(session, user, step=forced_step)
-                    await callback.message.edit_text(screen.text, reply_markup=screen.reply_markup)
-                    await callback.answer()
-                except ValueError:
-                    await callback.answer("Unable to save onboarding preference.", show_alert=True)
+            user.last_seen = datetime.now(UTC)
+            principal = _principal_from_user(user)
+            if user.status == USER_STATUS_DISABLED:
+                audit_action(
+                    session,
+                    actor=user,
+                    action="access.denied",
+                    resource_type="telegram_page",
+                    resource_id=page,
+                    status="denied",
+                    details={"reason": "disabled", "telegram_id_masked": mask_telegram_id(user.telegram_id)},
+                )
+                screen = render_disabled()
+                await _edit_or_send_callback_screen(callback, screen)
+                await callback.answer("Access disabled.", show_alert=True)
                 session.commit()
                 return
-            audit_action(
-                session,
-                actor=user,
-                action="access.denied",
-                resource_type="telegram_page",
-                resource_id=page,
-                status="denied",
-                details={"reason": "pending", "telegram_id_masked": mask_telegram_id(user.telegram_id)},
-            )
-            screen = render_access_pending()
-            await callback.message.edit_text(screen.text, reply_markup=screen.reply_markup)
-            await callback.answer("Access pending.", show_alert=True)
-            session.commit()
-            return
-        try:
+            if user.status == USER_STATUS_DENIED:
+                audit_action(
+                    session,
+                    actor=user,
+                    action="access.denied",
+                    resource_type="telegram_page",
+                    resource_id=page,
+                    status="denied",
+                    details={"reason": "denied", "telegram_id_masked": mask_telegram_id(user.telegram_id)},
+                )
+                screen = render_denied()
+                await _edit_or_send_callback_screen(callback, screen)
+                await callback.answer("Access denied.", show_alert=True)
+                session.commit()
+                return
+            if user.status == USER_STATUS_PENDING:
+                if page.startswith("onboarding"):
+                    try:
+                        forced_step = _apply_onboarding_callback(session, user, page)
+                        screen = render_onboarding_page(session, user, step=forced_step)
+                        await _edit_or_send_callback_screen(callback, screen)
+                        await callback.answer()
+                    except ValueError:
+                        await callback.answer("Unable to save onboarding preference.", show_alert=True)
+                    session.commit()
+                    return
+                audit_action(
+                    session,
+                    actor=user,
+                    action="access.denied",
+                    resource_type="telegram_page",
+                    resource_id=page,
+                    status="denied",
+                    details={"reason": "pending", "telegram_id_masked": mask_telegram_id(user.telegram_id)},
+                )
+                screen = render_access_pending()
+                await _edit_or_send_callback_screen(callback, screen)
+                await callback.answer("Access pending.", show_alert=True)
+                session.commit()
+                return
             chat_id = callback.message.chat.id
             chat_title = getattr(callback.message.chat, "title", None)
             screen = screen_for_page(
@@ -1243,7 +1324,7 @@ async def navigate(callback: CallbackQuery) -> None:
                 chat_title=chat_title,
             )
             _set_pending_callback_state(callback.from_user.id, page, session, user)
-            await callback.message.edit_text(screen.text, reply_markup=screen.reply_markup)
+            await _edit_or_send_callback_screen(callback, screen)
             target_id = _notification_target_id_for_send_test(page)
             if target_id is not None:
                 target = get_notification_target(session, target_id)
@@ -1278,6 +1359,8 @@ async def navigate(callback: CallbackQuery) -> None:
         except PermissionError:
             session.commit()
             await callback.answer("You do not have permission to open this page.", show_alert=True)
+        except Exception as exc:
+            await _handle_callback_failure(callback, session, user=user, page=page, exc=exc)
 
 
 async def main() -> None:

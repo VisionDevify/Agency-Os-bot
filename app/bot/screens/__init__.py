@@ -15,4 +15,5 @@ from .settings import *
 from .team import *
 from .coo import *
 from .help import *
+from .errors import *
 from .router import render_page

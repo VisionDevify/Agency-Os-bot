@@ -15,6 +15,7 @@ from .settings import *
 from .team import *
 from .coo import *
 from .help import *
+from .errors import *
 
 def render_page(page: str, session: Session | None = None, user: User | None = None) -> Screen:
     if page == "owner_advanced":
@@ -118,6 +119,12 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_ui_self_test_page(session, user)
     if page == "ui_self_test:run" and session is not None:
         return render_ui_self_test_page(session, user, run_now=True)
+    if page in {"button_health", "button_health:run"} and session is not None:
+        return render_button_health_report_page(session, user, run_now=page.endswith(":run"))
+    if page == "debug_last_error" and session is not None:
+        return render_debug_last_error_page(session, user)
+    if page.startswith("callback_error:report"):
+        return render_callback_problem_reported_page()
     if page == "chatter_workspace" and session is not None and user is not None:
         return render_chatter_workspace_page(session, user)
     if page == "my_models" and session is not None and user is not None:

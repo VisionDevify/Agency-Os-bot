@@ -1680,6 +1680,7 @@ def settings_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Production Status", callback_data=callback_for("production_status"))],
             [InlineKeyboardButton(text="Production Observability", callback_data=callback_for("production_observability"))],
             [InlineKeyboardButton(text="UI Self-Test", callback_data=callback_for("ui_self_test"))],
+            [InlineKeyboardButton(text="Button Health Report", callback_data=callback_for("button_health"))],
             [InlineKeyboardButton(text="My Availability", callback_data=callback_for("availability"))],
             [InlineKeyboardButton(text="Team Availability", callback_data=callback_for("availability:team"))],
             [InlineKeyboardButton(text="Notification Digest Mode", callback_data=callback_for("notification_digest"))],
@@ -1818,6 +1819,7 @@ def ui_self_test_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="Run UI Self-Test", callback_data=callback_for("ui_self_test:run"))],
+            [InlineKeyboardButton(text="Button Health Report", callback_data=callback_for("button_health"))],
             [InlineKeyboardButton(text="Production Observability", callback_data=callback_for("production_observability"))],
             *page_controls(back_to="settings"),
         ]

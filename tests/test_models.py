@@ -4,6 +4,7 @@ def test_model_tables_are_registered() -> None:
         Account,
         AccountabilitySnapshot,
         AuditLog,
+        CallbackErrorLog,
         Automation,
         AutomationApproval,
         AutomationRule,
@@ -59,6 +60,7 @@ def test_model_tables_are_registered() -> None:
         "accountability_snapshots",
         "activation_blocker_decisions",
         "audit_logs",
+        "callback_error_logs",
         "automations",
         "automation_approvals",
         "automation_rules",
@@ -112,6 +114,7 @@ def test_model_tables_are_registered() -> None:
     assert "status" in AuditLog.__table__.columns
     assert EventLog.__tablename__ == "event_logs"
     assert FrictionItem.__tablename__ == "friction_items"
+    assert CallbackErrorLog.__tablename__ == "callback_error_logs"
     assert DailyBriefing.__tablename__ == "daily_briefings"
     assert AccountabilitySnapshot.__tablename__ == "accountability_snapshots"
     assert ActivationBlockerDecision.__tablename__ == "activation_blocker_decisions"

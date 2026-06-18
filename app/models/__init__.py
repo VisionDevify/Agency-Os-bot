@@ -1,5 +1,6 @@
 from app.models.account import Account, AccountAuthSession, AccountVerificationCode
 from app.models.audit import AuditLog
+from app.models.callback_error import CallbackErrorLog
 from app.models.automation import (
     AutomationApproval,
     AutomationRule,
@@ -44,6 +45,7 @@ __all__ = [
     "ActivationBlockerDecision",
     "AgencyActivationState",
     "AuditLog",
+    "CallbackErrorLog",
     "Automation",
     "AutomationApproval",
     "AutomationRule",
