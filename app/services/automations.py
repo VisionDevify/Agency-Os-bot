@@ -590,7 +590,7 @@ def simulate_automation_rule(session: Session, rule: AutomationRule, *, actor: U
         if rule.risk_level in {"high", "critical"}:
             warnings.append("High-risk automation requires Owner approval before activation.")
         if rule_has_mutating_actions(rule):
-            warnings.append("This automation includes actions that can change Agency OS records.")
+            warnings.append("This automation includes actions that can change Fortuna OS records.")
         if any(not item["passed"] for item in condition_results):
             warnings.append("One or more checks would currently prevent execution.")
         run.status = "succeeded"
@@ -953,7 +953,7 @@ def execute_action(session: Session, action: dict[str, Any], *, actor: User | No
             session,
             actor=actor,
             title=action.get("title", "Automation-created task"),
-            description=action.get("description", "Created by Agency OS automation."),
+            description=action.get("description", "Created by Fortuna OS automation."),
             priority=action.get("priority", "normal"),
         )
         return {"task_id": task.id}
@@ -972,7 +972,7 @@ def execute_action(session: Session, action: dict[str, Any], *, actor: User | No
             session,
             actor=actor,
             title=action.get("title", "Automation-created incident"),
-            description=action.get("description", "Created by Agency OS automation."),
+            description=action.get("description", "Created by Fortuna OS automation."),
             severity=action.get("severity", "warning"),
             source_type="automation",
         )
@@ -993,7 +993,7 @@ def execute_action(session: Session, action: dict[str, Any], *, actor: User | No
             actor=actor,
             recommendation_type=action.get("recommendation_type", "automation_suggestion"),
             title=action.get("title", "Automation Recommendation"),
-            description=action.get("description", "Agency OS automation generated a recommendation."),
+            description=action.get("description", "Fortuna OS automation generated a recommendation."),
             severity=action.get("severity", "info"),
             entity_type=action.get("entity_type"),
             entity_id=action.get("entity_id"),

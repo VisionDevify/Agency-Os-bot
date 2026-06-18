@@ -1,6 +1,6 @@
 # Playbook Memory
 
-Playbooks are reusable operating memories for recurring Agency OS situations.
+Playbooks are reusable operating memories for recurring Fortuna OS situations.
 
 They describe:
 
@@ -10,7 +10,7 @@ They describe:
 - how to verify recovery.
 - how to roll back when rollback is possible.
 - what risk level applies.
-- how much confidence Agency OS currently has in the playbook.
+- how much confidence Fortuna OS currently has in the playbook.
 
 ## Seeded Playbooks
 

@@ -7,7 +7,7 @@ from app.db.migrations import run_migrations
 from app.db.session import SessionLocal
 from app.services.heartbeats import record_heartbeat
 
-app = FastAPI(title=settings.app_name)
+app = FastAPI(title=settings.app_display_name)
 app.include_router(router)
 
 

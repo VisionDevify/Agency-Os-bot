@@ -1,10 +1,10 @@
-# Notification Routing
+﻿# Notification Routing
 
 Sprint 9 introduces safe notification routing without spamming real groups or exposing Telegram chat IDs. Sprint 10 adds durable delivery-attempt records for actual send attempts. Sprint 11 adds availability-aware routing and Daily Digest delivery attempts. Sprint 12 adds critical intelligence signal routing through the same safe delivery-attempt path. Sprint 16 adds Notification Digest Mode for bundling low-priority updates. Sprint 17 adds opportunity and creator-watch routing keys. Sprint 18 adds digestable creator, own-post, assignment, high-priority opportunity, and result-recorded events.
 
 ## Goals
 
-- Route important Agency OS events to the right Telegram destinations.
+- Route important Fortuna OS events to the right Telegram destinations.
 - Keep raw chat IDs encrypted and hidden from normal UI.
 - Allow safe testing before real production delivery.
 - Audit and event-log every routing configuration change.
@@ -72,13 +72,13 @@ Settings -> Notification Targets supports:
 
 ## Manual Group Registration
 
-Agency OS notification groups/channels are not auto-created by the app. Create and register them manually:
+Fortuna OS notification groups/channels are not auto-created by the app. Create and register them manually:
 
-1. Create `Agency OS — HQ`.
-2. Create `Agency OS — Operations`.
-3. Create `Agency OS — Incidents`.
-4. Create `Agency OS — Automation Logs`.
-5. Create `Agency OS — Testing Sandbox`.
+1. Create `Fortuna OS - HQ`.
+2. Create `Fortuna OS - Operations`.
+3. Create `Fortuna OS - Incidents`.
+4. Create `Fortuna OS - Automation Logs`.
+5. Create `Fortuna OS - Testing Sandbox`.
 6. Add `@FortunaSolstice_Bot`.
 7. Open each group/channel.
 8. Use Settings -> Notification Targets -> Register Current Chat as Fortuna Target.
@@ -131,7 +131,7 @@ Signal routing must stay digest-friendly:
 ## Future Work
 
 - Add owner-approved routing activation per purpose.
-- Add group/channel setup verification once Agency OS Telegram groups are created.
+- Add group/channel setup verification once Fortuna OS Telegram groups are created.
 
 ## Automation Routing
 

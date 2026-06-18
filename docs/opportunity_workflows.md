@@ -2,7 +2,7 @@
 
 Sprint 18 turns opportunities into guided daily workflows.
 
-All platform actions remain manual and human-approved. Agency OS does not post, comment, like, follow, scrape, bypass security, or store platform passwords.
+All platform actions remain manual and human-approved. Fortuna OS does not post, comment, like, follow, scrape, bypass security, or store platform passwords.
 
 ## Creator Intake
 
@@ -36,7 +36,7 @@ Sources:
 - Own Post.
 - Manual.
 
-The guided flow captures platform, title, URL/reference, niche, priority, optional model/brand, optional chatter, and notes. When created, Agency OS generates human-only comment strategies and routes safe opportunity events to notification targets if configured.
+The guided flow captures platform, title, URL/reference, niche, priority, optional model/brand, optional chatter, and notes. When created, Fortuna OS generates human-only comment strategies and routes safe opportunity events to notification targets if configured.
 
 If no model exists yet, opportunity and own-post flows should point the owner to `Setup Agency -> Create Model/Brand` first. Opportunities work best after a model/brand, accounts, and team assignments exist.
 

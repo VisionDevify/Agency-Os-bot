@@ -4,11 +4,11 @@ Run this checklist only after the Railway project, services, and environment var
 
 ## Preconditions
 
-- Railway project: `Agency OS Bot`.
+- Railway project: `Fortuna OS Bot`.
 - Services: API, Bot Worker, PostgreSQL, Redis.
 - Required variables are present in Railway variable UI.
 - `alembic upgrade head` has completed successfully.
-- `@FortunaSolstice_Bot` is attached to approved Agency OS Telegram destinations only.
+- `@FortunaSolstice_Bot` is attached to approved Fortuna OS Telegram destinations only.
 
 ## Checklist
 

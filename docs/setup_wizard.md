@@ -72,7 +72,7 @@ Only Owner/Admin users with setup permissions can assign team members.
 
 Creator Watch starters help the team know who matters first.
 
-Starter opportunities are manual work items. Strategy suggestions are drafts for human review only. Agency OS does not post, comment, like, follow, scrape, or bypass platform security.
+Starter opportunities are manual work items. Strategy suggestions are drafts for human review only. Fortuna OS does not post, comment, like, follow, scrape, or bypass platform security.
 
 ## Demo Seed Mode
 

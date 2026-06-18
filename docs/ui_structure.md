@@ -1,6 +1,6 @@
 # UI Structure
 
-Agency OS should be understandable without knowing the database.
+Fortuna OS should be understandable without knowing the database.
 
 ## Simple Map
 
@@ -32,4 +32,4 @@ Agency
 - Back and Home/Main Menu should be available.
 - Technical internals stay hidden from non-admin roles.
 - Help Copilot should point users to exact paths, not vague concepts.
-- No screen should imply that Agency OS posts, comments, scrapes, or bypasses platform security.
+- No screen should imply that Fortuna OS posts, comments, scrapes, or bypasses platform security.

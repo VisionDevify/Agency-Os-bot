@@ -1,8 +1,8 @@
 # Agency Intelligence Brain V1
 
-Sprint 12 turns Agency OS from a command center into the first version of an operations brain.
+Sprint 12 turns Fortuna OS from a command center into the first version of an operations brain.
 
-This layer is deterministic. It does not call an LLM, scrape external platforms, automate posting, bypass security, or request platform credentials. It reads Agency OS records and writes safe intelligence records that operators can review.
+This layer is deterministic. It does not call an LLM, scrape external platforms, automate posting, bypass security, or request platform credentials. It reads Fortuna OS records and writes safe intelligence records that operators can review.
 
 ## Core Records
 
@@ -45,6 +45,12 @@ See `docs/learning_engine.md`, `docs/playbook_memory.md`, `docs/outcome_memory.m
 - No plaintext credentials, codes, tokens, proxy passwords, raw chat IDs, or session data in metadata.
 - Critical signal notifications use delivery attempts and safe summaries only.
 
+## Sprint 25 Verification
+
+The audit verified that the intelligence layer reads live persisted records and creates durable outputs. A full intelligence scan now has focused regression coverage that confirms live proxy failure events produce signals, patterns, trend snapshots, workload snapshots, recommendations, run records, and EventLog entries.
+
+The scan is deterministic and deduplicates open signals/patterns by type and entity so repeated runs update current problems instead of spamming operators.
+
 ## Future AI Hooks
 
 The deterministic layer creates clean data for a future AI Operations Brain:
@@ -59,7 +65,7 @@ Future AI should explain and prioritize. It should not execute risky actions wit
 
 ## Automation Suggestions
 
-Sprint 14 lets deterministic intelligence suggest internal Agency OS automations.
+Sprint 14 lets deterministic intelligence suggest internal Fortuna OS automations.
 
 Examples:
 

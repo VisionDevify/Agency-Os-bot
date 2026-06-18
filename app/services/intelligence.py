@@ -1208,7 +1208,7 @@ def generate_executive_intelligence_briefing(session: Session, *, actor: User | 
         ][:5],
         "recommended_actions": top_improvements[:5],
         "production_status": session.scalar(select(SystemHeartbeat.status).where(SystemHeartbeat.service_name == "api")) or "unknown",
-        "confidence_notes": "Deterministic V1 analysis from internal Agency OS events, audits, and persisted operational records.",
+        "confidence_notes": "Deterministic V1 analysis from internal Fortuna OS events, audits, and persisted operational records.",
         "learning_summary": memory["summary"],
         "top_recurring_problem": memory["top_recurring_problem"],
         "best_playbook": memory["best_playbook"].name if memory["best_playbook"] else None,

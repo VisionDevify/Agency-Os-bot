@@ -10,7 +10,7 @@ The simplified Chatter Home is the daily starting point for chatters.
 4. Pick the highest-priority assigned opportunity.
 5. Review suggested strategies.
 6. Perform any platform action manually and only when appropriate.
-7. Record the result in Agency OS.
+7. Record the result in Fortuna OS.
 8. Check assigned tasks and availability before ending the shift.
 
 ## My Opportunities And Workspace

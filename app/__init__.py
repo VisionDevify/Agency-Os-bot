@@ -1,1 +1,1 @@
-"""Agency OS Bot application."""
+"""Fortuna OS Bot application."""

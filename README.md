@@ -1,6 +1,6 @@
 # Fortuna OS Bot
 
-Secure foundation for the existing Telegram bot and GitHub repo. Fortuna OS is the user-facing command center brand; internal package names and historical docs may still use Agency OS where renaming would add migration risk.
+Secure foundation for the existing Telegram bot and GitHub repo. Fortuna OS is the user-facing command center brand; internal package names such as `agency-os-bot` remain stable where renaming would add migration risk.
 
 ## Stack
 
@@ -73,10 +73,11 @@ pytest
 - Team Activation and Opportunity Command Center: guided Creator Watch intake, guided Opportunity intake, Own Post Watch intake, opportunity assignment, result recording, suggested human-only comment strategies, chatter workspace, manager opportunity view, Help Copilot, activation QA, and opportunity notification routing keys.
 - Production Activation and Daily Autopilot: one-tap readiness blocker fix paths, owner daily checklist, persisted Daily Autopilot settings, team invite activation guidance, notification target registration guidance, proxy setup check, masked proxy session details, and "What Fortuna Did" autonomous action log.
 - Fortuna COO Layer: persistent priority engine, Today's Top 5 Actions, owner/admin/manager routing, Manager Queue, My Work queue, COO Briefing, Team Load Balancer, Readiness Score V2, Executive Mode, and professional Fortuna messages.
+- Full System Audit and Intelligence Verification: recursive safe metadata redaction, Fortuna branding cleanup, intelligence/learning data-flow tests, proxy UI safety tests, and audit documentation.
 
 ## Railway Deployment
 
-Railway production activation has been started for Agency OS after owner approval.
+Railway production activation has been started for Fortuna OS after owner approval.
 
 Current Railway services:
 
@@ -123,6 +124,11 @@ Production smoke testing checklist:
 - `docs/database_schema.md`
 - `docs/event_architecture.md`
 - `docs/coo_layer.md`
+- `docs/system_audit_report.md`
+- `docs/intelligence_verification.md`
+- `docs/learning_verification.md`
+- `docs/production_verification.md`
+- `docs/proxy_vault_user_guide.md`
 - `docs/railway_deployment.md`
 - `docs/notification_routing.md`
 - `docs/production_operations.md`

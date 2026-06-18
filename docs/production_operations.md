@@ -1,12 +1,13 @@
-# Production Operations
+﻿# Production Operations
 
-Sprint 9 prepared Agency OS for production activation while stopping before billing-impacting or destructive actions. Sprint 10 added delivery-attempt tracking. Owner approval was later granted for Railway production activation.
+Sprint 9 prepared Fortuna OS for production activation while stopping before billing-impacting or destructive actions. Sprint 10 added delivery-attempt tracking. Owner approval was later granted for Railway production activation.
 Sprint 11 adds a Redis-backed bot polling guard and operator-facing production status controls.
 Sprint 12 adds deterministic intelligence scans, executive intelligence briefings, workload intelligence, and manual opportunity intelligence.
+Sprint 25 adds verification docs and focused regression tests for health, bot ownership, safe metadata, intelligence, learning, and core Telegram callbacks.
 
 ## Current Production State
 
-- Railway project exists for Agency OS.
+- Railway project exists for Fortuna OS.
 - API service is created from `VisionDevify/Agency-Os-bot`.
 - Bot worker service is created from `VisionDevify/Agency-Os-bot`.
 - PostgreSQL is provisioned.
@@ -67,28 +68,28 @@ These values are database-backed through `system_heartbeats`, `event_logs`, and 
 - Run Alembic migrations after the production database is attached.
 - Verify `/health` before starting the bot worker.
 - Keep only one bot poller active. The production worker owns Telegram polling; local bot processes should stay stopped unless production polling is intentionally paused.
-- The bot runner uses a Redis lock to refuse duplicate polling when another Agency OS bot process appears active.
+- The bot runner uses a Redis lock to refuse duplicate polling when another Fortuna OS bot process appears active.
 
 ## Telegram Groups
 
-Recommended Agency OS destinations:
+Recommended Fortuna OS destinations:
 
-- Agency OS — HQ
-- Agency OS — Operations
-- Agency OS — Incidents
-- Agency OS — Automation Logs
-- Agency OS — Testing Sandbox
+- Fortuna OS - HQ
+- Fortuna OS - Operations
+- Fortuna OS - Incidents
+- Fortuna OS - Automation Logs
+- Fortuna OS - Testing Sandbox
 
-Create and configure these only inside the Agency OS scope. Add `@FortunaSolstice_Bot` after confirming group/channel ownership and admin permissions.
+Create and configure these only inside the Fortuna OS scope. Add `@FortunaSolstice_Bot` after confirming group/channel ownership and admin permissions.
 
 If Telegram Web requires manual group creation, use these steps:
 
-1. Create `Agency OS — HQ`.
-2. Create `Agency OS — Operations`.
-3. Create `Agency OS — Incidents`.
-4. Create `Agency OS — Automation Logs`.
-5. Create `Agency OS — Testing Sandbox`.
-6. Add `@FortunaSolstice_Bot` to each Agency OS group/channel.
+1. Create `Fortuna OS - HQ`.
+2. Create `Fortuna OS - Operations`.
+3. Create `Fortuna OS - Incidents`.
+4. Create `Fortuna OS - Automation Logs`.
+5. Create `Fortuna OS - Testing Sandbox`.
+6. Add `@FortunaSolstice_Bot` to each Fortuna OS group/channel.
 7. Open each group/channel in Telegram.
 8. Use Settings -> Notification Targets -> Add Current Chat As Target from inside that group/channel.
 9. Set the matching purpose:
@@ -152,7 +153,7 @@ High-risk automations, proxy repair mutations, and owner approvals remain gated.
 
 ## Intelligence Operations
 
-The Intelligence Command Center is safe to run in production because Sprint 12 scans are deterministic reads plus safe writes to Agency OS tables. They do not scrape external platforms, post content, rotate proxies, repair infrastructure, or mutate risky production resources without an explicit operator workflow.
+The Intelligence Command Center is safe to run in production because Sprint 12 scans are deterministic reads plus safe writes to Fortuna OS tables. They do not scrape external platforms, post content, rotate proxies, repair infrastructure, or mutate risky production resources without an explicit operator workflow.
 
 Recommended daily flow:
 

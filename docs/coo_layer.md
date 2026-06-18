@@ -118,3 +118,14 @@ The COO layer does not:
 - auto-reassign humans without approval
 
 All metadata must remain safe and sanitized.
+
+## Sprint 25 Verification
+
+The audit verified COO behavior with persisted data:
+
+- PriorityItem generation ranks real setup blockers.
+- Today Top 5 reflects current readiness blockers.
+- Manager Queue separates assignment, approval, attention, escalation, due-today, and overdue work.
+- Readiness V2 explains why readiness is low and estimates score gains.
+- COO Briefing reads live priorities, blockers, load-balancing hints, and recent autonomous actions.
+- COO screens render without raw JSON, code output, or secret fields.

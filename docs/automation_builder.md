@@ -66,7 +66,7 @@ All conditions are deterministic, logged safely, and testable.
 
 ## Action Registry V1
 
-Allowed actions are internal Agency OS actions:
+Allowed actions are internal Fortuna OS actions:
 
 - Infrastructure: simulate proxy repair, rotate proxy session, test proxy health, create proxy incident, escalate proxy incident.
 - Operations: create task, assign/escalate task, create incident, assign/escalate incident.
@@ -123,3 +123,14 @@ Sprint 16 scheduler rules:
 - skipped runs are visible in automation health.
 
 Scheduled execution should never become a shortcut around approval gates.
+
+## Sprint 25 Verification
+
+The audit rechecked automation safety expectations:
+
+- built-in templates seed as regular rules.
+- simulations are non-mutating.
+- high-risk actions remain owner-gated.
+- run and step records persist outcomes.
+- failed automation paths feed learning/recommendations where configured.
+- automation metadata must go through safe redaction before audit/event/learning persistence.

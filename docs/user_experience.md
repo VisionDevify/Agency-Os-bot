@@ -1,6 +1,6 @@
 # User Experience
 
-Agency OS should feel like a calm company command center, not a technical admin panel.
+Fortuna OS should feel like a calm company command center, not a technical admin panel.
 
 ## Human-Friendly Labels
 

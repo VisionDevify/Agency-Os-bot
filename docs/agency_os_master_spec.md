@@ -31,10 +31,11 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Sprint 22: Fortuna OS autonomous operations layer with durable operations workflows, workflow actions, follow-ups, account/model/opportunity/creator autopilots, readiness autopilot, daily autonomous cycle records, owner attention routing, multiple-owner management, proxy navigation repair, and user-facing Fortuna OS branding.
 - Sprint 23: Production activation and Daily Autopilot scheduling with one-tap readiness blocker fix paths, persisted skip/not-needed decisions, smoother model completion routing, proxy setup check, Owner Daily Checklist, team invite activation guidance, notification target registration guidance, and What Fortuna Did action log.
 - Sprint 24: Fortuna COO layer with persistent priority items, Today's Top 5 Actions, owner-vs-manager routing, Manager Queue, My Work queue, COO Briefing, Team Load Balancer, Readiness Score V2, Executive Mode, team activation recommendations, and professional Fortuna messages.
+- Sprint 25: Full system audit and intelligence verification with recursive metadata redaction, Fortuna branding cleanup, data-flow verification from DB records through audit/event/learning/memory/confidence, proxy screen safety checks, and production/Telegram verification documentation.
 
 ## Roadmap
 
-- Sprint 25: team data onboarding, notification group registration, and operator-approved production routines against real agency records.
+- Sprint 26: team data onboarding, notification group registration, and operator-approved production routines against real agency records.
 - Future: AI Operations Brain for natural-language summaries, anomaly explanations, and operator-approved next actions.
 
 ## Core Modules
@@ -69,6 +70,7 @@ The long-term system should coordinate users, roles, models and brands, social o
 - Autonomous Operations: durable workflows, actions, routing decisions, and follow-ups created when accounts, models, creators, opportunities, readiness scans, or the daily cycle need a next step.
 - Daily Autopilot: owner-facing daily cycle scheduler that stores timezone, next run, last result, included safe actions, and can run readiness, recommendation, intelligence, follow-up digest, and automation health checks on demand.
 - Fortuna COO Layer: ranks blockers, overdue work, critical incidents, unassigned opportunities, failed automations, and notification failures into persistent `priority_items`; generates Today Top 5; routes work to Owner/Admin/Manager; and presents manager/chatter queues without taking risky actions automatically.
+- System Verification: audit reports and deterministic tests proving intelligence, learning, proxy safety, branding, metadata redaction, and core Telegram callbacks remain connected to live data.
 - System Status: service heartbeats for API, bot, db, redis, and Railway deployment state.
 - Settings: administrative utilities including audit log access, Bot Status, and Notification Targets.
 
@@ -401,7 +403,7 @@ Proxy health score is currently deterministic and based on:
 - rotation success/failure rate
 - disabled state
 
-Self-Healing V1 follows the Agency OS safety pattern:
+Self-Healing V1 follows the Fortuna OS safety pattern:
 
 - Preview
 - Simulate
@@ -604,7 +606,7 @@ Built-in templates:
 
 Execution records are split into `automation_runs` and `automation_run_steps` so operators can see what ran, what succeeded, what failed, which entities were affected, and whether rollback is available. Rollback V1 documents supported undo paths for proxy session rollback, task assignment rollback, incident assignment rollback, recommendation status rollback, and notification target disable rollback.
 
-Agency OS still does not automate IG/X/OnlyFans posting, commenting, liking, following, scraping, credential handling, or security bypassing. Automation actions are limited to internal infrastructure, operations, reports, intelligence, notifications, and system records.
+Fortuna OS still does not automate IG/X/OnlyFans posting, commenting, liking, following, scraping, credential handling, or security bypassing. Automation actions are limited to internal infrastructure, operations, reports, intelligence, notifications, and system records.
 
 ## Setup Wizard And UI Clarity
 
@@ -651,4 +653,4 @@ Activation sequence:
 - Add initial creators and opportunities only after the owner provides/approves the data.
 - Use Owner-only Demo Seed Mode when the owner wants to test workflows without mixing sample data into real operations.
 
-Team rollout uses `docs/team_invite_packet.md`. Notification routing uses manual group creation and Settings -> Notification Targets -> Add Current Chat As Target from the correct Agency OS group/channel.
+Team rollout uses `docs/team_invite_packet.md`. Notification routing uses manual group creation and Settings -> Notification Targets -> Add Current Chat As Target from the correct Fortuna OS group/channel.

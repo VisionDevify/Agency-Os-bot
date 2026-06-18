@@ -102,12 +102,12 @@ async def _acquire_polling_guard(
     if guard.acquire():
         return True
 
-    logger.warning("Another Agency OS bot polling instance appears active; waiting for lock to clear")
+    logger.warning("Another Fortuna OS bot polling instance appears active; waiting for lock to clear")
     deadline = time.monotonic() + max_wait_seconds
     while time.monotonic() < deadline:
         await asyncio.sleep(retry_seconds)
         if guard.acquire():
-            logger.info("Acquired Agency OS bot polling lock after waiting")
+            logger.info("Acquired Fortuna OS bot polling lock after waiting")
             return True
     return False
 
@@ -1040,7 +1040,7 @@ async def main() -> None:
         raise RuntimeError("TELEGRAM_BOT_TOKEN is not configured")
     guard = BotPollingGuard(settings.redis_url)
     if not await _acquire_polling_guard(guard):
-        raise RuntimeError("Another Agency OS bot polling instance appears active after waiting")
+        raise RuntimeError("Another Fortuna OS bot polling instance appears active after waiting")
     refresh_task: asyncio.Task | None = None
 
     main_task = asyncio.current_task()
@@ -1049,7 +1049,7 @@ async def main() -> None:
         while True:
             await asyncio.sleep(60)
             if not guard.refresh():
-                logger.error("Lost Agency OS bot polling lock; stopping process to avoid duplicate polling")
+                logger.error("Lost Fortuna OS bot polling lock; stopping process to avoid duplicate polling")
                 if main_task is not None:
                     main_task.cancel()
                 return

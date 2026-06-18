@@ -1,8 +1,8 @@
 # Learning Engine
 
-Sprint 15 adds the memory layer for Agency OS.
+Sprint 15 adds the memory layer for Fortuna OS.
 
-The learning engine records meaningful outcomes from internal Agency OS workflows and turns them into safe operational memory. It is deterministic and does not scrape, post, comment, like, follow, request platform credentials, bypass security, or modify code.
+The learning engine records meaningful outcomes from internal Fortuna OS workflows and turns them into safe operational memory. It is deterministic and does not scrape, post, comment, like, follow, request platform credentials, bypass security, or modify code.
 
 ## Core Records
 
@@ -43,3 +43,11 @@ The learning engine records meaningful outcomes from internal Agency OS workflow
 - High-risk playbooks are not auto-run.
 - Learning may recommend action, but operators still approve execution through existing permission and automation gates.
 - The system does not self-modify code.
+
+## Sprint 25 Verification
+
+The audit verified the core learning chain:
+
+User action -> DB record -> AuditLog -> EventLog -> LearningEvent -> OutcomeMemory -> ConfidenceRecord when operator feedback changes confidence.
+
+Regression tests cover task completion, recommendation feedback, recursive metadata redaction, outcome memory aggregation, and confidence record creation.

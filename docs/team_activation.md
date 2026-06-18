@@ -1,6 +1,6 @@
 # Team Activation
 
-Team Activation measures whether a team member is ready to use Agency OS day to day.
+Team Activation measures whether a team member is ready to use Fortuna OS day to day.
 
 It is a friendly rollout signal, not a punishment score.
 

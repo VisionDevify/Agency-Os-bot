@@ -30,7 +30,7 @@ Sprint 16 separately adds Notification Digest Mode under Settings. Daily Digest 
 
 ## Delivery Semantics
 
-`digest.sent` means Agency OS created durable delivery-attempt records for active targets matching the requested purpose. It does not mean Telegram accepted the message. Actual Telegram delivery is represented by:
+`digest.sent` means Fortuna OS created durable delivery-attempt records for active targets matching the requested purpose. It does not mean Telegram accepted the message. Actual Telegram delivery is represented by:
 
 - `notification.delivery_succeeded`
 - `notification.delivery_failed`

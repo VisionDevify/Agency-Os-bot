@@ -6,7 +6,7 @@ Sprint 11 adds a lightweight onboarding path for pending Telegram users.
 
 When an unknown Telegram user sends `/start`:
 
-1. Agency OS creates a pending user record.
+1. Fortuna OS creates a pending user record.
 2. The user selects language.
 3. The user selects country.
 4. The user confirms timezone.

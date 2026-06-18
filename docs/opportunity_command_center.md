@@ -61,7 +61,7 @@ Strategies are deterministic prompts for human review only:
 - educational.
 - supportive.
 
-They include a sample comment draft, why it might work, suggested use case, curiosity score, engagement score, and risk score so staff can decide carefully. Agency OS does not post them automatically.
+They include a sample comment draft, why it might work, suggested use case, curiosity score, engagement score, and risk score so staff can decide carefully. Fortuna OS does not post them automatically.
 
 ## Results
 

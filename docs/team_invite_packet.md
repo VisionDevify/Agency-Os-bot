@@ -1,11 +1,11 @@
 # Team Invite Packet
 
-Use these messages when inviting real teammates into Agency OS. Do not include internal admin notes, secrets, Railway links, database details, proxy credentials, platform passwords, or verification codes.
+Use these messages when inviting real teammates into Fortuna OS. Do not include internal admin notes, secrets, Railway links, database details, proxy credentials, platform passwords, or verification codes.
 
 ## Chatter Invite
 
 ```text
-Agency OS invite for Chatter
+Fortuna OS invite for Chatter
 1. Open @FortunaSolstice_Bot in Telegram.
 2. Press /start.
 3. Choose your language, country, timezone, and 12h/24h time format.
@@ -24,7 +24,7 @@ What they should do first after approval:
 ## VA Invite
 
 ```text
-Agency OS invite for VA
+Fortuna OS invite for VA
 1. Open @FortunaSolstice_Bot in Telegram.
 2. Press /start.
 3. Choose your language, country, timezone, and 12h/24h time format.
@@ -43,7 +43,7 @@ What they should do first after approval:
 ## Manager Invite
 
 ```text
-Agency OS invite for Manager
+Fortuna OS invite for Manager
 1. Open @FortunaSolstice_Bot in Telegram.
 2. Press /start.
 3. Choose your language, country, timezone, and 12h/24h time format.

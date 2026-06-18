@@ -8,6 +8,7 @@ from app.models.event_log import EventLog
 from app.models.reporting import NotificationDeliveryAttempt
 from app.models.system import SystemHeartbeat
 from app.models.user import User
+from app.services.audit import sanitize_details
 from app.services.events import emit_event
 
 DEFAULT_SERVICES = ("api", "bot", "db", "redis", "railway_deployment")
@@ -32,13 +33,13 @@ def record_heartbeat(
             service_name=service_name,
             status=status,
             last_seen_at=_now(),
-            metadata_json=metadata or {},
+            metadata_json=sanitize_details(metadata),
         )
         session.add(heartbeat)
     else:
         heartbeat.status = status
         heartbeat.last_seen_at = _now()
-        heartbeat.metadata_json = metadata or {}
+        heartbeat.metadata_json = sanitize_details(metadata)
     session.flush()
     if changed:
         emit_event(

@@ -1,6 +1,6 @@
 # Confidence Engine
 
-The confidence engine tracks why Agency OS trusts or distrusts an operational suggestion.
+The confidence engine tracks why Fortuna OS trusts or distrusts an operational suggestion.
 
 Confidence is not magic and is not LLM-generated. Sprint 15 uses small deterministic adjustments based on outcomes and feedback.
 

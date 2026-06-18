@@ -1,7 +1,7 @@
 [project]
 name = "agency-os-bot"
 version = "0.1.0"
-description = "Secure FastAPI and aiogram foundation for Agency OS Bot."
+description = "Secure FastAPI and aiogram foundation for Fortuna OS Bot."
 requires-python = ">=3.12"
 dependencies = [
     "aiogram>=3.7,<4",

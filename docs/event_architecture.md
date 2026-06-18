@@ -1,6 +1,6 @@
 # Event Architecture
 
-Agency OS should become event-driven over time. Audit logs remain the operator-facing safety record. Sprint 8 added `event_logs` as the first lightweight durable event feed for reports, notifications, automations, self-healing, and future AI operations. Sprint 9 adds notification routing events, durable automation simulation events, recommendations, and heartbeat state changes. Sprint 11 adds operations activation events for task ownership, incident timelines, localization, availability, smart notification routing, daily digest delivery, and duplicate polling protection. Sprint 12 adds deterministic intelligence events for signals, patterns, trends, workload, executive insights, intelligence runs, recommendations, and manual opportunities. Sprint 15 adds learning events, outcome memory, playbook runs, confidence changes, and feedback events. Sprint 16 adds team rollout, notification digest, and scheduled automation execution events. Sprint 17 adds creator watch, own post watch, comment strategy, Help Copilot, activation, and opportunity routing events. Sprint 18 adds guided intake, assignment, result-recording, and strategy-regeneration events. Sprint 24 adds COO priority scans, COO briefings, and team activation learning events.
+Fortuna OS should become event-driven over time. Audit logs remain the operator-facing safety record. Sprint 8 added `event_logs` as the first lightweight durable event feed for reports, notifications, automations, self-healing, and future AI operations. Sprint 9 adds notification routing events, durable automation simulation events, recommendations, and heartbeat state changes. Sprint 11 adds operations activation events for task ownership, incident timelines, localization, availability, smart notification routing, daily digest delivery, and duplicate polling protection. Sprint 12 adds deterministic intelligence events for signals, patterns, trends, workload, executive insights, intelligence runs, recommendations, and manual opportunities. Sprint 15 adds learning events, outcome memory, playbook runs, confidence changes, and feedback events. Sprint 16 adds team rollout, notification digest, and scheduled automation execution events. Sprint 17 adds creator watch, own post watch, comment strategy, Help Copilot, activation, and opportunity routing events. Sprint 18 adds guided intake, assignment, result-recording, and strategy-regeneration events. Sprint 24 adds COO priority scans, COO briefings, and team activation learning events. Sprint 25 verifies event/audit/learning wiring and strengthens recursive metadata redaction for safe JSON payloads.
 
 ## Principle
 
@@ -181,7 +181,9 @@ Future queue/stream expansion can add status, correlation IDs, delivery attempts
 - Do not put tokens, passwords, session strings, encryption keys, or raw credential payloads in events.
 - Do not put plaintext verification codes or code hashes in events.
 - Do not put proxy passwords or encrypted proxy password blobs in events.
+- Do not put raw Telegram chat IDs, owner Telegram IDs, private keys, platform session payloads, or nested secret values in events.
 - Prefer secret references or masked identifiers.
+- Use the shared recursive sanitizer before writing EventLog, AuditLog, Recommendation, heartbeat, timeline, or learning metadata.
 - Use stable event names so reports and automations do not break.
 - Emit denied and failed attempts, not just successful actions.
 - Treat simulation events as first-class records so operators can review intended changes before live execution.
@@ -243,7 +245,7 @@ Scheduled automation execution is conservative. Low-risk rules can run automatic
 
 ## Intelligence Event Notes
 
-Sprint 12 intelligence is deterministic and internal-only. It reads existing Agency OS data and writes signals, patterns, trend snapshots, workload snapshots, executive insights, recommendations, and run records.
+Sprint 12 intelligence is deterministic and internal-only. It reads existing Fortuna OS data and writes signals, patterns, trend snapshots, workload snapshots, executive insights, recommendations, and run records.
 
 Safe intelligence metadata can include:
 
@@ -287,13 +289,13 @@ Sprint 18 emits and audits:
 
 These events describe internal workflow state only. They must never imply external posting, commenting, liking, following, scraping, credential use, platform evasion, or automatic social-platform actions.
 
-Comment strategy events are guidance-only. They can include strategy counts, score ranges, and `posting: manual_only`, but must not imply that Agency OS posted, commented, liked, followed, or messaged anyone.
+Comment strategy events are guidance-only. They can include strategy counts, score ranges, and `posting: manual_only`, but must not imply that Fortuna OS posted, commented, liked, followed, or messaged anyone.
 
 Help Copilot events can include the question category and next action. They should not include secrets, raw chat IDs, raw private messages, or diagnostic dumps.
 
 ## Automation Builder Event Notes
 
-Sprint 14 automation events are internal Agency OS events. They describe rule management, simulations, approvals, execution, rollback planning, and metrics. They must not imply external social-platform automation.
+Sprint 14 automation events are internal Fortuna OS events. They describe rule management, simulations, approvals, execution, rollback planning, and metrics. They must not imply external social-platform automation.
 
 Core automation event names:
 

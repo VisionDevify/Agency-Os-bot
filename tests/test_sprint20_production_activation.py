@@ -1,4 +1,4 @@
-from pathlib import Path
+﻿from pathlib import Path
 
 import pytest
 
@@ -75,7 +75,7 @@ def test_activation_docs_include_invites_and_manual_notification_groups() -> Non
     assert "VA Invite" in invite_doc
     assert "Manager Invite" in invite_doc
     assert "Access pending approval" in invite_doc
-    assert "Agency OS — HQ" in production_doc
-    assert "Agency OS — Testing Sandbox" in production_doc
+    assert "Fortuna OS - HQ" in production_doc
+    assert "Fortuna OS - Testing Sandbox" in production_doc
     assert "Add Current Chat As Target" in routing_doc
     assert "Testing Sandbox -> `testing`" in routing_doc

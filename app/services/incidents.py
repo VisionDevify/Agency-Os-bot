@@ -9,6 +9,7 @@ from app.models.incident import INCIDENT_SEVERITIES, INCIDENT_SOURCE_TYPES, INCI
 from app.models.model_brand import ModelBrand
 from app.models.proxy import Proxy
 from app.models.user import User
+from app.services.audit import sanitize_details
 from app.services.auth import USER_STATUS_ACTIVE, audit_action, user_has_permission
 from app.services.events import emit_event
 
@@ -106,7 +107,7 @@ def add_timeline_entry(
         actor_user_id=actor.id if actor else None,
         event_type=event_type,
         message=message,
-        metadata_json=metadata or {},
+        metadata_json=sanitize_details(metadata),
     )
     session.add(entry)
     session.flush()

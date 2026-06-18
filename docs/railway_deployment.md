@@ -1,10 +1,10 @@
 # Railway Deployment
 
-Sprint 8 inspected Railway and found the logged-in workspace had no project yet. Sprint 9 re-confirmed the workspace had 0 projects. Sprint 10 re-inspected the workspace and found a trial/credit banner, so project creation, service creation, database provisioning, and any billing-impacting action required owner approval. Owner approval was later granted for Agency OS production activation.
+Sprint 8 inspected Railway and found the logged-in workspace had no project yet. Sprint 9 re-confirmed the workspace had 0 projects. Sprint 10 re-inspected the workspace and found a trial/credit banner, so project creation, service creation, database provisioning, and any billing-impacting action required owner approval. Owner approval was later granted for Fortuna OS production activation.
 
 ## Current Railway Status
 
-- Project created for Agency OS production. The visible Railway project label may still be the generated project name unless it is renamed in the Railway UI.
+- Project created for Fortuna OS production. The visible Railway project label may still be the generated project name unless it is renamed in the Railway UI.
 - Production API service: created from `VisionDevify/Agency-Os-bot`.
 - Production bot worker service: created from `VisionDevify/Agency-Os-bot`.
 - Production PostgreSQL: created and attached.

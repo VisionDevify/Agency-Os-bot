@@ -11,6 +11,7 @@ from app.models.proxy import Proxy
 from app.models.recommendation import RECOMMENDATION_SEVERITIES, RECOMMENDATION_STATUSES, Recommendation
 from app.models.task import Task
 from app.models.user import User
+from app.services.audit import sanitize_details
 from app.services.auth import audit_action, user_has_permission
 from app.services.events import emit_event
 
@@ -81,14 +82,14 @@ def _upsert_recommendation(
             entity_type=entity_type,
             entity_id=entity_id_text,
             status="open",
-            metadata_json=metadata or {},
+            metadata_json=sanitize_details(metadata),
         )
         session.add(recommendation)
     else:
         recommendation.title = title
         recommendation.description = description
         recommendation.severity = severity
-        recommendation.metadata_json = metadata or {}
+        recommendation.metadata_json = sanitize_details(metadata)
         recommendation.updated_at = _now()
     session.flush()
     if created:

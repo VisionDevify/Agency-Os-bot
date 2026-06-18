@@ -1,6 +1,6 @@
 # Team Rollout
 
-Sprint 16 makes Agency OS easier for real team members to use every day.
+Sprint 16 makes Fortuna OS easier for real team members to use every day.
 
 ## Rollout Principles
 

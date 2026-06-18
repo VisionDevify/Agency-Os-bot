@@ -1,6 +1,6 @@
 # First Day Plan
 
-The First Day Plan is a short owner/manager checklist for turning an empty Agency OS into a usable operating system.
+The First Day Plan is a short owner/manager checklist for turning an empty Fortuna OS into a usable operating system.
 
 Telegram path:
 

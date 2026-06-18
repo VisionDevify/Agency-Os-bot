@@ -1413,7 +1413,7 @@ Learning and playbook status:
 
 ### learning_events
 
-Stores meaningful outcomes that Agency OS can learn from.
+Stores meaningful outcomes that Fortuna OS can learn from.
 
 Columns:
 
@@ -1667,6 +1667,27 @@ Indexes and constraints:
 - System heartbeat rows are updated in place by service name; state changes are still emitted to audit/event logs.
 - Daily briefings, accountability snapshots, event logs, and audit logs are append-style history records.
 - Future business resources should prefer status-based archival before hard deletes.
+
+## Safe Metadata Strategy
+
+Sprint 25 tightened metadata handling across audits, events, recommendations, heartbeats, incident timelines, and learning verification paths.
+
+Safe JSON fields may store counts, entity IDs, statuses, timestamps, category names, and short human-readable summaries.
+
+Unsafe values must be redacted before persistence:
+
+- bot tokens
+- API keys
+- app/encryption keys
+- passwords and proxy passwords
+- credentials
+- session strings
+- verification codes and code hashes
+- raw Telegram chat IDs
+- owner Telegram IDs
+- platform session payloads
+
+The shared sanitizer is recursive, so nested dictionaries and lists are also redacted.
 
 ## Future Planned Tables
 

@@ -1,6 +1,6 @@
 # Automation Simulation
 
-Agency OS follows the safety posture:
+Fortuna OS follows the safety posture:
 
 - Preview
 - Simulate

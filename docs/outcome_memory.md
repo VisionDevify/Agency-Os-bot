@@ -2,7 +2,7 @@
 
 Outcome memory aggregates learning events into durable operational memory.
 
-Instead of treating every incident, repair, automation run, recommendation, or opportunity as isolated, Agency OS keeps counters and success rates by deterministic memory key.
+Instead of treating every incident, repair, automation run, recommendation, or opportunity as isolated, Fortuna OS keeps counters and success rates by deterministic memory key.
 
 ## Memory Types
 

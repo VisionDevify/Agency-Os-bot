@@ -1,6 +1,6 @@
 # Team Operations
 
-Sprint 11 activates Agency OS for daily agency work.
+Sprint 11 activates Fortuna OS for daily agency work.
 
 ## Operating Screens
 
