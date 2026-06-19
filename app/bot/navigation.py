@@ -1,7 +1,14 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.bot.screens import PAGE_TITLES, Screen, render_dashboard, render_main_menu, render_page
+from app.bot.screens import (
+    PAGE_TITLES,
+    Screen,
+    render_chat_cleanup_page,
+    render_dashboard,
+    render_main_menu,
+    render_page,
+)
 from app.models.automation import AutomationApproval
 from app.models.callback_error import CallbackErrorLog
 from app.models.permissions import Role
@@ -97,6 +104,7 @@ from app.services.notifications import (
     set_notification_target_purpose,
     test_notification_target,
 )
+from app.services.chat_cleanup import toggle_chat_cleanup
 from app.services.opportunities import run_creator_alert_pilot, run_own_post_alert_pilot
 from app.services.automations import (
     activate_automation_rule,
@@ -342,6 +350,8 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         return ("manage_roles",)
     if page.startswith("callback_error:report"):
         return None
+    if page.startswith("settings:chat_cleanup"):
+        return ("manage_roles",)
     if page.startswith("settings:report_problem"):
         return ("manage_roles",)
     if (
@@ -1221,6 +1231,9 @@ def screen_for_page(
             raise
 
     if session is not None and user is not None:
+        if normalized == "settings:chat_cleanup:toggle" and chat_id is not None:
+            toggle_chat_cleanup(session, user=user, chat_id=chat_id)
+            normalized = "settings:chat_cleanup"
         action_target = _perform_admin_action(
             normalized,
             session,
@@ -1307,6 +1320,7 @@ def screen_for_page(
         or normalized == "debug_last_error"
         or normalized.startswith("callback_error:report")
         or normalized.startswith("settings:report_problem")
+        or normalized.startswith("settings:chat_cleanup")
         or normalized == "owner_daily_checklist"
         or normalized == "team_onboarding_activation"
         or normalized.startswith("fortuna_action_log")
@@ -1345,5 +1359,7 @@ def screen_for_page(
         or normalized.startswith("team_qa:")
         or normalized.startswith("notification_digest:")
     ):
+        if normalized.startswith("settings:chat_cleanup"):
+            return render_chat_cleanup_page(session, user, chat_id)
         return render_page(normalized, session=session, user=user)
     return render_main_menu(session=session, user=user)

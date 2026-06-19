@@ -1,6 +1,7 @@
 from app.models.account import Account, AccountAuthSession, AccountVerificationCode
 from app.models.audit import AuditLog
 from app.models.callback_error import CallbackErrorLog
+from app.models.chat import BotChatMessage, ChatCleanupPreference
 from app.models.automation import (
     AutomationApproval,
     AutomationRule,
@@ -68,6 +69,8 @@ __all__ = [
     "AgencyActivationState",
     "AuditLog",
     "CallbackErrorLog",
+    "BotChatMessage",
+    "ChatCleanupPreference",
     "Automation",
     "AutomationApproval",
     "AutomationRule",

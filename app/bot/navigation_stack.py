@@ -66,6 +66,8 @@ def root_page_for(page: str | None) -> str:
     current = page or ROOT_SCREEN
     if current == ROOT_SCREEN:
         return ROOT_SCREEN
+    if current.startswith("settings:chat_cleanup"):
+        return "settings"
     if current in MORE_CHILDREN or current.startswith(("intelligence", "automations", "reports", "settings")):
         return "owner_advanced"
     if current.startswith(("proxy:", "proxies:")):

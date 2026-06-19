@@ -8,6 +8,7 @@ from app.services.integrity import run_integrity_check
 from app.services.bot_instances import bot_instance_diagnostics
 from app.services.observability import production_observability_summary
 from app.services.system_truth import reconcile_stale_system_warnings
+from app.services.chat_cleanup import get_or_create_chat_cleanup_preference
 from app.services.help_brain import (
     latest_ui_self_test_run,
     notification_pilot_status,
@@ -182,6 +183,44 @@ def render_disabled() -> Screen:
 
 def render_denied() -> Screen:
     return Screen(text="Access denied.", reply_markup=main_menu())
+
+
+def render_chat_cleanup_page(session: Session, user: User | None, chat_id: int | None) -> Screen:
+    if user is None or chat_id is None:
+        enabled = True
+        mode = "Clean on /start"
+    else:
+        preference = get_or_create_chat_cleanup_preference(session, user=user, chat_id=chat_id)
+        enabled = preference.clean_on_start
+        mode = "Clean on /start" if enabled else "Keep menu history"
+    status = "Enabled" if enabled else "Keeping history"
+    explanation = (
+        "Clean mode keeps Fortuna feeling like an app instead of filling the chat with old menus."
+        if enabled
+        else "Fortuna will leave old menu messages in place when you use /start."
+    )
+    toggle_label = "Keep Menu History" if enabled else "Clean on /start"
+    lines = [
+        "Chat Cleanup",
+        "",
+        f"Mode: {mode}",
+        f"Status: {status}",
+        "",
+        explanation,
+        "",
+        "Fortuna only cleans temporary menu/navigation messages.",
+        "Alerts, reports, approvals, exports, and useful error reports are left alone.",
+    ]
+    return Screen(
+        text="\n".join(lines),
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text=toggle_label, callback_data=callback_for("settings:chat_cleanup:toggle"))],
+                *page_controls(back_to="settings"),
+            ]
+        ),
+    )
+
 
 def render_bot_status_page(session: Session, user: User | None = None, *, details: bool = False) -> Screen:
     summary = system_status_summary(session)

@@ -1717,6 +1717,7 @@ def settings_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Production Status", callback_data=callback_for("production_status"))],
             [InlineKeyboardButton(text="Production Observability", callback_data=callback_for("production_observability"))],
             [InlineKeyboardButton(text="UI Self-Test", callback_data=callback_for("ui_self_test"))],
+            [InlineKeyboardButton(text="Chat Cleanup", callback_data=callback_for("settings:chat_cleanup"))],
             [InlineKeyboardButton(text="Report a Problem", callback_data=callback_for("settings:report_problem"))],
             [InlineKeyboardButton(text="Button Health Report", callback_data=callback_for("button_health"))],
             [InlineKeyboardButton(text="Callback Failure Review", callback_data=callback_for("callback_failure_review"))],

@@ -105,6 +105,15 @@ from app.services.notifications import (
     mark_delivery_skipped,
 )
 from app.services.callbacks import log_callback_failure
+from app.services.chat_cleanup import (
+    ERROR_FALLBACK,
+    TEMPORARY_NAVIGATION,
+    chat_cleanup_enabled,
+    mark_message_delete_failed,
+    mark_message_deleted,
+    temporary_navigation_messages,
+    track_bot_message,
+)
 from app.services.friction import report_problem
 from app.services.live_safety import live_data_safety_status
 from app.services.team_operations import BotPollingGuard, update_user_localization
@@ -422,14 +431,64 @@ async def _send_pending_routing_smoke_tests(bot: Bot, session, actor: User) -> N
             logger.warning("Unable to send routing smoke test to configured testing target")
 
 
-async def _edit_or_send_callback_screen(callback: CallbackQuery, screen) -> None:
+async def _cleanup_navigation_messages_on_start(bot: Bot, session, *, user: User, chat_id: int) -> None:
+    if not chat_cleanup_enabled(session, user=user, chat_id=chat_id):
+        return
+    for record in temporary_navigation_messages(session, chat_id=chat_id, user=user):
+        try:
+            await bot.delete_message(chat_id, record.message_id)
+            mark_message_deleted(record)
+        except Exception:
+            mark_message_delete_failed(record)
+            logger.info("Unable to delete old Fortuna navigation message")
+
+
+async def _send_tracked_navigation_message(message: Message, session, *, user: User, screen, page: str) -> None:
+    sent = await message.answer(screen.text, reply_markup=screen.reply_markup)
+    track_bot_message(
+        session,
+        chat_id=sent.chat.id,
+        user=user,
+        message_id=sent.message_id,
+        message_type=TEMPORARY_NAVIGATION,
+        page=page,
+    )
+
+
+async def _edit_or_send_callback_screen(
+    callback: CallbackQuery,
+    screen,
+    *,
+    session=None,
+    user: User | None = None,
+    page: str | None = None,
+    message_type: str = TEMPORARY_NAVIGATION,
+) -> None:
     if callback.message is None:
         return
     try:
         await callback.message.edit_text(screen.text, reply_markup=screen.reply_markup)
+        if session is not None:
+            track_bot_message(
+                session,
+                chat_id=callback.message.chat.id,
+                user=user,
+                message_id=callback.message.message_id,
+                message_type=message_type,
+                page=page,
+            )
     except Exception:
         logger.warning("Unable to edit callback message; sending fallback screen", exc_info=True)
-        await callback.message.answer(screen.text, reply_markup=screen.reply_markup)
+        sent = await callback.message.answer(screen.text, reply_markup=screen.reply_markup)
+        if session is not None:
+            track_bot_message(
+                session,
+                chat_id=sent.chat.id,
+                user=user,
+                message_id=sent.message_id,
+                message_type=message_type,
+                page=page,
+            )
 
 
 async def _handle_callback_failure(
@@ -461,7 +520,14 @@ async def _handle_callback_failure(
         session.rollback()
         logger.exception("Unable to persist callback failure log")
     fallback = render_callback_error_page(page, error_id=error_id)
-    await _edit_or_send_callback_screen(callback, fallback)
+    await _edit_or_send_callback_screen(
+        callback,
+        fallback,
+        session=session,
+        user=actor,
+        page=page,
+        message_type=ERROR_FALLBACK,
+    )
     with contextlib.suppress(Exception):
         await callback.answer("Fortuna logged the problem.", show_alert=True)
 
@@ -513,7 +579,9 @@ async def start(message: Message) -> None:
             principal = _principal_from_user(user)
             require_owner(principal, settings.owner_telegram_id)
             screen = render_main_menu(session=session, user=user)
-            await message.answer(screen.text, reply_markup=screen.reply_markup)
+            await _cleanup_navigation_messages_on_start(message.bot, session, user=user, chat_id=message.chat.id)
+            await _send_tracked_navigation_message(message, session, user=user, screen=screen, page="menu")
+            session.commit()
             return
 
         user = get_or_create_telegram_user(
@@ -532,8 +600,9 @@ async def start(message: Message) -> None:
             screen = render_onboarding_page(session, user)
         else:
             screen = render_main_menu(session=session, user=user)
+        await _cleanup_navigation_messages_on_start(message.bot, session, user=user, chat_id=message.chat.id)
+        await _send_tracked_navigation_message(message, session, user=user, screen=screen, page="menu")
         session.commit()
-    await message.answer(screen.text, reply_markup=screen.reply_markup)
 
 
 @dp.message(Command("selftest"))
@@ -1443,7 +1512,13 @@ async def navigate(callback: CallbackQuery) -> None:
                     details={"reason": "disabled", "telegram_id_masked": mask_telegram_id(user.telegram_id)},
                 )
                 screen = render_disabled()
-                await _edit_or_send_callback_screen(callback, screen)
+                await _edit_or_send_callback_screen(
+                    callback,
+                    screen,
+                    session=session,
+                    user=user,
+                    page=page,
+                )
                 await callback.answer("Access disabled.", show_alert=True)
                 session.commit()
                 return
@@ -1458,7 +1533,13 @@ async def navigate(callback: CallbackQuery) -> None:
                     details={"reason": "denied", "telegram_id_masked": mask_telegram_id(user.telegram_id)},
                 )
                 screen = render_denied()
-                await _edit_or_send_callback_screen(callback, screen)
+                await _edit_or_send_callback_screen(
+                    callback,
+                    screen,
+                    session=session,
+                    user=user,
+                    page=page,
+                )
                 await callback.answer("Access denied.", show_alert=True)
                 session.commit()
                 return
@@ -1467,7 +1548,13 @@ async def navigate(callback: CallbackQuery) -> None:
                     try:
                         forced_step = _apply_onboarding_callback(session, user, page)
                         screen = render_onboarding_page(session, user, step=forced_step)
-                        await _edit_or_send_callback_screen(callback, screen)
+                        await _edit_or_send_callback_screen(
+                            callback,
+                            screen,
+                            session=session,
+                            user=user,
+                            page=page,
+                        )
                         await callback.answer()
                     except ValueError:
                         await callback.answer("Unable to save onboarding preference.", show_alert=True)
@@ -1483,7 +1570,13 @@ async def navigate(callback: CallbackQuery) -> None:
                     details={"reason": "pending", "telegram_id_masked": mask_telegram_id(user.telegram_id)},
                 )
                 screen = render_access_pending()
-                await _edit_or_send_callback_screen(callback, screen)
+                await _edit_or_send_callback_screen(
+                    callback,
+                    screen,
+                    session=session,
+                    user=user,
+                    page=page,
+                )
                 await callback.answer("Access pending.", show_alert=True)
                 session.commit()
                 return
@@ -1498,7 +1591,13 @@ async def navigate(callback: CallbackQuery) -> None:
                 chat_title=chat_title,
             )
             _set_pending_callback_state(callback.from_user.id, page, session, user)
-            await _edit_or_send_callback_screen(callback, screen)
+            await _edit_or_send_callback_screen(
+                callback,
+                screen,
+                session=session,
+                user=user,
+                page=page,
+            )
             target_id = _notification_target_id_for_send_test(page)
             if target_id is not None:
                 target = get_notification_target(session, target_id)
