@@ -117,6 +117,7 @@ from app.services.callback_protection import (
 from app.services.chat_cleanup import (
     TEMPORARY_ERROR,
     TEMPORARY_NAVIGATION,
+    TEMPORARY_STATUS,
     chat_cleanup_enabled,
     classify_delete_exception,
     complete_cleanup_run,
@@ -506,6 +507,29 @@ async def _send_tracked_navigation_message(
     )
 
 
+async def _send_tracked_temporary_message(
+    message: Message,
+    session,
+    *,
+    user: User | None,
+    text: str,
+    reply_markup=None,
+    screen: str | None = None,
+    message_label: str = TEMPORARY_STATUS,
+) -> Message:
+    sent = await message.answer(text, reply_markup=reply_markup)
+    track_bot_message(
+        session,
+        chat_id=sent.chat.id,
+        user=user,
+        message_id=sent.message_id,
+        message_label=message_label,
+        screen=screen,
+        active_navigation=False,
+    )
+    return sent
+
+
 def _callback_error_text(exc: BaseException) -> str:
     return str(exc).casefold()
 
@@ -849,8 +873,15 @@ async def selftest(message: Message) -> None:
             await message.answer("UI Self-Test is owner-only.")
             return
         screen = render_ui_self_test_page(session, user, run_now=True)
+        await _send_tracked_temporary_message(
+            message,
+            session,
+            user=user,
+            text=screen.text,
+            reply_markup=screen.reply_markup,
+            screen="selftest",
+        )
         session.commit()
-    await message.answer(screen.text, reply_markup=screen.reply_markup)
 
 
 @dp.message(Command("integrity"))
@@ -882,8 +913,15 @@ async def integrity(message: Message) -> None:
             await message.answer("Integrity check is owner-only.")
             return
         screen = render_integrity_page(session, user)
+        await _send_tracked_temporary_message(
+            message,
+            session,
+            user=user,
+            text=screen.text,
+            reply_markup=screen.reply_markup,
+            screen="integrity",
+        )
         session.commit()
-    await message.answer(screen.text, reply_markup=screen.reply_markup)
 
 
 @dp.message(Command("botstatus"))
@@ -915,8 +953,15 @@ async def botstatus(message: Message) -> None:
             await message.answer("Bot status is owner-only.")
             return
         screen = render_botstatus_page(session, user, current_instance_id=CURRENT_BOT_INSTANCE_ID)
+        await _send_tracked_temporary_message(
+            message,
+            session,
+            user=user,
+            text=screen.text,
+            reply_markup=screen.reply_markup,
+            screen="botstatus",
+        )
         session.commit()
-    await message.answer(screen.text, reply_markup=screen.reply_markup)
 
 
 @dp.message(Command("debug_last_error"))
@@ -948,8 +993,15 @@ async def debug_last_error(message: Message) -> None:
             await message.answer("Debug last error is owner-only.")
             return
         screen = render_debug_last_error_page(session, user)
+        await _send_tracked_temporary_message(
+            message,
+            session,
+            user=user,
+            text=screen.text,
+            reply_markup=screen.reply_markup,
+            screen="debug_last_error",
+        )
         session.commit()
-    await message.answer(screen.text, reply_markup=screen.reply_markup)
 
 
 @dp.message(Command("callback_failures"))
@@ -981,8 +1033,15 @@ async def callback_failures(message: Message) -> None:
             await message.answer("Callback failure review is owner-only.")
             return
         screen = render_callback_failure_review_page(session, user)
+        await _send_tracked_temporary_message(
+            message,
+            session,
+            user=user,
+            text=screen.text,
+            reply_markup=screen.reply_markup,
+            screen="callback_failure_review",
+        )
         session.commit()
-    await message.answer(screen.text, reply_markup=screen.reply_markup)
 
 
 @dp.message(F.text)

@@ -1,6 +1,10 @@
 import asyncio
 
-from app.bot.runner import _cleanup_navigation_messages_on_start, _send_tracked_navigation_message
+from app.bot.runner import (
+    _cleanup_navigation_messages_on_start,
+    _send_tracked_navigation_message,
+    _send_tracked_temporary_message,
+)
 from app.bot.screens.formatting import Screen
 from datetime import UTC, datetime
 
@@ -230,3 +234,23 @@ def test_chat_cleanup_failures_surface_in_observability_from_tracking_schema() -
 
         assert summary["chat_cleanup_failed_count"] == 3
         assert "Chat Cleanup: 3 recent deletion failure(s)." in summary["observability_current_issues"]
+
+
+def test_command_status_screens_are_tracked_as_temporary_messages() -> None:
+    with session_scope() as session:
+        owner = setup_owner_if_needed(session, telegram_user_id=1, owner_telegram_id=1)
+        asyncio.run(
+            _send_tracked_temporary_message(
+                FakeMessage(10),
+                session,
+                user=owner,
+                text="Fortuna Bot Status",
+                reply_markup=None,
+                screen="botstatus",
+            )
+        )
+
+        record = session.query(BotChatMessage).filter_by(message_id=1000).one()
+        assert record.message_label == TEMPORARY_STATUS
+        assert record.screen == "botstatus"
+        assert record.deletion_status == "active"
