@@ -62,6 +62,10 @@ def render_help_copilot_page(session: Session, user: User | None = None, *, ques
         "what_fortuna_did": "What did Fortuna do today?",
         "warning": "What does this warning mean?",
         "help_person": "Who should I ask for help?",
+        "comment_profile_leads": "What are comment profile leads?",
+        "comment_section_review": "How do I use Comment Section Review?",
+        "safe_social_data": "What data is safe to enter?",
+        "no_auto_posting": "Does Fortuna comment or follow automatically?",
     }
     if question:
         result = help_brain_answer(session, user, question=prompts.get(question, question), current_page="help")

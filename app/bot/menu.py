@@ -1118,6 +1118,10 @@ def opportunities_menu(opportunity_buttons: list[tuple[str, str]] | None = None)
                 InlineKeyboardButton(text="Discovery Mode", callback_data=callback_for("opportunities:discovery")),
                 InlineKeyboardButton(text="Opportunity Intelligence", callback_data=callback_for("opportunities:score")),
             ],
+            [
+                InlineKeyboardButton(text="Comment Profiles", callback_data=callback_for("opportunities:profiles")),
+                InlineKeyboardButton(text="Comment Review", callback_data=callback_for("opportunities:comments")),
+            ],
             [InlineKeyboardButton(text="Best Opportunity", callback_data=callback_for("opportunities:best"))],
             [
                 InlineKeyboardButton(text="Opportunity Results", callback_data=callback_for("opportunities:results")),

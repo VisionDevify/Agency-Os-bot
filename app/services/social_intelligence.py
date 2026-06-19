@@ -35,6 +35,8 @@ from app.services.learning import create_confidence_record, create_learning_even
 from app.services.notifications import active_targets_for_purposes, create_delivery_attempt
 from app.services.opportunities import comment_strategies_for_opportunity, create_manual_opportunity
 from app.services.recommendations import upsert_recommendation
+from app.services.social_compliance import compliance_gate
+from app.services.social_events import create_social_event
 
 
 @dataclass(frozen=True)
@@ -51,6 +53,19 @@ def _now() -> datetime:
 
 def _clamp(value: int | float, low: int = 0, high: int = 100) -> int:
     return max(low, min(high, round(value)))
+
+
+def _source_type_to_method(source_type: str | None) -> str:
+    mapping = {
+        "manual": "manual",
+        "official_api": "official_api",
+        "approved_export": "approved_export",
+        "approved_browser_capture": "compliant_public_source",
+        "csv_export": "approved_export",
+        "official_api_placeholder": "future_connector",
+        "approved_public_import_placeholder": "future_connector",
+    }
+    return mapping.get(source_type or "manual", "manual")
 
 
 def _require_social_view(session: Session, actor: User | None) -> None:
@@ -92,6 +107,7 @@ def create_social_source(
     niche: str | None = None,
     follower_tier: str = "unknown",
     source_type: str = "manual",
+    source_method: str | None = None,
     compliance_status: str = "approved",
     watch_reason: str | None = None,
 ) -> SocialSource:
@@ -115,11 +131,21 @@ def create_social_source(
         niche=niche,
         follower_tier=follower_tier,
         source_type=source_type,
+        source_method=source_method or _source_type_to_method(source_type),
         compliance_status=compliance_status,
         watch_reason=watch_reason,
     )
     session.add(source)
     session.flush()
+    compliance_gate(
+        session,
+        entity_type="social_source",
+        entity_id=source.id,
+        entity=source,
+        actor=actor,
+        action="ingest",
+        evidence={"platform": platform, "creator": username},
+    )
     audit_action(
         session,
         actor=actor,
@@ -158,6 +184,7 @@ def create_social_post(
     content_quality: int = 50,
     comment_activity_quality: int = 50,
     compliance_status: str = "approved",
+    source_method: str | None = None,
     compliance_notes: str | None = None,
     is_private_data: bool = False,
 ) -> SocialPost:
@@ -181,6 +208,7 @@ def create_social_post(
         niche=niche or (source.niche if source else None),
         content_summary=content_summary,
         engagement_signals_json=sanitize_details(engagement_signals or {}),
+        source_method=source_method or (source.source_method if source is not None else "manual"),
         audience_fit=_clamp(audience_fit),
         niche_match=_clamp(niche_match),
         creator_relevance=_clamp(creator_relevance),
@@ -193,6 +221,15 @@ def create_social_post(
     )
     session.add(post)
     session.flush()
+    compliance_gate(
+        session,
+        entity_type="social_post",
+        entity_id=post.id,
+        entity=post,
+        actor=actor,
+        action="ingest",
+        evidence={"platform": platform, "post_reference": clean_reference},
+    )
     audit_action(
         session,
         actor=actor,
@@ -288,6 +325,15 @@ def _performance_bucket(
 
 def score_social_post(session: Session, post: SocialPost, *, actor: User | None = None, now: datetime | None = None) -> SocialOpportunityScore:
     _require_social_view(session, actor)
+    gate = compliance_gate(
+        session,
+        entity_type="social_post",
+        entity_id=post.id,
+        entity=post,
+        actor=actor,
+        action="evaluate",
+        evidence={"post_reference": post.post_reference, "manual_only": True},
+    )
     source = post.source
     recency = _recency_score(post, now)
     velocity = _velocity_score(post.engagement_signals_json or {}, post, now)
@@ -317,10 +363,14 @@ def score_social_post(session: Session, post: SocialPost, *, actor: User | None 
     )
     confidence = _clamp(45 + (15 if source else 0) + (15 if post.post_time else 0) + (10 if post.engagement_signals_json else 0))
     compliance_warning = None
-    if post.compliance_status == "blocked":
+    if post.compliance_status == "blocked" or not gate.allowed:
         score = 0
         confidence = 95
-        compliance_warning = "Blocked: private, non-compliant, or unapproved data cannot be used."
+        compliance_warning = (
+            f"Blocked: {gate.reason}"
+            if not gate.allowed
+            else "Blocked: private, non-compliant, or unapproved data cannot be used."
+        )
     elif post.compliance_status == "review_required":
         score = min(score, 60)
         compliance_warning = "Review required before a human uses this opportunity."
@@ -332,6 +382,8 @@ def score_social_post(session: Session, post: SocialPost, *, actor: User | None 
         session.add(existing)
     existing.score = score
     existing.confidence_score = confidence
+    existing.source_method = post.source_method
+    existing.compliance_status = post.compliance_status
     existing.components_json = sanitize_details(components)
     existing.best_timing_window = timing
     existing.suggested_engagement_angle = angle
@@ -639,6 +691,31 @@ def route_social_opportunity_alert(
     simulate_only: bool = True,
 ) -> list[NotificationDeliveryAttempt]:
     _require_social_view(session, actor)
+    gate = compliance_gate(
+        session,
+        entity_type="social_opportunity_score",
+        entity_id=score.id,
+        entity=score,
+        actor=actor,
+        action="alert",
+        evidence={"score": score.score, "manual_only": True},
+    )
+    if not gate.allowed:
+        create_social_event(
+            session,
+            event_type="social.alert.blocked",
+            event_category="alert",
+            source_module="alert_engine",
+            entity_type="social_opportunity_score",
+            entity_id=score.id,
+            actor=actor,
+            status="blocked",
+            severity="medium",
+            summary=gate.reason,
+            details={"compliance_log_id": gate.compliance_log_id},
+            evidence=gate.evidence,
+        )
+        return []
     purposes = ["alerts"]
     if score.score >= 90:
         purposes.append("hq")
@@ -729,6 +806,7 @@ def create_social_discovery_source_config(
     platform: str,
     name: str,
     source_type: str = "manual",
+    source_method: str | None = None,
     reference_url: str | None = None,
     niche: str | None = None,
     compliance_status: str = "approved",
@@ -743,6 +821,7 @@ def create_social_discovery_source_config(
     config = SocialDiscoverySourceConfig(
         platform=platform,
         source_type=source_type,
+        source_method=source_method or _source_type_to_method(source_type),
         name=name.strip() or "Manual Source",
         reference_url=reference_url,
         niche=niche,
@@ -752,6 +831,15 @@ def create_social_discovery_source_config(
     )
     session.add(config)
     session.flush()
+    compliance_gate(
+        session,
+        entity_type="social_discovery_source_config",
+        entity_id=config.id,
+        entity=config,
+        actor=actor,
+        action="ingest",
+        evidence={"platform": platform, "source": config.name},
+    )
     audit_action(
         session,
         actor=actor,
@@ -827,6 +915,7 @@ def create_social_discovery_lead(
     reason_found: str = "Manual public lead added for human review.",
     confidence_score: int = 60,
     compliance_status: str = "approved",
+    source_method: str = "manual",
     recommended_angle: str | None = None,
     discovery_run: SocialDiscoveryRun | None = None,
     social_source: SocialSource | None = None,
@@ -854,6 +943,7 @@ def create_social_discovery_lead(
         reason_found=reason_found,
         confidence_score=_clamp(confidence_score),
         opportunity_score=score,
+        source_method=source_method,
         compliance_status=compliance_status,
         recommended_angle=recommended_angle or ("curiosity" if score >= 70 else "question"),
         status="new",
@@ -861,6 +951,15 @@ def create_social_discovery_lead(
     )
     session.add(lead)
     session.flush()
+    compliance_gate(
+        session,
+        entity_type="social_discovery_lead",
+        entity_id=lead.id,
+        entity=lead,
+        actor=actor,
+        action="ingest",
+        evidence={"platform": platform, "source": lead.source_name},
+    )
     audit_action(
         session,
         actor=actor,
@@ -886,7 +985,7 @@ def create_social_discovery_lead(
     return lead
 
 
-def rank_social_opportunity_leads(session: Session, *, limit: int = 5) -> list[SocialDiscoveryLead]:
+def rank_social_opportunity_leads(session: Session, *, limit: int = 5, actor: User | None = None) -> list[SocialDiscoveryLead]:
     leads = list(
         session.scalars(
             select(SocialDiscoveryLead)
@@ -897,10 +996,25 @@ def rank_social_opportunity_leads(session: Session, *, limit: int = 5) -> list[S
                 desc(SocialDiscoveryLead.created_at),
                 desc(SocialDiscoveryLead.id),
             )
-            .limit(limit)
+            .limit(max(limit * 3, limit))
         ).all()
     )
-    return leads
+    approved: list[SocialDiscoveryLead] = []
+    for lead in leads:
+        gate = compliance_gate(
+            session,
+            entity_type="social_discovery_lead",
+            entity_id=lead.id,
+            entity=lead,
+            actor=actor,
+            action="rank",
+            evidence={"score": lead.opportunity_score, "reason": lead.reason_found},
+        )
+        if gate.allowed:
+            approved.append(lead)
+        if len(approved) >= limit:
+            break
+    return approved
 
 
 def explain_social_discovery_lead(lead: SocialDiscoveryLead) -> str:
@@ -934,8 +1048,17 @@ def create_opportunity_from_discovery_lead(
     assigned_to_user_id: int | None = None,
 ) -> Opportunity:
     _require_social_manage(session, actor)
-    if lead.compliance_status == "blocked":
-        raise PermissionError("Blocked social discovery leads cannot become opportunities.")
+    gate = compliance_gate(
+        session,
+        entity_type="social_discovery_lead",
+        entity_id=lead.id,
+        entity=lead,
+        actor=actor,
+        action="convert_to_opportunity",
+        evidence={"score": lead.opportunity_score, "reason": lead.reason_found},
+    )
+    if not gate.allowed:
+        raise PermissionError(gate.reason)
     opportunity = create_manual_opportunity(
         session,
         actor=actor,
@@ -1077,6 +1200,31 @@ def route_social_discovery_lead_alert(
     simulate_only: bool = True,
 ) -> list[NotificationDeliveryAttempt]:
     _require_social_view(session, actor)
+    gate = compliance_gate(
+        session,
+        entity_type="social_discovery_lead",
+        entity_id=lead.id,
+        entity=lead,
+        actor=actor,
+        action="alert",
+        evidence={"score": lead.opportunity_score, "reason": lead.reason_found},
+    )
+    if not gate.allowed:
+        create_social_event(
+            session,
+            event_type="social.alert.blocked",
+            event_category="alert",
+            source_module="alert_engine",
+            entity_type="social_discovery_lead",
+            entity_id=lead.id,
+            actor=actor,
+            status="blocked",
+            severity="medium",
+            summary=gate.reason,
+            details={"compliance_log_id": gate.compliance_log_id},
+            evidence=gate.evidence,
+        )
+        return []
     purposes = ["alerts"]
     if lead.opportunity_score >= 90:
         purposes.append("hq")

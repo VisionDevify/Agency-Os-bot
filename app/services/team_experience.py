@@ -57,6 +57,14 @@ HELP_TOPICS: dict[str, str] = {
         "Create the Fortuna OS Telegram groups manually, add @FortunaSolstice_Bot, open each group, "
         "then use Settings -> Notification Targets -> Register Current Chat as Fortuna Target."
     ),
+    "comment_profile_leads": (
+        "Comment profile leads are public profiles Fortuna noticed from approved comment data. "
+        "Review them manually; Fortuna never follows, likes, or comments."
+    ),
+    "comment_profile_data": (
+        "Add only safe public comment/profile details from manual input, approved exports, official APIs, "
+        "or compliant public sources. Do not paste private content or credentials."
+    ),
 }
 
 TEAM_INVITE_ROLES = ("chatter", "va", "manager")
@@ -392,6 +400,7 @@ def help_topics_for_role(user: User | None) -> list[tuple[str, str]]:
     if role in {"Owner", "Admin", "Manager", "Chatter Manager"}:
         topics.append(("manager", "Manager Help"))
         topics.append(("team_invites", "Team Invite Packet"))
+        topics.append(("comment_profile_leads", "What are Comment Profile Leads?"))
     if role in {"Senior Chatter", "Chatter"}:
         topics.append(("chatter", "Chatter Help"))
     if role == "VA":

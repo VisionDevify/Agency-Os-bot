@@ -1,10 +1,14 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from sqlalchemy import desc, select
 
 from app.bot.menu import callback_for, page_controls
 
 from .formatting import *
 from app.models.opportunity import CreatorPostAlert, OwnPostAlert
-from app.models.social import SocialDiscoveryLead, SocialOpportunityScore
+from app.models.social import SocialComment, SocialCommentProfile, SocialDiscoveryLead, SocialOpportunityScore
+from app.services.social_alert_engine import route_profile_lead_alert
+from app.services.social_evaluation import rank_social_comment_profiles, recommend_social_comment_profile
+from app.services.social_evidence import profile_evidence_summary
 from app.services.social_intelligence import (
     best_social_opportunities,
     comment_angles_for_discovery_lead,
@@ -19,6 +23,9 @@ from app.services.social_intelligence import (
     route_social_discovery_lead_alert,
     social_notification_framework_status,
 )
+from app.services.social_learning_engine import learn_from_profile_result
+from app.services.social_opportunity_engine import convert_profile_lead
+from app.services.social_profile_intelligence import comment_section_summary
 
 def render_opportunities_home(session: Session | None = None) -> Screen:
     opportunities = list_opportunities(session, limit=5) if session is not None else []
@@ -373,6 +380,224 @@ def render_social_discovery_lead_action_page(session: Session, lead_id: int, act
             text = "Alert routing simulated.\n\nNo Alerts target is registered yet. Fortuna created a recommendation instead of crashing."
         return Screen(text, page_menu(back_to=f"social_lead:{lead.id}"))
     return render_social_discovery_lead_detail_page(session, lead.id)
+
+
+def _profile_platform_label(profile: SocialCommentProfile) -> str:
+    return profile.platform.upper() if profile.platform == "x" else profile.platform.title()
+
+
+def _profile_leads_menu(best: SocialCommentProfile | None = None) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    if best is not None:
+        rows.append([InlineKeyboardButton(text="👀 Review Profile", callback_data=callback_for(f"social_profile:{best.id}"))])
+        rows.append([InlineKeyboardButton(text="🎯 Create Opportunity", callback_data=callback_for(f"social_profile:{best.id}:create_opportunity"))])
+    rows.extend(
+        [
+            [InlineKeyboardButton(text="💬 Add Comment Data", callback_data=callback_for("help:comment_profile_data"))],
+            [InlineKeyboardButton(text="❓ Help", callback_data=callback_for("help:comment_profile_leads"))],
+            *page_controls(back_to="opportunities"),
+        ]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def render_comment_profile_leads_page(session: Session, user: User | None = None) -> Screen:
+    evaluations = rank_social_comment_profiles(session, actor=user, limit=5) if user else rank_social_comment_profiles(session, limit=5)
+    best = evaluations[0].profile if evaluations else None
+    lines = [
+        "👀 Comment Profile Leads",
+        "",
+        "Status",
+    ]
+    if not evaluations:
+        lines.extend(
+            [
+                "Fortuna has no compliant public profile leads yet.",
+                "",
+                "🧠 What Fortuna noticed",
+                "Add manual public comment data to help Fortuna find recurring profiles worth reviewing.",
+                "",
+                "🎯 Next Best Move",
+                "Paste safe public comment/profile details when you are ready.",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "Fortuna found public profiles worth reviewing.",
+                "",
+                "🧠 What Fortuna noticed",
+                f"• {evaluations[0].explanation}",
+                "• The evidence is from manual or approved public inputs.",
+                "",
+                "🎯 Next Best Move",
+                "Review the profile manually.",
+                "",
+                "Best leads",
+            ]
+        )
+        for evaluation in evaluations[:3]:
+            profile = evaluation.profile
+            lines.append(f"• @{profile.username} — {_profile_platform_label(profile)}")
+            lines.append(f"  {evaluation.explanation}")
+    return Screen("\n".join(lines), _profile_leads_menu(best))
+
+
+def _social_profile_detail_menu(profile: SocialCommentProfile) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="⭐ Watch Profile", callback_data=callback_for(f"social_profile:{profile.id}:watch"))],
+            [InlineKeyboardButton(text="🎯 Create Opportunity", callback_data=callback_for(f"social_profile:{profile.id}:create_opportunity"))],
+            [InlineKeyboardButton(text="🚨 Simulate Alert", callback_data=callback_for(f"social_profile:{profile.id}:route_alert"))],
+            [
+                InlineKeyboardButton(text="✅ Mark Useful", callback_data=callback_for(f"social_profile:{profile.id}:used")),
+                InlineKeyboardButton(text="❌ Ignore", callback_data=callback_for(f"social_profile:{profile.id}:ignore")),
+            ],
+            [InlineKeyboardButton(text="🔎 Details", callback_data=callback_for(f"social_profile:{profile.id}:details"))],
+            *page_controls(back_to="opportunities:profiles"),
+        ]
+    )
+
+
+def render_social_profile_detail_page(session: Session, profile_id: int, *, details: bool = False, user: User | None = None) -> Screen:
+    profile = session.get(SocialCommentProfile, profile_id)
+    if profile is None:
+        return Screen("Profile lead not found.", page_menu(back_to="opportunities:profiles"))
+    try:
+        evaluation = recommend_social_comment_profile(session, profile, actor=user) if user else recommend_social_comment_profile(session, profile)
+        status = "Fortuna found a public profile worth reviewing."
+        why = evaluation.explanation
+    except PermissionError as exc:
+        status = "Fortuna needs to review this source before recommending it."
+        why = str(exc)
+    lines = [
+        "👀 Profile Lead",
+        "",
+        "Status",
+        status,
+        "",
+        "🧠 What Fortuna noticed",
+        why,
+        "",
+        "🎯 Next Best Move",
+        "Review this profile manually. Fortuna will not follow, like, or comment.",
+    ]
+    if details:
+        lines.extend(
+            [
+                "",
+                "🔎 Details",
+                f"Platform: {_profile_platform_label(profile)}",
+                f"Username: @{profile.username}",
+                f"Observed comments: {profile.observed_comment_count}",
+                f"Repeated appearances: {profile.repeated_appearance_count}",
+                f"Average quality: {profile.avg_comment_quality}",
+                f"Average engagement: {profile.avg_engagement}",
+                "Source review: available in compliance logs.",
+            ]
+        )
+    return Screen("\n".join(lines), _social_profile_detail_menu(profile))
+
+
+def render_social_profile_action_page(session: Session, profile_id: int, action: str, user: User | None = None) -> Screen:
+    profile = session.get(SocialCommentProfile, profile_id)
+    if profile is None:
+        return Screen("Profile lead not found.", page_menu(back_to="opportunities:profiles"))
+    if action == "details":
+        return render_social_profile_detail_page(session, profile_id, details=True, user=user)
+    if action == "create_opportunity":
+        try:
+            opportunity = convert_profile_lead(session, profile, actor=user)
+            return render_opportunity_detail_page(session, opportunity.id)
+        except PermissionError as exc:
+            return Screen(
+                f"Fortuna needs review first.\n\n{exc}\n\nNext best move: review the source details before creating an opportunity.",
+                page_menu(back_to=f"social_profile:{profile.id}"),
+            )
+    if action == "route_alert":
+        attempts = route_profile_lead_alert(session, profile, actor=user, simulate_only=True)
+        text = (
+            "Alert routing simulated.\n\nFortuna recorded the safe routing attempt."
+            if attempts
+            else "Alert routing simulated.\n\nNo Alerts target is registered yet. Fortuna created a setup recommendation."
+        )
+        return Screen(text, page_menu(back_to=f"social_profile:{profile.id}"))
+    if action == "watch":
+        profile.status = "watching"
+        session.flush()
+        learn_from_profile_result(session, profile, actor=user, outcome="used", notes="Profile watched from Telegram.")
+        return Screen("Profile watched.\n\nFortuna will keep this profile in your review list.", page_menu(back_to="opportunities:profiles"))
+    if action in {"ignore", "used"}:
+        profile.status = "ignored" if action == "ignore" else profile.status
+        session.flush()
+        learn_from_profile_result(
+            session,
+            profile,
+            actor=user,
+            outcome="skipped" if action == "ignore" else "used",
+            notes=f"Profile marked {action} from Telegram.",
+        )
+        return Screen("Recorded.\n\nFortuna saved this feedback and will learn from it.", page_menu(back_to="opportunities:profiles"))
+    return render_social_profile_detail_page(session, profile_id, user=user)
+
+
+def render_comment_section_review_page(session: Session, user: User | None = None) -> Screen:
+    latest_comment = session.scalar(select(SocialComment).order_by(desc(SocialComment.created_at), desc(SocialComment.id)).limit(1))
+    if latest_comment is None:
+        lines = [
+            "💬 Comment Section Review",
+            "",
+            "Status",
+            "No comment section data has been added yet.",
+            "",
+            "🧠 What Fortuna noticed",
+            "Manual public comment/profile entry is ready when you are.",
+            "",
+            "🎯 Next Best Move",
+            "Add safe public comment data. Do not paste private content or credentials.",
+        ]
+        return Screen(
+            "\n".join(lines),
+            InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="💬 Add Comment Data", callback_data=callback_for("help:comment_profile_data"))],
+                    [InlineKeyboardButton(text="❓ Help", callback_data=callback_for("help:comment_profile_leads"))],
+                    *page_controls(back_to="opportunities"),
+                ]
+            ),
+        )
+    summary = comment_section_summary(session, post_reference=latest_comment.post_reference, actor=user)
+    top_profile = summary["top_profile"]
+    lines = [
+        "💬 Comment Section Review",
+        "",
+        "Status",
+        "Fortuna checked this comment section.",
+        "",
+        "🧠 What Fortuna noticed",
+        f"• {summary['summary']}",
+        f"• {summary['comments']} public comments recorded",
+        f"• {summary['profiles']} profile lead{'s' if summary['profiles'] != 1 else ''} observed",
+        "",
+        "🎯 Next Best Move",
+        "Review the top profile lead manually." if top_profile else "Add more public comment evidence.",
+    ]
+    rows: list[list[InlineKeyboardButton]] = []
+    if top_profile is not None:
+        rows.extend(
+            [
+                [InlineKeyboardButton(text="👀 Review Profile", callback_data=callback_for(f"social_profile:{top_profile.id}"))],
+                [InlineKeyboardButton(text="🎯 Create Opportunity", callback_data=callback_for(f"social_profile:{top_profile.id}:create_opportunity"))],
+            ]
+        )
+    rows.extend(
+        [
+            [InlineKeyboardButton(text="✍️ Comment Ideas", callback_data=callback_for("opportunities:discovery"))],
+            [InlineKeyboardButton(text="❌ Ignore", callback_data=callback_for("opportunities:profiles"))],
+            *page_controls(back_to="opportunities"),
+        ]
+    )
+    return Screen("\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows))
 
 def render_creator_intake_page(session: Session, page: str) -> Screen:
     parts = page.split(":")

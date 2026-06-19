@@ -130,6 +130,27 @@ HELP_KB_SEEDS: tuple[dict[str, str], ...] = (
         "related_route": "opportunities:discovery",
     },
     {
+        "topic": "comment_profile_leads",
+        "title": "Comment Profile Leads",
+        "role_scope": "owner,admin,manager,chatter",
+        "content": "Comment profile leads are public profiles Fortuna noticed in approved comment data. They are suggestions for manual review only; Fortuna never follows, likes, or comments for you.",
+        "related_route": "opportunities:profiles",
+    },
+    {
+        "topic": "comment_section_review",
+        "title": "Comment Section Review",
+        "role_scope": "owner,admin,manager,chatter",
+        "content": "Comment Section Review looks at manually entered or approved public comment data and points you to profiles worth checking by hand.",
+        "related_route": "opportunities:comments",
+    },
+    {
+        "topic": "safe_social_data",
+        "title": "Safe Social Data",
+        "role_scope": "owner,admin,manager,chatter",
+        "content": "Safe social data is manually entered, officially provided, approved export data, or compliant public-source data. Do not enter private data, secrets, scraped private content, or anything from rate-limit evasion.",
+        "related_route": "opportunities:discovery",
+    },
+    {
         "topic": "social_learning",
         "title": "Social Learning",
         "role_scope": "owner,admin,manager,chatter",
@@ -263,6 +284,14 @@ def help_article_count(session: Session) -> int:
 
 def detect_help_intent(question: str) -> str:
     text = question.casefold()
+    if "comment profile" in text or "profile lead" in text or ("why" in text and "profile" in text and "suggest" in text):
+        return "comment_profile_leads"
+    if "comment section" in text:
+        return "comment_section_review"
+    if "safe data" in text or "data is safe" in text or "safe to enter" in text or "compliant public data" in text:
+        return "safe_social_data"
+    if "follow" in text and ("automatic" in text or "automatically" in text or "fortuna" in text):
+        return "no_auto_posting"
     if "discovery mode" in text or ("discover" in text and ("opportun" in text or "lead" in text)):
         return "social_discovery_mode"
     if "recovery risk" in text or "recovery alert" in text:
@@ -720,6 +749,26 @@ def help_brain_answer(
         answer = article.content if article else (
             "Comment angles are human-reviewed ideas like curiosity, relatable, playful, question, or soft CTA. "
             "Fortuna drafts direction, but you decide and post manually."
+        )
+        next_action = "opportunities:discovery"
+    elif intent == "comment_profile_leads":
+        article = _article(session, "comment_profile_leads")
+        answer = article.content if article else (
+            "Comment profile leads are public profiles Fortuna noticed in approved comment data. "
+            "Review them manually; Fortuna never follows, likes, or comments."
+        )
+        next_action = "opportunities:profiles"
+    elif intent == "comment_section_review":
+        article = _article(session, "comment_section_review")
+        answer = article.content if article else (
+            "Comment Section Review summarizes approved public comment evidence and points you to the best profile lead to inspect by hand."
+        )
+        next_action = "opportunities:comments"
+    elif intent == "safe_social_data":
+        article = _article(session, "safe_social_data")
+        answer = article.content if article else (
+            "Safe data means manual public input, approved exports, official APIs, compliant public sources, or approved future connectors. "
+            "Do not enter private data, passwords, or anything collected through evasion."
         )
         next_action = "opportunities:discovery"
     elif intent == "social_learning":
