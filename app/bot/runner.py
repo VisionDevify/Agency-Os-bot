@@ -40,6 +40,7 @@ from app.core.config import settings
 from app.core.logging import configure_logging
 from app.db.session import SessionLocal
 from app.models.account import AccountAuthSession
+from app.models.button_issue import ButtonIssue
 from app.models.opportunity import CREATOR_WATCH_PRIORITIES, OPPORTUNITY_PRIORITIES, POST_WATCH_TYPES, CreatorWatch, PostWatch
 from app.models.reporting import NotificationDeliveryAttempt
 from app.models.user import User
@@ -106,10 +107,18 @@ from app.services.notifications import (
     mark_delivery_skipped,
 )
 from app.services.callbacks import log_callback_failure
+from app.services.callback_protection import (
+    CallbackLockManager,
+    RedisIdempotencyStore,
+    SafeRenderResult,
+    callback_fingerprint,
+    classify_telegram_error,
+)
 from app.services.chat_cleanup import (
     ERROR_FALLBACK,
     TEMPORARY_NAVIGATION,
     chat_cleanup_enabled,
+    is_stale_navigation_callback,
     mark_message_delete_failed,
     mark_message_deleted,
     temporary_navigation_messages,
@@ -122,6 +131,8 @@ from app.services.team_operations import BotPollingGuard, update_user_localizati
 logger = logging.getLogger(__name__)
 dp = Dispatcher()
 CURRENT_BOT_INSTANCE_ID = bot_instance_id()
+CALLBACK_LOCKS = CallbackLockManager(settings.redis_url)
+CALLBACK_IDEMPOTENCY = RedisIdempotencyStore(settings.redis_url)
 
 PENDING_ACCOUNT_CREATES: dict[int, dict[str, int | str]] = {}
 PENDING_AUTH_CODES: dict[int, int] = {}
@@ -461,8 +472,7 @@ def _callback_error_text(exc: BaseException) -> str:
 
 
 def _is_harmless_callback_edit_race(exc: BaseException) -> bool:
-    text = _callback_error_text(exc)
-    return "message is not modified" in text
+    return classify_telegram_error(exc) == "harmless_duplicate"
 
 
 async def _safe_callback_answer(
@@ -475,6 +485,46 @@ async def _safe_callback_answer(
         await callback.answer(text, show_alert=show_alert)
 
 
+def _record_callback_button_issue(
+    session,
+    *,
+    page: str | None,
+    callback_data: str | None,
+    issue_type: str,
+    severity: str,
+    evidence_summary: str,
+    recommended_fix: str,
+) -> None:
+    if session is None:
+        return
+    screen = (page or "unknown")[:160]
+    existing = session.scalar(
+        select(ButtonIssue).where(
+            ButtonIssue.screen == screen,
+            ButtonIssue.callback_data == (callback_data or "")[:260],
+            ButtonIssue.issue_type == issue_type,
+            ButtonIssue.status == "open",
+        )
+    )
+    if existing is not None:
+        existing.severity = severity
+        existing.evidence_summary = evidence_summary
+        existing.recommended_fix = recommended_fix
+        return
+    session.add(
+        ButtonIssue(
+            screen=screen,
+            button_label=None,
+            callback_data=(callback_data or "")[:260] or None,
+            issue_type=issue_type,
+            severity=severity,
+            evidence_summary=evidence_summary,
+            recommended_fix=recommended_fix,
+        )
+    )
+    session.flush()
+
+
 async def _edit_or_send_callback_screen(
     callback: CallbackQuery,
     screen,
@@ -483,24 +533,36 @@ async def _edit_or_send_callback_screen(
     user: User | None = None,
     page: str | None = None,
     message_type: str = TEMPORARY_NAVIGATION,
-) -> None:
+) -> SafeRenderResult:
     if callback.message is None:
-        return
+        return SafeRenderResult(success=False, outcome="missing_callback_message")
+    chat_id = callback.message.chat.id
+    message_id = callback.message.message_id
+    edit_lock = await CALLBACK_LOCKS.acquire_message_edit_lock(
+        chat_id=chat_id,
+        message_id=message_id,
+        ttl_seconds=5,
+    )
+    if edit_lock is None:
+        await _safe_callback_answer(callback, "One moment - Fortuna is already updating that.")
+        return SafeRenderResult(success=False, message_id=message_id, outcome="message_edit_locked")
     try:
         await callback.message.edit_text(screen.text, reply_markup=screen.reply_markup)
         if session is not None:
             track_bot_message(
                 session,
-                chat_id=callback.message.chat.id,
+                chat_id=chat_id,
                 user=user,
-                message_id=callback.message.message_id,
+                message_id=message_id,
                 message_type=message_type,
                 page=page,
             )
+        return SafeRenderResult(success=True, edited=True, message_id=message_id, outcome="edited")
     except Exception as exc:
-        if _is_harmless_callback_edit_race(exc):
+        error_class = classify_telegram_error(exc)
+        if error_class == "harmless_duplicate":
             logger.info("Ignoring harmless Telegram callback edit race for page %s", page)
-            return
+            return SafeRenderResult(success=True, message_id=message_id, outcome="message_not_modified")
         logger.warning("Unable to edit callback message; sending fallback screen", exc_info=True)
         try:
             sent = await callback.message.answer(screen.text, reply_markup=screen.reply_markup)
@@ -513,13 +575,31 @@ async def _edit_or_send_callback_screen(
                     message_type=message_type,
                     page=page,
                 )
+            return SafeRenderResult(
+                success=True,
+                sent_new_message=True,
+                message_id=sent.message_id,
+                outcome=f"fallback_sent_after_{error_class}",
+            )
         except Exception:
             logger.exception("Unable to send callback fallback screen")
+            _record_callback_button_issue(
+                session,
+                page=page,
+                callback_data=getattr(callback, "data", None),
+                issue_type="renderer_error",
+                severity="high",
+                evidence_summary=f"{page or 'unknown'} could not edit or send a fallback screen.",
+                recommended_fix="Inspect Telegram edit/send errors and ensure the callback renders a safe screen.",
+            )
             await _safe_callback_answer(
                 callback,
                 "Fortuna had trouble updating that message. Use /start to refresh.",
                 show_alert=True,
             )
+            return SafeRenderResult(success=False, message_id=message_id, outcome=f"fallback_failed_after_{error_class}")
+    finally:
+        await CALLBACK_LOCKS.release(edit_lock)
 
 
 async def _handle_callback_failure(
@@ -1519,6 +1599,27 @@ async def navigate(callback: CallbackQuery) -> None:
         await _safe_callback_answer(callback, "Database is not configured.", show_alert=True)
         return
 
+    chat_id = callback.message.chat.id
+    user_id = callback.from_user.id
+    callback_lock = await CALLBACK_LOCKS.acquire_callback_lock(
+        chat_id=chat_id,
+        user_id=user_id,
+        ttl_seconds=5,
+    )
+    if callback_lock is None:
+        await _safe_callback_answer(callback, "One moment - Fortuna is already opening that.")
+        return
+    try:
+        fingerprint = callback_fingerprint(callback)
+        if not await CALLBACK_IDEMPOTENCY.mark_callback_seen(fingerprint=fingerprint, ttl_seconds=90):
+            await _safe_callback_answer(callback, "Already handled.")
+            return
+        await _navigate_locked(callback, page)
+    finally:
+        await CALLBACK_LOCKS.release(callback_lock)
+
+
+async def _navigate_locked(callback: CallbackQuery, page: str) -> None:
     with SessionLocal() as session:
         user: User | None = None
         try:
@@ -1612,6 +1713,15 @@ async def navigate(callback: CallbackQuery) -> None:
                 session.commit()
                 return
             chat_id = callback.message.chat.id
+            if is_stale_navigation_callback(
+                session,
+                chat_id=chat_id,
+                user=user,
+                message_id=callback.message.message_id,
+            ):
+                await _safe_callback_answer(callback, "That menu is old - use the latest Fortuna screen.")
+                session.commit()
+                return
             chat_title = getattr(callback.message.chat, "title", None)
             screen = screen_for_page(
                 page,

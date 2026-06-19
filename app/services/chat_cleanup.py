@@ -125,6 +125,37 @@ def temporary_navigation_messages(
     )
 
 
+def current_temporary_navigation_message(
+    session: Session,
+    *,
+    chat_id: int,
+    user: User,
+) -> BotChatMessage | None:
+    return session.scalar(
+        select(BotChatMessage)
+        .where(
+            BotChatMessage.chat_id == chat_id,
+            BotChatMessage.user_id == user.id,
+            BotChatMessage.message_type == TEMPORARY_NAVIGATION,
+            BotChatMessage.is_active.is_(True),
+            BotChatMessage.deleted_at.is_(None),
+        )
+        .order_by(BotChatMessage.updated_at.desc(), BotChatMessage.id.desc())
+        .limit(1)
+    )
+
+
+def is_stale_navigation_callback(
+    session: Session,
+    *,
+    chat_id: int,
+    user: User,
+    message_id: int,
+) -> bool:
+    current = current_temporary_navigation_message(session, chat_id=chat_id, user=user)
+    return current is not None and current.message_id != message_id
+
+
 def mark_message_deleted(record: BotChatMessage) -> None:
     record.is_active = False
     record.delete_attempted_at = datetime.now(UTC)
