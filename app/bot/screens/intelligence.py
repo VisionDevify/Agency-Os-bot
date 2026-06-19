@@ -1,28 +1,56 @@
 from .formatting import *
 
 def render_intelligence_home(session: Session | None = None) -> Screen:
-    lines = ["Intelligence Command Center", ""]
+    lines = ["\U0001f9e0 Fortuna Insights", ""]
     if session is None:
-        lines.append("Things to watch, recurring problems, trends, and workload intelligence.")
+        lines.extend(["Status", "Watching quietly.", "", "Next Best Move", "Ask Fortuna what to check next."])
     else:
         status = command_center_intelligence_status(session)
-        learning = learning_center_metrics(session)
+        noticed: list[str] = []
+        if status["open_signals"]:
+            noticed.append("There are things to watch.")
+        if status["active_patterns"]:
+            noticed.append("Fortuna found recurring problems.")
+        if status["negative_trends"]:
+            noticed.append("Some trends need attention.")
+        if status["overloaded_users"]:
+            noticed.append("Someone may be overloaded.")
+        if not noticed:
+            noticed.append("No urgent risks.")
         lines.extend(
             [
-                f"Status: {status['status']}",
-                f"Things To Watch: {status['open_signals']}",
-                f"Critical Watch Items: {status['critical_signals']}",
-                f"Recurring Problems: {status['active_patterns']}",
-                f"Negative Trends: {status['negative_trends']}",
-                f"Overloaded Users: {status['overloaded_users']}",
-                f"Management Insights: {status['open_executive_insights']}",
-                f"Learning Events: {learning['total_learning_events']}",
-                f"Active Playbooks: {learning['active_playbooks']}",
+                "Status",
+                "Watching quietly.",
                 "",
-                "Run analysis or drill into watch items, recurring problems, trends, and workload.",
+                "Fortuna Noticed",
+                *[f"- {item}" for item in noticed[:3]],
+                "",
+                "Next Best Move",
+                "Finish setup before adding more automation." if noticed == ["No urgent risks."] else "Review priorities first.",
             ]
         )
     return Screen(text="\n".join(lines), reply_markup=intelligence_menu())
+
+
+def render_intelligence_details_page(session: Session) -> Screen:
+    status = command_center_intelligence_status(session)
+    learning = learning_center_metrics(session)
+    lines = [
+        "Fortuna Insights - More Details",
+        "",
+        f"Status: {status['status']}",
+        f"Things To Watch: {status['open_signals']}",
+        f"Critical Watch Items: {status['critical_signals']}",
+        f"Recurring Problems: {status['active_patterns']}",
+        f"Negative Trends: {status['negative_trends']}",
+        f"Overloaded Users: {status['overloaded_users']}",
+        f"Management Insights: {status['open_executive_insights']}",
+        f"Learning Events: {learning['total_learning_events']}",
+        f"Active Playbooks: {learning['active_playbooks']}",
+        "",
+        "Technical analysis tools live here.",
+    ]
+    return Screen(text="\n".join(lines), reply_markup=intelligence_details_menu())
 
 def render_intelligence_runs_page(session: Session) -> Screen:
     runs = list_intelligence_runs(session, limit=10)
@@ -86,12 +114,35 @@ def render_intelligence_patterns_page(session: Session) -> Screen:
 
 def render_intelligence_trends_page(session: Session) -> Screen:
     trends = list_trends(session, limit=20)
-    lines = ["Trend Analysis", ""]
+    lines = ["\U0001f4c8 Trends", "", "Fortuna checked today\u2019s trends.", ""]
+    if not trends:
+        lines.extend(["What Changed", "- No trend snapshots yet.", "", "What It Means", "Nothing urgent here.", "", "Next", "Run analysis after setup has real data."])
+        return Screen(text="\n".join(lines), reply_markup=trends_menu())
+    negative = [trend for trend in trends if trend.trend_direction in {"down", "volatile"}][:3]
+    calm = [trend for trend in trends if trend.trend_direction in {"flat", "up"}][:2]
+    lines.append("What Changed")
+    if negative:
+        for trend in negative:
+            friendly = trend.metric_name.replace("_", " ")
+            lines.append(f"- {friendly.title()} moved {trend.trend_direction}.")
+    else:
+        lines.append("- No task issues.")
+        lines.append("- No incident spike.")
+    for trend in calm:
+        friendly = trend.metric_name.replace("_", " ")
+        lines.append(f"- {friendly.title()} looks steady.")
+    lines.extend(["", "What It Means", "Setup still needs attention, but nothing is urgent.", "", "Next", "Clear setup recommendations."])
+    return Screen(text="\n".join(lines), reply_markup=trends_menu())
+
+
+def render_intelligence_trend_details_page(session: Session) -> Screen:
+    trends = list_trends(session, limit=20)
+    lines = ["Trends - More Details", ""]
     if not trends:
         lines.append("No trend snapshots yet.")
     for trend in trends:
         change = f"{trend.percent_change}%" if trend.percent_change is not None else "baseline"
-        lines.append(f"{trend.id}. {trend.metric_name}: {trend.value_numeric}")
+        lines.append(f"{trend.id}. {trend.metric_name.replace('_', ' ')}: {trend.value_numeric}")
         lines.append(f"   Direction: {trend.trend_direction} | Change: {change}")
         lines.append(f"   Window: {trend.comparison_window} | Date: {trend.snapshot_date.strftime('%b')} {trend.snapshot_date.day}, {trend.snapshot_date.year}")
     return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="intelligence"))

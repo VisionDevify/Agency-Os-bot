@@ -145,26 +145,22 @@ def render_main_menu(session: Session | None = None, user: User | None = None) -
         missing = progress["missing"] or ["Nothing urgent"]
         focus = progress["top_blocker"]["title"] if progress["top_blocker"] else "Nothing urgent here"
         lines = [
-            f"\U0001f319 {_owner_greeting(user).title()}, {_owner_display_name(user)}",
+            "\U0001f319 Fortuna OS",
             "",
-            "Fortuna Status:",
-            production_status,
+            f"{_owner_greeting(user)}, {_owner_display_name(user)}.",
+            "",
+            "Status",
+            "\U0001f7e2 Everything is running." if production_status.startswith("\U0001f7e2") else production_status,
             *emergency_warning,
             "",
-            "Agency Setup:",
-            f"{progress['complete_count']}/{progress['total']} Complete",
-            "",
             "Today\u2019s Focus:",
-            focus,
-            "",
-            "Next Best Move:",
             focus,
             "",
             "Missing:",
             *[f"- {item}" for item in missing],
             "",
-            "Estimated Time:",
-            f"{_estimated_minutes(len(progress['missing']))} min",
+            "Next Best Move",
+            "Continue setup." if progress["missing"] else "Nothing urgent here.",
             "",
             "Ready when you are.",
         ]
@@ -206,22 +202,22 @@ def render_start_here_page(session: Session, user: User | None = None) -> Screen
     lines = [
         "Start Here",
         "",
-        f"Readiness: {score}% {_readiness_marker(score)}",
+        "Fortuna checked this for you.",
         "",
     ]
     if score < 70:
         lines.extend(
             [
-                "Your agency is not fully set up yet. Finish these first.",
+                "Your agency is not fully set up yet. Let\u2019s finish the basics first.",
                 "",
-                "Top Setup Steps:",
+                "Top Setup Steps",
                 "1. Complete model profile",
                 "2. Add accounts",
                 "3. Assign team",
                 "4. Add creators",
                 "5. Register notifications",
                 "",
-                "Recommended next move:",
+                "Next Best Move",
                 blockers[0]["title"] if blockers else "Open Setup and review progress.",
             ]
         )
@@ -380,18 +376,18 @@ def render_setup_progress_page(session: Session, user: User | None = None) -> Sc
     report = build_activation_report(session)
     progress = _setup_progress(session, report)
     lines = [
-        "Setup Progress",
+        "\U0001f9e9 Setup",
         "",
-        f"Agency Setup: {progress['complete_count']}/{progress['total']} Complete",
+        "Fortuna checked your first workspace path.",
         "",
-        "Fortuna noticed these setup areas:",
+        "Setup Steps:",
     ]
     rows: list[tuple[str, str, str]] = []
     for section in progress["sections"]:
         if section["complete"]:
             marker = "\u2705 Complete"
         elif section["attention"]:
-            marker = "\u26a0 Needs Attention"
+            marker = "\u26a0 Needs info"
         else:
             marker = "\U0001f534 Missing"
         lines.append(f"- {section['label']}: {marker}")
@@ -399,8 +395,10 @@ def render_setup_progress_page(session: Session, user: User | None = None) -> Sc
     lines.extend(
         [
             "",
-            "What should I do next?",
+            "Next Best Move",
             progress["top_blocker"]["title"] if progress["top_blocker"] else "Nothing urgent here.",
+            "",
+            "One step at a time. You\u2019re close.",
         ]
     )
     return Screen("\n".join(lines), setup_progress_menu(rows))

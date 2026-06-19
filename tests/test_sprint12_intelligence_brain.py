@@ -312,7 +312,7 @@ def test_telegram_intelligence_and_opportunity_callbacks_do_not_crash() -> None:
         opportunity = screen_for_page("opportunities:add", principal, session=session, user=owner)
         recommendation = screen_for_page("reports:executive:recommendations", principal, session=session, user=owner)
 
-        assert "Intelligence Command Center" in intelligence.text
+        assert "Fortuna Insights" in intelligence.text
         assert "Intelligence Runs" in run_screen.text
         assert "Opportunity" in opportunity.text
-        assert "Recommendations" in recommendation.text
+        assert "Start Here" in recommendation.text

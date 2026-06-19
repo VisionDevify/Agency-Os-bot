@@ -66,7 +66,7 @@ def test_help_brain_seeds_kb_answers_readiness_and_logs_question() -> None:
         assert result.intent == "readiness_low"
         assert "Readiness" in result.answer
         assert session.query(HelpQuestionLog).count() == 2
-        assert "Fortuna Help Brain" in screen.text
+        assert "Ask Fortuna" in screen.text
         assert "TELEGRAM_BOT_TOKEN" not in screen.text
 
 

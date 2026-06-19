@@ -95,9 +95,9 @@ def test_proxy_vault_empty_state_points_to_one_paste_import() -> None:
         screen = render_proxies_home(session)
         labels = _button_labels(screen)
 
-        assert "Paste your Olympix proxy string to begin." in screen.text
-        assert "Next best move: Add your first proxy." in screen.text
-        assert "Paste Olympix Proxy String" in labels
+        assert "Paste your Olympix proxy string." in screen.text
+        assert "Next" in screen.text
+        assert "Paste Proxy" in labels
         _assert_clean(screen.text)
 
 

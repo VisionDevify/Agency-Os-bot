@@ -354,26 +354,33 @@ def render_recommendations_page(session: Session, user: User | None = None) -> S
     generate_recommendations(session, actor=user)
     recommendations = list_recommendations(session, status="open", limit=20)
     record_report_view(session, actor=user, report_name="recommendations")
-    lines = [
-        "Fortuna Recommendations",
-        "",
-        f"Status: {'Healthy' if not recommendations else 'Needs Attention'}",
-        f"Issues Found: {len(recommendations)}",
-        "",
-        "Recommended Next Move:",
-    ]
+    lines = ["\U0001f534 Start Here", ""]
     buttons: list[tuple[str, str]] = []
     if not recommendations:
-        lines.extend(["Nothing urgent here.", "", "Fortuna will keep watching for blockers."])
+        lines.extend(["Nothing urgent here.", "", "Fortuna will keep watching for blockers.", "", "Ready when you are."])
     else:
         top = recommendations[0]
-        lines.extend([_friendly_recommendation_title(top), ""])
+        top_title = _friendly_recommendation_title(top)
+        lines.extend(
+            [
+                top_title,
+                "",
+                "Why",
+                top.description,
+                "",
+                "Next",
+                "Fix This",
+                "",
+                "\U0001f7e1 Later",
+            ]
+        )
+        buttons.append((f"Fix This: {top_title[:32]}", f"nav:recommendation:{top.id}"))
         grouped: dict[str, list[Recommendation]] = {}
         for recommendation in recommendations:
             group, _ = _recommendation_group(recommendation)
             grouped.setdefault(group, []).append(recommendation)
+        later_count = 0
         for group in (
-            "\U0001f534 Urgent",
             "\U0001f7e1 Needs Setup",
             "\U0001f7e1 Growth",
             "\U0001f535 System",
@@ -383,15 +390,17 @@ def render_recommendations_page(session: Session, user: User | None = None) -> S
             group_items = grouped.get(group, [])
             if not group_items:
                 continue
-            lines.append(group)
-            recommendation = group_items[0]
-            marker = _status_marker(recommendation.severity)
-            lines.append(f"- {marker} {_friendly_recommendation_title(recommendation)}")
-            lines.append(f"  Why it matters: {recommendation.description}")
-            buttons.append((f"Fix: {_friendly_recommendation_title(recommendation)[:38]}", f"nav:recommendation:{recommendation.id}"))
-            if len(group_items) > 1:
-                lines.append(f"  View All: {len(group_items)} items in this group")
-            lines.append("")
+            for recommendation in group_items:
+                if recommendation.id == top.id:
+                    continue
+                lines.append(f"- {_friendly_recommendation_title(recommendation)}")
+                later_count += 1
+                if later_count >= 4:
+                    break
+            if later_count >= 4:
+                break
+        if later_count == 0:
+            lines.append("- Nothing else urgent.")
     return Screen(text="\n".join(lines), reply_markup=recommendations_menu(buttons))
 
 def render_recommendation_detail_page(session: Session, recommendation_id: int) -> Screen:

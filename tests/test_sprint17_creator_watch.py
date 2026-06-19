@@ -287,5 +287,5 @@ def test_sprint17_telegram_pages_do_not_crash() -> None:
 
         assert any("Creator Watchlist" in text for text in texts)
         assert any("Suggested Strategies" in text for text in texts)
-        assert any("Help Copilot" in text for text in texts)
+        assert any("Ask Fortuna" in text for text in texts)
         assert any("Team Activation" in text for text in texts)

@@ -4,11 +4,17 @@ from app.services.help_brain import help_brain_answer, seed_help_knowledge_base
 def render_help_center_page(user: User | None = None) -> Screen:
     buttons = [(label, f"nav:help:{topic}") for topic, label in help_topics_for_role(user)]
     lines = [
-        "Help Center",
+        "\u2753 Ask Fortuna",
         "",
-        "Quick answers for day-to-day work.",
-        "Ask Fortuna when you need a role-aware next step.",
-        "Pick a topic when you need a reminder or a clean next step.",
+        "What do you need?",
+        "",
+        "- What should I do next?",
+        "- Help me finish setup",
+        "- Help me add a proxy",
+        "- Explain this screen",
+        "- I\u2019m stuck",
+        "",
+        "Fortuna will keep it short and point you to the next button.",
     ]
     return Screen(text="\n".join(lines), reply_markup=help_center_menu(buttons))
 
@@ -60,32 +66,25 @@ def render_help_copilot_page(session: Session, user: User | None = None, *, ques
     if question:
         result = help_brain_answer(session, user, question=prompts.get(question, question), current_page="help")
         lines = [
-            "Fortuna Help Brain",
-            "",
-            f"Role Context: {result.role}",
-            f"Intent: {result.intent.replace('_', ' ').title()}",
+            "\u2753 Ask Fortuna",
             "",
             result.answer,
             "",
-            f"Next Action: {result.next_action}",
+            "Next Button",
+            result.next_action,
         ]
         return Screen(text="\n".join(lines), reply_markup=help_feedback_menu(result.log_id, next_action=result.next_action))
     else:
         lines = [
-            "Fortuna Help Brain",
-            "Help Copilot upgraded",
+            "\u2753 Ask Fortuna",
             "",
-            "Ask simple workflow questions like:",
+            "Choose one:",
             "- Where do I start?",
-            "- How do I create the first model?",
-            "- What does this mean?",
-            "- How do I complete an opportunity?",
-            "- Where do I go?",
-            "- How do I register notification groups?",
-            "- How do I assign a proxy?",
+            "- What should I do next?",
+            "- Help me add a proxy",
             "- Why is readiness low?",
             "",
-            "Choose a prompt below for a role-aware answer.",
+            "Ready when you are.",
         ]
     return Screen(text="\n".join(lines), reply_markup=help_copilot_menu())
 

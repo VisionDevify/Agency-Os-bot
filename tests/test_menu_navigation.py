@@ -205,11 +205,11 @@ def test_owner_home_primary_callbacks_render_real_pages() -> None:
         principal = PermissionPrincipal(telegram_id=owner.telegram_id, is_owner=True, role=RoleName.OWNER)
 
         expected = {
-            "setup_progress": "Setup Progress",
+            "setup_progress": "Setup",
             "today_priorities": "Today's Priorities",
             "opportunities": "Opportunities",
             "proxies": "Proxy Vault",
-            "help": "Help Center",
+            "help": "Ask Fortuna",
             "owner_advanced": "Advanced",
         }
 

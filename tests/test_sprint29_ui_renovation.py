@@ -43,13 +43,12 @@ def test_owner_home_is_simple_and_advanced_menu_exists() -> None:
         screen = render_main_menu(session, owner)
         labels = _button_text(screen)
 
-        assert "Fortuna Status" in screen.text
+        assert "Status" in screen.text
         assert "Today\u2019s Focus:" in screen.text
-        assert "Start Here" in labels
-        assert "Setup" in labels
+        assert "Continue" in labels
         assert "Today\u2019s Priorities" in labels
         assert "Proxy Vault" in labels
-        assert "Advanced" in labels
+        assert "More" in labels
         assert "Automation" not in labels
 
         start = render_start_here_page(session, owner)
@@ -61,7 +60,7 @@ def test_owner_home_is_simple_and_advanced_menu_exists() -> None:
         assert "Things Fortuna Did" in today.text
 
         setup = render_setup_progress_page(session, owner)
-        assert "Setup Progress" in setup.text
+        assert "Setup" in setup.text
         assert "Model Setup" in setup.text
 
         assistant = render_assistant_next_page(session, owner)
@@ -94,10 +93,9 @@ def test_recommendations_are_grouped_and_hide_raw_types() -> None:
 
         screen = render_recommendations_page(session, owner)
 
-        assert "Fortuna Recommendations" in screen.text
-        assert "Recommended Next Move" in screen.text
-        assert "Needs Setup" in screen.text
-        assert "Why it matters" in screen.text
+        assert "Start Here" in screen.text
+        assert "Why" in screen.text
+        assert "Later" in screen.text
         assert "activation_model_missing_team" not in screen.text
         assert "Type:" not in screen.text
 
@@ -132,10 +130,10 @@ def test_proxy_vault_and_detail_are_clean_and_secret_safe() -> None:
         home = render_proxies_home(session)
         detail = render_proxy_detail_page(session, proxy.id)
 
-        assert "Total Proxies:" in home.text
-        assert "Missing Accounts:" in home.text
-        assert "Add Proxy" in _button_text(home)
-        assert "Advanced Tools" in _button_text(home)
+        assert "Status" in home.text
+        assert "What Needs Attention" in home.text
+        assert "View Proxies" in _button_text(home)
+        assert "More Details" in _button_text(home)
         assert "Olympix Mobile Proxy" in detail.text
         assert "Connection:" in detail.text
         assert "Real Check: Off" in detail.text

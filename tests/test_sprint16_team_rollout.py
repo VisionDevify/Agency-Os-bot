@@ -141,7 +141,7 @@ def test_help_center_topics_render_for_staff_roles() -> None:
 
         screen = render_help_center_page(va)
 
-        assert "Help Center" in screen.text
+        assert "Ask Fortuna" in screen.text
         labels = [button.text for row in screen.reply_markup.inline_keyboard for button in row]
         assert "What is a Task?" in labels
         assert "VA Help" in labels
@@ -260,4 +260,4 @@ def test_navigation_exposes_role_home_and_help_without_crashing() -> None:
         help_screen = screen_for_page("help", principal, session=session, user=chatter)
 
         assert "Role: Chatter" in menu.text
-        assert "Help Center" in help_screen.text
+        assert "Ask Fortuna" in help_screen.text

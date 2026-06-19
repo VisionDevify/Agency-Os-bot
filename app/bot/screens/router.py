@@ -461,6 +461,8 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_va_dashboard_page(session, user=user)
     if page == "intelligence" and session is not None:
         return render_intelligence_home(session)
+    if page == "intelligence:details" and session is not None:
+        return render_intelligence_details_page(session)
     if page == "intelligence:runs" and session is not None:
         return render_intelligence_runs_page(session)
     if page.startswith("intelligence:run_detail:") and session is not None:
@@ -473,8 +475,12 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_intelligence_patterns_page(session)
     if page == "intelligence:trends" and session is not None:
         return render_intelligence_trends_page(session)
+    if page == "intelligence:trends:details" and session is not None:
+        return render_intelligence_trend_details_page(session)
     if page == "intelligence:learning" and session is not None:
         return render_learning_center_page(session)
+    if page == "intelligence:learning:details" and session is not None:
+        return render_learning_details_page(session)
     if page == "intelligence:learning:playbooks" and session is not None:
         return render_playbooks_page(session)
     if page == "intelligence:learning:recommended" and session is not None:

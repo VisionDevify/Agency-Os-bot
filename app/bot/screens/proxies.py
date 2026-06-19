@@ -36,29 +36,41 @@ def render_proxies_home(session: Session | None = None) -> Screen:
         total = healthy = needs_attention = missing_proxy = real_enabled = 0
     return Screen(
         text="\n".join(
-            [
-                "\U0001f6e1 Proxy Vault",
-                "",
-                f"Total Proxies: {total}",
-                f"Healthy: {healthy}",
-                f"Needs Attention: {needs_attention}",
-                f"Missing Accounts: {missing_proxy}",
-                f"Real Checks: {'Enabled' if real_enabled else 'Disabled'}",
-                "",
-                "Fortuna noticed proxy setup matters before accounts go live.",
-                (
-                    "Paste your Olympix proxy string to begin."
-                    if total == 0
-                    else "Assign a saved proxy to each account, then test safely."
-                ),
-                (
-                    "Next best move: Add your first proxy."
-                    if total == 0
-                    else "Next best move: Assign this proxy to an account."
-                ),
-                "",
-                "Fortuna will never show proxy passwords back in Telegram.",
-            ]
+            (
+                [
+                    "\U0001f6e1 Proxy Vault",
+                    "",
+                    "Status",
+                    "Ready for setup.",
+                    "",
+                    "What Proxies Do",
+                    "They help keep account activity separated and organized.",
+                    "",
+                    "Next",
+                    "Paste your Olympix proxy string.",
+                    "",
+                    "Fortuna will encrypt the password and never show it back.",
+                ]
+                if total == 0
+                else [
+                    "\U0001f6e1 Proxy Vault",
+                    "",
+                    "Status",
+                    f"\u2705 {total} saved {'proxy' if total == 1 else 'proxies'}.",
+                    "",
+                    "What Needs Attention",
+                    (
+                        f"{missing_proxy} account{'s' if missing_proxy != 1 else ''} missing a proxy."
+                        if missing_proxy
+                        else "Nothing urgent here."
+                    ),
+                    "",
+                    "Next",
+                    "Assign a proxy to an account." if missing_proxy else "Run a check when you need fresh status.",
+                    "",
+                    f"Real Checks: {'On' if real_enabled else 'Off'}",
+                ]
+            )
         ),
         reply_markup=proxies_menu(),
     )

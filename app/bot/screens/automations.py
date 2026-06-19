@@ -1,24 +1,46 @@
 from .formatting import *
 
+FRIENDLY_AUTOMATION_NAMES = {
+    "Daily Intelligence Scan": "Daily Checkup",
+    "Daily Executive Digest": "Daily Summary",
+    "Overdue Task Escalation": "Nudge Overdue Work",
+    "Critical Incident Escalation": "Escalate Urgent Issues",
+    "Proxy Repair Assistant": "Proxy Helper",
+    "Notification Failure Watch": "Notification Watch",
+}
+
+
+def _friendly_automation_name(name: str) -> str:
+    return FRIENDLY_AUTOMATION_NAMES.get(name, name)
+
+
 def render_automations_home(session: Session | None = None, user: User | None = None) -> Screen:
-    lines = ["Automation Dashboard", "", "Lifecycle: Draft -> Simulate -> Approve -> Activate -> Run"]
+    lines = ["\U0001f916 Fortuna Automation", ""]
     if session is not None:
         seed_builtin_automation_templates(session, actor=user)
         metrics = automation_metrics(session)
+        waiting: list[str] = []
+        if metrics["pending_approvals"]:
+            waiting.append("Approvals need review.")
+        if metrics["failed_automations"]:
+            waiting.append("Some automations need attention.")
+        if not waiting:
+            waiting.append("Alerts need notification groups.")
+            waiting.append("Proxy repair needs real proxy data.")
         lines.extend(
             [
+                "Active",
+                "- Daily Checkup" if metrics["active_automations"] else "- Safe mode only",
                 "",
-                f"Active Automations: {metrics['active_automations']}",
-                f"Failed Automations: {metrics['failed_automations']}",
-                f"Pending Approvals: {metrics['pending_approvals']}",
-                f"Last Automation Run: {metrics['last_automation_run']} ({metrics['last_run_status']})",
-                f"Automation Success Rate: {metrics['automation_success_rate']}%",
+                "Waiting",
+                *[f"- {item}" for item in waiting[:2]],
                 "",
-                "Simulation mode is the default safety layer.",
+                "Recommended",
+                "Keep automations in safe mode until setup is complete.",
             ]
         )
     else:
-        lines.extend(["", "Simulation mode is active.", "Preview, simulate, approve, then execute."])
+        lines.extend(["Active", "- Safe mode only", "", "Recommended", "Preview before anything runs."])
     return Screen(text="\n".join(lines), reply_markup=automations_menu())
 
 def render_automation_rules_page(session: Session, user: User | None = None) -> Screen:
@@ -42,11 +64,11 @@ def render_automation_templates_page(session: Session, user: User | None = None)
     for template in BUILTIN_AUTOMATION_TEMPLATES:
         rule = by_type.get(template.automation_type)
         status = rule.status if rule else "not seeded"
-        lines.append(f"- {template.name}")
+        lines.append(f"- {_friendly_automation_name(template.name)}")
         lines.append(f"  Risk: {template.risk_level} | Status: {status}")
         lines.append(f"  What starts it: {template.trigger_type}")
         if rule:
-            buttons.append((template.name[:40], f"nav:automation:{rule.id}"))
+            buttons.append((_friendly_automation_name(template.name)[:40], f"nav:automation:{rule.id}"))
     return Screen(text="\n".join(lines), reply_markup=automation_templates_menu(buttons))
 
 def render_automation_rule_detail_page(session: Session, rule_id: int) -> Screen:

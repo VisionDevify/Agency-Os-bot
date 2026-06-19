@@ -48,17 +48,15 @@ def test_owner_home_feels_like_a_product_dashboard() -> None:
         screen = render_main_menu(session, owner)
         labels = _button_text(screen)
 
-        assert "\U0001f319 Good" in screen.text
-        assert "Fortuna Status:" in screen.text
-        assert "Production Healthy" in screen.text
-        assert "Agency Setup:" in screen.text
+        assert "\U0001f319 Fortuna OS" in screen.text
+        assert "Status" in screen.text
+        assert "Everything is running" in screen.text
         assert "Today\u2019s Focus:" in screen.text
-        assert "Estimated Time:" in screen.text
-        assert "Start Here" in labels
-        assert "Setup" in labels
+        assert "Next Best Move" in screen.text
+        assert "Continue" in labels
         assert "Today\u2019s Priorities" in labels
         assert "Proxy Vault" in labels
-        assert "Advanced" in labels
+        assert "More" in labels
         assert "Intelligence" not in labels
         assert "Automation" not in labels
         _assert_no_raw_backend_text(screen.text)
@@ -109,8 +107,8 @@ def test_setup_progress_groups_real_setup_areas() -> None:
         screen = render_setup_progress_page(session, owner)
         labels = _button_text(screen)
 
-        assert "Setup Progress" in screen.text
-        assert "Agency Setup:" in screen.text
+        assert "Setup" in screen.text
+        assert "Setup Steps" in screen.text
         for section in ("Model Setup", "Accounts", "Team", "Creators", "Notifications", "Proxy"):
             assert section in screen.text
         assert "Fix Model Setup" in labels
@@ -137,15 +135,12 @@ def test_proxy_vault_home_is_first_class_and_not_backend_like() -> None:
         labels = _button_text(screen)
 
         assert "\U0001f6e1 Proxy Vault" in screen.text
-        assert "Total Proxies:" in screen.text
-        assert "Healthy:" in screen.text
-        assert "Needs Attention:" in screen.text
-        assert "Missing Accounts:" in screen.text
+        assert "Status" in screen.text
+        assert "What Needs Attention" in screen.text
         assert "Real Checks:" in screen.text
-        assert "Add Proxy" in labels
+        assert "View Proxies" in labels
         assert "Accounts Missing Proxy" in labels
-        assert "Proxy Assignments" in labels
-        assert "Advanced Tools" in labels
+        assert "More Details" in labels
         assert "secret-password" not in screen.text
         _assert_no_raw_backend_text(screen.text)
 
@@ -185,13 +180,9 @@ def test_recommendations_are_grouped_with_human_labels() -> None:
 
         screen = render_recommendations_page(session, owner)
 
-        assert "Fortuna Recommendations" in screen.text
-        assert "Recommended Next Move:" in screen.text
-        assert "\U0001f7e1 Needs Setup" in screen.text
-        assert "\U0001f7e1 Growth" in screen.text
-        assert "\U0001f535 System" in screen.text
-        assert "Why it matters:" in screen.text
-        assert "View All:" in screen.text
+        assert "Start Here" in screen.text
+        assert "Why" in screen.text
+        assert "\U0001f7e1 Later" in screen.text
         _assert_no_raw_backend_text(screen.text)
 
 
@@ -204,7 +195,7 @@ def test_simple_and_advanced_modes_are_separated() -> None:
         simple_labels = _button_text(simple)
         advanced_labels = _button_text(advanced)
 
-        assert "Advanced" in simple_labels
+        assert "More" in simple_labels
         assert "Intelligence" not in simple_labels
         assert "Automation" not in simple_labels
         assert "Intelligence" in advanced_labels

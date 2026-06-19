@@ -3,24 +3,38 @@ from .formatting import *
 def render_learning_center_page(session: Session) -> Screen:
     metrics = learning_center_metrics(session)
     repeated_failures = metrics["repeated_failures"][:3]
-    status = "Learning" if metrics["total_learning_events"] else "Waiting for Outcomes"
+    status = "Learning quietly" if metrics["total_learning_events"] else "Still learning"
     if repeated_failures:
-        status = "Needs Attention"
+        status = "Needs attention"
     next_action = (
         "Review the repeated failures first."
         if repeated_failures
-        else "Keep completing tasks, resolving incidents, and recording results so Fortuna can learn."
+        else "Run real alerts so Fortuna can learn what works."
     )
     lines = [
-        "Learning Center",
+        "\U0001f9e0 What Fortuna Learned",
+        "",
+        "Fortuna is still learning from your workflow.",
         "",
         f"Status: {status}",
-        f"Issues Found: {len(repeated_failures)}",
         "",
-        "Recommended Action:",
-        next_action,
+        "Recent Lessons",
+    ]
+    for memory in repeated_failures:
+        lines.append(f"- {memory.summary}")
+    if not repeated_failures:
+        lines.append("- No repeated failures yet.")
+        lines.append("- Notifications still need setup." if not metrics["recent_events"] else "- Fortuna has new workflow history.")
+    lines.extend(["", "Best Next Lesson", next_action])
+    return Screen(text="\n".join(lines), reply_markup=learning_center_menu())
+
+
+def render_learning_details_page(session: Session) -> Screen:
+    metrics = learning_center_metrics(session)
+    repeated_failures = metrics["repeated_failures"][:3]
+    lines = [
+        "Learning Center - More Details",
         "",
-        "Technical Details:",
         f"Total Learning Events: {metrics['total_learning_events']}",
         f"Active Playbooks: {metrics['active_playbooks']}",
         f"Outcome Memories: {metrics['outcome_memories']}",
@@ -34,14 +48,14 @@ def render_learning_center_page(session: Session) -> Screen:
     lines.extend(["", "Repeated Failures:"])
     for memory in repeated_failures:
         lines.append(f"- {memory.summary}")
-    if not metrics["repeated_failures"]:
+    if not repeated_failures:
         lines.append("- None recorded")
     lines.extend(["", "Recent Learning Events:"])
     for event in metrics["recent_events"][:5]:
         lines.append(f"- {event.event_type}: {event.outcome}")
     if not metrics["recent_events"]:
         lines.append("- Learning events will appear as operations complete.")
-    return Screen(text="\n".join(lines), reply_markup=learning_center_menu())
+    return Screen(text="\n".join(lines), reply_markup=learning_details_menu())
 
 def render_playbooks_page(session: Session, *, recommended: bool = False) -> Screen:
     if recommended:

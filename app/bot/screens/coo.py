@@ -4,9 +4,9 @@ def render_coo_dashboard_page(session: Session, user: User | None = None) -> Scr
     priorities = top_priorities(session, actor=user, limit=5)
     messages = fortuna_messages(session, actor=user)
     lines = [
-        "Fortuna COO Layer",
+        "Fortuna Operations",
         "",
-        "Fortuna is watching readiness, assignments, risks, and follow-ups so work gets routed instead of discovered late.",
+        "Fortuna is quietly watching readiness, assignments, risks, and follow-ups.",
         "",
         "What Fortuna Noticed:",
     ]
@@ -177,24 +177,22 @@ def render_load_balancer_page(session: Session) -> Screen:
 
 def render_executive_mode_page(session: Session, user: User | None = None) -> Screen:
     summary = executive_mode_summary(session, actor=user)
+    blockers = [item.explanation.split(".")[0] for item in summary["top_priorities"][:3]]
+    blocker_lines = [f"- {item}" for item in blockers] if blockers else ["- Nothing urgent here."]
     lines = [
-        "Fortuna HQ",
+        "\U0001f3f0 Fortuna HQ",
         "",
-        f"Agency Health: {summary['agency_health']}",
-        f"Readiness: {summary['readiness_score']}%",
-        f"Critical Issues: {summary['critical_issues']}",
-        f"Open Recommendations: {summary['open_recommendations']}",
-        f"Failed Automations: {summary['failed_automations']}",
+        "Agency Health",
+        "Needs setup." if summary["readiness_score"] < 80 else "Looks steady.",
         "",
-        "Top Priorities:",
+        "Fortuna Recommends",
+        summary["messages"][0] if summary["messages"] else "Finish model setup first.",
+        "",
+        "Top Blockers",
+        *blocker_lines,
+        "",
+        "What Fortuna Did",
+        f"Prepared {len(summary['messages'])} action{'s' if len(summary['messages']) != 1 else ''} today.",
     ]
-    if summary["top_priorities"]:
-        for item in summary["top_priorities"][:5]:
-            lines.append(f"- {item.score}/100: {item.explanation.split('.')[0]}")
-    else:
-        lines.append("- No open priorities.")
-    lines.append("")
-    lines.append("What Fortuna Recommends:")
-    lines.extend(f"- {message}" for message in summary["messages"][:5])
     return Screen("\n".join(lines), executive_mode_menu())
 

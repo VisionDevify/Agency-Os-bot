@@ -41,18 +41,15 @@ def role_home_menu(items: list[tuple[str, str]] | tuple[tuple[str, str], ...]) -
 def owner_simple_home_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Start Here", callback_data=callback_for("start_here"))],
-            [
-                InlineKeyboardButton(text="Today\u2019s Priorities", callback_data=callback_for("today_priorities")),
-                InlineKeyboardButton(text="Setup", callback_data=callback_for("first_workspace")),
-            ],
+            [InlineKeyboardButton(text="Continue", callback_data=callback_for("start_here"))],
+            [InlineKeyboardButton(text="Today\u2019s Priorities", callback_data=callback_for("today_priorities"))],
             [
                 InlineKeyboardButton(text="Proxy Vault", callback_data=callback_for("proxies")),
                 InlineKeyboardButton(text="Opportunities", callback_data=callback_for("opportunities")),
             ],
             [
                 InlineKeyboardButton(text="Help", callback_data=callback_for("help")),
-                InlineKeyboardButton(text="Advanced", callback_data=callback_for("owner_advanced")),
+                InlineKeyboardButton(text="More", callback_data=callback_for("owner_advanced")),
             ],
         ]
     )
@@ -730,13 +727,11 @@ def account_detail_menu(account_id: int) -> InlineKeyboardMarkup:
 def proxies_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Paste Olympix Proxy String", callback_data=callback_for("proxies:olympix:paste"))],
-            [InlineKeyboardButton(text="Add Proxy", callback_data=callback_for("proxies:add"))],
+            [InlineKeyboardButton(text="Paste Proxy", callback_data=callback_for("proxies:olympix:paste"))],
+            [InlineKeyboardButton(text="View Proxies", callback_data=callback_for("proxies:list"))],
             [InlineKeyboardButton(text="Accounts Missing Proxy", callback_data=callback_for("proxies:missing"))],
-            [InlineKeyboardButton(text="Proxy Health", callback_data=callback_for("proxies:dashboard"))],
-            [InlineKeyboardButton(text="Proxy Assignments", callback_data=callback_for("proxies:list"))],
             [InlineKeyboardButton(text="Help", callback_data=callback_for("help_copilot:add_proxy"))],
-            [InlineKeyboardButton(text="Advanced Tools", callback_data=callback_for("proxies:advanced"))],
+            [InlineKeyboardButton(text="More Details", callback_data=callback_for("proxies:advanced"))],
             *page_controls(back_to="menu"),
         ]
     )
@@ -980,6 +975,28 @@ def recommendation_detail_menu(recommendation_id: int) -> InlineKeyboardMarkup:
 def intelligence_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [InlineKeyboardButton(text="View Priorities", callback_data=callback_for("reports:executive:recommendations"))],
+            [InlineKeyboardButton(text="View Trends", callback_data=callback_for("intelligence:trends"))],
+            [InlineKeyboardButton(text="Ask Fortuna", callback_data=callback_for("help_copilot:next"))],
+            [InlineKeyboardButton(text="More Details", callback_data=callback_for("intelligence:details"))],
+            *page_controls(back_to="menu"),
+        ]
+    )
+
+
+def trends_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Fix Setup", callback_data=callback_for("first_workspace"))],
+            [InlineKeyboardButton(text="More Details", callback_data=callback_for("intelligence:trends:details"))],
+            *page_controls(back_to="intelligence"),
+        ]
+    )
+
+
+def intelligence_details_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
             [InlineKeyboardButton(text="Intelligence Briefing", callback_data=callback_for("reports:intelligence"))],
             [InlineKeyboardButton(text="Run Analysis", callback_data=callback_for("intelligence:runs"))],
             [
@@ -1040,7 +1057,17 @@ def intelligence_briefing_menu() -> InlineKeyboardMarkup:
 def learning_center_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [InlineKeyboardButton(text="View Lessons", callback_data=callback_for("intelligence:learning:outcome_memory"))],
             [InlineKeyboardButton(text="Playbooks", callback_data=callback_for("intelligence:learning:playbooks"))],
+            [InlineKeyboardButton(text="More Details", callback_data=callback_for("intelligence:learning:details"))],
+            *page_controls(back_to="intelligence"),
+        ]
+    )
+
+
+def learning_details_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
             [InlineKeyboardButton(text="Recommended Playbooks", callback_data=callback_for("intelligence:learning:recommended"))],
             [
                 InlineKeyboardButton(text="What We've Learned", callback_data=callback_for("intelligence:learning:outcome_memory")),
@@ -1051,7 +1078,7 @@ def learning_center_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="Opportunity Learning", callback_data=callback_for("intelligence:learning:opportunity")),
             ],
             [InlineKeyboardButton(text="Executive Memory Briefing", callback_data=callback_for("intelligence:learning:briefing"))],
-            *page_controls(back_to="intelligence"),
+            *page_controls(back_to="intelligence:learning"),
         ]
     )
 
@@ -1299,21 +1326,10 @@ def manager_command_menu() -> InlineKeyboardMarkup:
 def automations_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="View Rules", callback_data=callback_for("automations:rules"))],
-            [InlineKeyboardButton(text="Built-In Templates", callback_data=callback_for("automations:templates"))],
-            [InlineKeyboardButton(text="Create Rule", callback_data=callback_for("automations:create"))],
-            [
-                InlineKeyboardButton(text="Simulations", callback_data=callback_for("automations:simulations")),
-                InlineKeyboardButton(text="Pending Approvals", callback_data=callback_for("automations:approvals")),
-            ],
-            [
-                InlineKeyboardButton(text="Run History", callback_data=callback_for("automations:runs")),
-                InlineKeyboardButton(text="Automation Health", callback_data=callback_for("automations:health")),
-            ],
-            [
-                InlineKeyboardButton(text="Daily Autopilot", callback_data=callback_for("automations:daily_autopilot")),
-                InlineKeyboardButton(text="Scheduled Runs", callback_data=callback_for("automations:scheduled")),
-            ],
+            [InlineKeyboardButton(text="Daily Autopilot", callback_data=callback_for("automations:daily_autopilot"))],
+            [InlineKeyboardButton(text="Safe Automations", callback_data=callback_for("automations:templates"))],
+            [InlineKeyboardButton(text="Run History", callback_data=callback_for("automations:runs"))],
+            [InlineKeyboardButton(text="More Details", callback_data=callback_for("automations:rules"))],
             *page_controls(back_to="menu"),
         ]
     )
