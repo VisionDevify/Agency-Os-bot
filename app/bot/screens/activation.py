@@ -392,6 +392,7 @@ def render_placeholder_cleanup_page(session: Session) -> Screen:
     summary = placeholder_cleanup_summary(session)
     placeholder_models = summary["placeholder_models"]
     placeholder_opportunities = summary["placeholder_opportunities"]
+    unlinked_opportunities = summary["unlinked_opportunities"]
     demo_counts = summary["demo_counts"]
     lines = [
         "Placeholder Cleanup",
@@ -407,6 +408,10 @@ def render_placeholder_cleanup_page(session: Session) -> Screen:
         lines.append(f"- Model: {model.display_name}")
     for opportunity in placeholder_opportunities[:5]:
         lines.append(f"- Opportunity: {opportunity.title}")
+    if unlinked_opportunities:
+        lines.extend(["", "Unlinked opportunities:"])
+        for opportunity in unlinked_opportunities[:5]:
+            lines.append(f"- {opportunity.title}")
     lines.extend(["", "Demo records:"])
     if not any(demo_counts.values()):
         lines.append("- None found.")
@@ -424,7 +429,12 @@ def render_placeholder_cleanup_page(session: Session) -> Screen:
     )
     choices = []
     if placeholder_models or placeholder_opportunities:
+        if placeholder_models:
+            choices.append(("Complete Placeholder Model", "nav:setup:cleanup:complete_placeholder"))
         choices.append(("Archive Placeholder Records", "nav:setup:cleanup:archive_placeholders"))
+    if unlinked_opportunities:
+        choices.append(("Link First Opportunity", "nav:setup:cleanup:link_unlinked_opportunity"))
+        choices.append(("Archive First Unlinked Opportunity", "nav:setup:cleanup:archive_unlinked_opportunity"))
     if any(demo_counts.values()):
         choices.append(("Clear Demo Data", "nav:demo:clear"))
     choices.append(("Back to Setup", "nav:setup:wizard"))

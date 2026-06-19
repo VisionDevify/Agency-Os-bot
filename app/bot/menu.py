@@ -44,7 +44,7 @@ def owner_simple_home_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Start Here", callback_data=callback_for("start_here"))],
             [
                 InlineKeyboardButton(text="Today\u2019s Priorities", callback_data=callback_for("today_priorities")),
-                InlineKeyboardButton(text="Setup", callback_data=callback_for("setup_progress")),
+                InlineKeyboardButton(text="Setup", callback_data=callback_for("first_workspace")),
             ],
             [
                 InlineKeyboardButton(text="Proxy Vault", callback_data=callback_for("proxies")),
@@ -133,7 +133,7 @@ def first_workspace_menu(action_buttons: list[tuple[str, str]] | None = None) ->
     rows = [[InlineKeyboardButton(text=label, callback_data=callback_for(page))] for label, page in (action_buttons or [])[:8]]
     rows.extend(
         [
-            [InlineKeyboardButton(text="Run Daily Cycle", callback_data=callback_for("agency_activation:daily_cycle"))],
+            [InlineKeyboardButton(text="Run Daily Cycle", callback_data=callback_for("automations:daily_autopilot:run"))],
             [
                 InlineKeyboardButton(text="Setup Progress", callback_data=callback_for("setup_progress")),
                 InlineKeyboardButton(text="Ask Fortuna", callback_data=callback_for("help_copilot:next")),
@@ -433,6 +433,10 @@ def executive_mode_menu() -> InlineKeyboardMarkup:
 def model_completion_menu(model_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [
+                InlineKeyboardButton(text="Edit Name", callback_data=f"nav:model:{model_id}:edit:display_name"),
+                InlineKeyboardButton(text="Edit Stage Name", callback_data=f"nav:model:{model_id}:edit:stage_name"),
+            ],
             [
                 InlineKeyboardButton(text="Edit Country", callback_data=f"nav:model:{model_id}:edit:country"),
                 InlineKeyboardButton(text="Edit Timezone", callback_data=f"nav:model:{model_id}:edit:timezone"),

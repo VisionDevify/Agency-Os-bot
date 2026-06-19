@@ -246,21 +246,38 @@ def _workspace_step(label: str, done: bool, page: str, *, waiting: bool = False)
     }
 
 
+def _first_real_model(models: list[ModelBrand]) -> ModelBrand | None:
+    for model in models:
+        if not model.is_demo and model.status != "archived":
+            return model
+    return models[0] if models else None
+
+
 def render_first_workspace_flow_page(session: Session, user: User | None = None) -> Screen:
     models = list_model_brands(session)
     accounts = list_accounts(session)
     proxies = list_proxies(session)
     creators = list_creator_watches(session, active_only=False, limit=100)
     opportunities = list_opportunities(session, include_archived=True, limit=100)
-    first_model = models[0] if models else None
+    first_model = _first_real_model(models)
+    report = build_activation_report(session)
     model_ready = bool(
         first_model
+        and first_model.display_name
+        and first_model.display_name not in {"New Model 1", "Untitled Model", "Default Model"}
         and first_model.country
         and first_model.timezone
         and first_model.primary_platform
         and first_model.status == "active"
     )
     model_page = f"model:{first_model.id}:complete" if first_model else "setup:wizard:model"
+    model_accounts = [account for account in accounts if first_model and account.model_brand_id == first_model.id]
+    model_creators = [creator for creator in creators if first_model and creator.assigned_model_id == first_model.id]
+    model_opportunities = [
+        opportunity
+        for opportunity in opportunities
+        if first_model and opportunity.model_brand_id == first_model.id and opportunity.status != "archived"
+    ]
     team_count = (
         session.scalar(
             select(func.count(ModelBrandMember.user_id)).where(ModelBrandMember.model_brand_id == first_model.id)
@@ -268,21 +285,36 @@ def render_first_workspace_flow_page(session: Session, user: User | None = None)
         if first_model
         else 0
     ) or 0
-    accounts_missing = accounts_missing_proxy(session) if accounts else []
-    linked_opportunity_count = sum(1 for item in opportunities if item.model_brand_id)
+    team_blockers = [
+        blocker
+        for blocker in report["blockers"]
+        if blocker.get("section") == "team"
+        and (
+            not first_model
+            or blocker.get("entity_id") in {None, first_model.id}
+            or blocker.get("code") == "team.no_real_users"
+        )
+    ]
+    team_skipped = bool(first_model and not team_count and not team_blockers)
+    accounts_missing = [account for account in accounts_missing_proxy(session) if first_model and account.model_brand_id == first_model.id]
+    daily = daily_autopilot_summary(session, user)
+    daily_ran = bool(daily["last_run"])
     steps = [
         _workspace_step("Complete model profile", model_ready, model_page),
-        _workspace_step("Add first account", bool(accounts), "setup:wizard:accounts", waiting=not first_model),
+        _workspace_step("Add first account", bool(model_accounts), "setup:wizard:accounts", waiting=not first_model),
         _workspace_step("Add proxy", bool(proxies), "proxies:add"),
-        _workspace_step("Assign proxy to account", bool(accounts) and not accounts_missing, "proxies:missing", waiting=not accounts),
-        _workspace_step("Assign team", bool(team_count), f"model:{first_model.id}:team" if first_model else "setup:wizard:team", waiting=not first_model),
-        _workspace_step("Add creator", bool(creators), "setup:wizard:creators", waiting=not first_model),
-        _workspace_step("Create opportunity", bool(linked_opportunity_count), "setup:wizard:opportunities", waiting=not first_model),
+        _workspace_step("Assign proxy to account", bool(model_accounts) and not accounts_missing, "proxies:missing", waiting=not model_accounts),
+        _workspace_step("Add team member or skip", bool(team_count or team_skipped), f"model:{first_model.id}:team" if first_model else "setup:wizard:team", waiting=not first_model),
+        _workspace_step("Add creator watch", bool(model_creators), "setup:wizard:creators", waiting=not first_model),
+        _workspace_step("Create first opportunity", bool(model_opportunities), "setup:wizard:opportunities", waiting=not first_model),
+        _workspace_step("Run daily cycle", daily_ran, "automations:daily_autopilot:run", waiting=not model_opportunities),
     ]
     next_step = next((step for step in steps if not step["done"] and not step["waiting"]), None)
     if next_step is None:
         next_step = next((step for step in steps if not step["done"]), None)
     action_buttons = [(step["label"], step["page"]) for step in steps if not step["done"]][:7]
+    if first_model and not team_count and team_blockers:
+        action_buttons.append(("Skip Team For Now", "first_workspace:skip_team"))
     lines = [
         "First Workspace Guide",
         "",
@@ -293,8 +325,13 @@ def render_first_workspace_flow_page(session: Session, user: User | None = None)
     for step in steps:
         marker = "\u2705" if step["done"] else "\u23f3" if step["waiting"] else "\U0001f534"
         lines.append(f"{marker} {step['label']}: {step['status']}")
+        if step["label"] == "Add team member or skip" and team_skipped:
+            lines.append("   Team setup is marked manual for now.")
     lines.extend(
         [
+            "",
+            "Why this matters:",
+            "Each step connects the first model to the records Fortuna needs for daily operations.",
             "",
             "Next best action:",
             next_step["label"] if next_step else "Run the daily cycle and start operating.",

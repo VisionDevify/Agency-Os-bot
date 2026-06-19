@@ -140,11 +140,14 @@ from app.services.team_operations import set_availability
 from app.services.team_experience import update_onboarding_checklist
 from app.services.setup_wizard import (
     archive_placeholder_records,
+    archive_first_unlinked_opportunity,
     assign_setup_team_member,
     clear_demo_data,
     complete_setup_wizard,
     create_demo_seed,
+    first_placeholder_model,
     latest_setup_state,
+    link_first_unlinked_opportunity,
     start_setup_wizard,
 )
 
@@ -357,6 +360,22 @@ def _perform_admin_action(
     if page == "setup:cleanup:archive_placeholders":
         archive_placeholder_records(session, actor=actor)
         return "setup:cleanup"
+    if page == "setup:cleanup:complete_placeholder":
+        model = first_placeholder_model(session)
+        if model is not None:
+            return f"model:{model.id}:complete"
+        return "setup:cleanup"
+    if page == "setup:cleanup:link_unlinked_opportunity":
+        link_first_unlinked_opportunity(session, actor=actor)
+        return "setup:cleanup"
+    if page == "setup:cleanup:archive_unlinked_opportunity":
+        archive_first_unlinked_opportunity(session, actor=actor)
+        return "setup:cleanup"
+    if page == "first_workspace:skip_team":
+        while find_activation_blocker(session, "team", 0) is not None:
+            decide_activation_blocker(session, actor=actor, section="team", index=0, status="skipped")
+        run_activation_scan(session, actor=actor, create_tasks=False)
+        return "first_workspace"
     if len(parts) >= 3 and parts[0] == "help_feedback" and parts[1].isdigit():
         try:
             record_help_feedback(session, log_id=int(parts[1]), feedback=parts[2], actor=actor)

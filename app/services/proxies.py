@@ -564,6 +564,7 @@ def assign_proxy_to_account(session: Session, proxy: Proxy, account: Account, *,
     from app.services.learning import capture_proxy_outcome
 
     run_account_autopilot(session, account, actor=actor)
+    run_simulated_proxy_check(session, proxy, actor=actor)
     capture_proxy_outcome(
         session,
         proxy,

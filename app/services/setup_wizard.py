@@ -603,6 +603,17 @@ def placeholder_cleanup_summary(session: Session) -> dict:
             .order_by(Opportunity.id)
         ).all()
     )
+    unlinked_opportunities = list(
+        session.scalars(
+            select(Opportunity)
+            .where(
+                Opportunity.is_demo.is_(False),
+                Opportunity.status != "archived",
+                Opportunity.model_brand_id.is_(None),
+            )
+            .order_by(Opportunity.id)
+        ).all()
+    )
     demo_counts = {
         "models": session.query(ModelBrand).filter(ModelBrand.is_demo.is_(True)).count(),
         "accounts": session.query(Account).filter(Account.is_demo.is_(True)).count(),
@@ -613,8 +624,9 @@ def placeholder_cleanup_summary(session: Session) -> dict:
     return {
         "placeholder_models": placeholder_models,
         "placeholder_opportunities": placeholder_opportunities,
+        "unlinked_opportunities": unlinked_opportunities,
         "demo_counts": demo_counts,
-        "has_placeholders": bool(placeholder_models or placeholder_opportunities),
+        "has_placeholders": bool(placeholder_models or placeholder_opportunities or unlinked_opportunities),
         "has_demo": any(demo_counts.values()),
     }
 
@@ -646,6 +658,94 @@ def archive_placeholder_records(session: Session, *, actor: User) -> dict:
         payload=counts,
     )
     return counts
+
+
+def first_placeholder_model(session: Session) -> ModelBrand | None:
+    return session.scalar(
+        select(ModelBrand)
+        .where(
+            ModelBrand.is_demo.is_(False),
+            ModelBrand.status != "archived",
+            ModelBrand.display_name.in_(("New Model 1", "Untitled Model", "Default Model")),
+        )
+        .order_by(ModelBrand.id)
+        .limit(1)
+    )
+
+
+def first_active_model(session: Session) -> ModelBrand | None:
+    return session.scalar(
+        select(ModelBrand)
+        .where(ModelBrand.is_demo.is_(False), ModelBrand.status != "archived")
+        .order_by(ModelBrand.id)
+        .limit(1)
+    )
+
+
+def first_unlinked_opportunity(session: Session) -> Opportunity | None:
+    return session.scalar(
+        select(Opportunity)
+        .where(
+            Opportunity.is_demo.is_(False),
+            Opportunity.status != "archived",
+            Opportunity.model_brand_id.is_(None),
+        )
+        .order_by(Opportunity.id)
+        .limit(1)
+    )
+
+
+def link_first_unlinked_opportunity(session: Session, *, actor: User) -> dict:
+    _require_setup_access(session, actor)
+    model = first_active_model(session)
+    opportunity = first_unlinked_opportunity(session)
+    if model is None or opportunity is None:
+        return {"linked": False, "model_id": None, "opportunity_id": None}
+    opportunity.model_brand_id = model.id
+    session.flush()
+    audit_action(
+        session,
+        actor=actor,
+        action="placeholder.opportunity_linked",
+        resource_type="opportunity",
+        resource_id=str(opportunity.id),
+        details={"model_brand_id": model.id},
+    )
+    emit_event(
+        session,
+        actor=actor,
+        event_name="placeholder.opportunity_linked",
+        resource_type="opportunity",
+        resource_id=str(opportunity.id),
+        payload={"model_brand_id": model.id},
+    )
+    return {"linked": True, "model_id": model.id, "opportunity_id": opportunity.id}
+
+
+def archive_first_unlinked_opportunity(session: Session, *, actor: User) -> dict:
+    _require_setup_access(session, actor)
+    opportunity = first_unlinked_opportunity(session)
+    if opportunity is None:
+        return {"archived": False, "opportunity_id": None}
+    opportunity.status = "archived"
+    session.flush()
+    audit_action(
+        session,
+        actor=actor,
+        action="placeholder.unlinked_opportunity_archived",
+        resource_type="opportunity",
+        resource_id=str(opportunity.id),
+        details={"title": opportunity.title},
+    )
+    emit_event(
+        session,
+        actor=actor,
+        event_name="placeholder.unlinked_opportunity_archived",
+        resource_type="opportunity",
+        resource_id=str(opportunity.id),
+        payload={"status": "archived"},
+    )
+    return {"archived": True, "opportunity_id": opportunity.id}
 
 
 def create_demo_seed(session: Session, *, actor: User) -> dict:
