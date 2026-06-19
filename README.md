@@ -115,6 +115,12 @@ Health check:
 GET /health
 ```
 
+Public production health URL:
+
+```bash
+https://agency-os-bot-production.up.railway.app/health
+```
+
 The health endpoint returns safe status labels for API, database backend type, database durability, and Redis. It never returns secret values. Production is only truly ready when `/health` shows `db_backend=postgresql`, `db=healthy`, and `redis=healthy`. If emergency SQLite is used in Railway, `/health` returns `status=degraded` and `db_backend=sqlite_fallback`.
 
 Owner-only integrity check:

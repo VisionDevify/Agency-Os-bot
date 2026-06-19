@@ -4,6 +4,16 @@ Sprint 32 exists because the public health endpoint can look green while the app
 
 ## Current Confirmed State
 
+Current canonical public production health URL:
+
+```bash
+https://agency-os-bot-production.up.railway.app/health
+```
+
+As of the durable cutover, `/health` is expected to report `db_backend=postgresql`, `db_durable=true`, and `redis=healthy`.
+
+## Historical Sprint 32 Finding
+
 - Current production API health was reachable at `https://agency-os-bot-production-60d3.up.railway.app/health`.
 - Railway PostgreSQL and Redis could not be provisioned because the workspace hit the free-plan resource provision limit.
 - The emergency production `DATABASE_URL` was set to a SQLite URL using the `sqlite+pysqlite` driver.
@@ -12,14 +22,18 @@ Sprint 32 exists because the public health endpoint can look green while the app
 
 ## Backend
 
-- DB backend: SQLite emergency fallback until PostgreSQL is provisioned or an external PostgreSQL URL is configured.
-- Safe driver/scheme: `sqlite+pysqlite`.
-- SQLite location: Railway/container temporary filesystem, currently intended as `/tmp/fortuna_os.db`.
-- Redis status: unknown/not configured unless a `REDIS_URL` is attached.
+- Current backend must be verified with `/health`, `/integrity`, and Production Observability.
+- Production-ready backend: PostgreSQL.
+- Production-ready Redis status: healthy.
+- Historical Sprint 32 backend: SQLite emergency fallback until PostgreSQL was provisioned.
+- Historical Sprint 32 safe driver/scheme: `sqlite+pysqlite`.
+- Historical Sprint 32 SQLite location: Railway/container temporary filesystem, intended as `/tmp/fortuna_os.db`.
 
 ## Risk Level
 
-Risk: High / degraded.
+Current risk depends on live `/health` and `/integrity`.
+
+Historical Sprint 32 risk: High / degraded.
 
 SQLite in Railway is not production-grade durable storage. Data may survive for a running container, but it can be lost on redeploy, restart, container replacement, or filesystem cleanup. Redis missing also means the polling guard cannot safely coordinate multiple bot workers across processes.
 

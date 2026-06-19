@@ -17,7 +17,7 @@ Sprint 25 production checks focus on safe, non-destructive verification.
 
 ## Safe Checks
 
-Use:
+Use the canonical public production health URL:
 
 ```bash
 curl https://agency-os-bot-production.up.railway.app/health

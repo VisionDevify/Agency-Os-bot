@@ -40,6 +40,12 @@ The `/health` endpoint returns safe labels for API, database, and Redis. It also
 - `db`
 - `redis`
 
+Public production health URL:
+
+```bash
+curl https://agency-os-bot-production.up.railway.app/health
+```
+
 The bot worker records `bot` heartbeat rows on startup and Telegram activity.
 
 `railway_deployment` heartbeat remains a production status placeholder until automated deployment
