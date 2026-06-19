@@ -25,6 +25,7 @@ from app.bot.screens import (
     render_post_watch_detail_page,
     render_proxy_detail_page,
     render_proxy_import_success_page,
+    render_problem_report_saved_page,
     render_botstatus_page,
     render_callback_error_page,
     render_callback_failure_review_page,
@@ -100,6 +101,8 @@ from app.services.notifications import (
     mark_delivery_skipped,
 )
 from app.services.callbacks import log_callback_failure
+from app.services.friction import report_problem
+from app.services.live_safety import live_data_safety_status
 from app.services.team_operations import BotPollingGuard, update_user_localization
 
 logger = logging.getLogger(__name__)
@@ -116,6 +119,7 @@ PENDING_SETUP_WIZARDS: dict[int, dict[str, int | str | None]] = {}
 PENDING_MODEL_EDITS: dict[int, dict[str, int | str | None]] = {}
 PENDING_PROXY_WIZARDS: dict[int, dict[str, str]] = {}
 PENDING_PROXY_LOCATION_EDITS: dict[int, int] = {}
+PENDING_PROBLEM_REPORTS: dict[int, dict[str, int | str | None]] = {}
 
 
 async def _acquire_polling_guard(
@@ -247,7 +251,19 @@ def _post_type_markup() -> object:
 def _set_pending_callback_state(telegram_id: int, page: str, session, user: User) -> None:
     PENDING_ACCOUNT_CREATES.pop(telegram_id, None)
     PENDING_AUTH_CODES.pop(telegram_id, None)
+    PENDING_PROBLEM_REPORTS.pop(telegram_id, None)
     parts = page.split(":")
+    if page == "settings:report_problem:start":
+        PENDING_PROBLEM_REPORTS[telegram_id] = {"mode": "manual"}
+        return
+    if page.startswith("callback_error:report"):
+        callback_error_id = int(parts[2]) if len(parts) >= 3 and parts[2].isdigit() else None
+        PENDING_PROBLEM_REPORTS[telegram_id] = {
+            "mode": "callback",
+            "callback_error_log_id": callback_error_id,
+            "screen": "Callback fallback",
+        }
+        return
     if page == "proxies:olympix:paste":
         PENDING_PROXY_WIZARDS[telegram_id] = {"provider": "Olympix", "mode": "paste"}
         return
@@ -764,17 +780,68 @@ async def text_input(message: Message) -> None:
             session.commit()
             return
 
+        pending_report = PENDING_PROBLEM_REPORTS.pop(telegram_id, None)
+        if pending_report is not None:
+            if pending_report.get("mode") == "manual":
+                screen, issue, severity, notes = _parse_pipe_parts(message.text, 4)
+                severity = (severity or "medium").lower()
+                if not screen or not issue:
+                    await message.answer("Please send: Screen | what happened | severity | notes")
+                    PENDING_PROBLEM_REPORTS[telegram_id] = pending_report
+                    session.commit()
+                    return
+            else:
+                screen = str(pending_report.get("screen") or "Callback fallback")
+                issue = "Owner added notes after callback fallback."
+                severity = "high"
+                notes = _clean_optional_text(message.text)
+            try:
+                report_problem(
+                    session,
+                    actor=user,
+                    screen=screen,
+                    issue=issue,
+                    severity=severity,
+                    notes=notes,
+                    callback_error_log_id=(
+                        int(pending_report["callback_error_log_id"])
+                        if pending_report.get("callback_error_log_id") is not None
+                        else None
+                    ),
+                )
+            except ValueError:
+                await message.answer("Severity must be low, medium, high, or critical.")
+                PENDING_PROBLEM_REPORTS[telegram_id] = pending_report
+                session.commit()
+                return
+            screen_obj = render_problem_report_saved_page()
+            await message.answer(screen_obj.text, reply_markup=screen_obj.reply_markup)
+            session.commit()
+            return
+
         pending_proxy = PENDING_PROXY_WIZARDS.get(telegram_id)
         if pending_proxy is not None:
+            safety = live_data_safety_status(session, current_instance_id=CURRENT_BOT_INSTANCE_ID)
+            if not safety.safe:
+                PENDING_PROXY_WIZARDS.pop(telegram_id, None)
+                with contextlib.suppress(Exception):
+                    await message.delete()
+                await message.answer(
+                    "Proxy credential entry is blocked right now.\n\n"
+                    "Fortuna needs durable PostgreSQL, healthy Redis, working encryption, and one bot instance "
+                    "before accepting real proxy secrets. Run /integrity and /botstatus, then try again."
+                )
+                session.commit()
+                return
             if pending_proxy.get("mode") == "paste":
+                with contextlib.suppress(Exception):
+                    await message.delete()
                 try:
                     proxy = create_olympix_proxy_from_string(
                         session,
                         actor=user,
                         proxy_string=message.text,
                     )
-                    with contextlib.suppress(Exception):
-                        await message.delete()
                 except (PermissionError, ProxyStringParseError, ValueError):
                     await message.answer(
                         "That proxy string did not work. Please send it as:\n"
@@ -789,6 +856,8 @@ async def text_input(message: Message) -> None:
                 session.commit()
                 return
 
+            with contextlib.suppress(Exception):
+                await message.delete()
             base_username, password, target_country, target_state, target_city = _parse_pipe_parts(message.text, 5)
             if not base_username or not password or not target_country or not target_state:
                 await message.answer(

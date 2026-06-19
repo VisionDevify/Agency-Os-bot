@@ -31,13 +31,64 @@ def render_callback_problem_reported_page() -> Screen:
     return Screen(
         text=(
             "Problem Reported\n\n"
-            "Fortuna saved this button issue for review. You can safely return Home or retry later."
+            "Fortuna saved this button issue for review. You can safely return Home or retry later.\n\n"
+            "Optional: reply with a short note about what you expected to happen."
         ),
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text="Home", callback_data=callback_for("menu"))],
                 [InlineKeyboardButton(text="Button Health Report", callback_data=callback_for("button_health"))],
                 [InlineKeyboardButton(text="Callback Failure Review", callback_data=callback_for("callback_failure_review"))],
+            ]
+        ),
+    )
+
+
+def render_report_problem_page(*, started: bool = False) -> Screen:
+    if started:
+        text = "\n".join(
+            [
+                "Report a Problem",
+                "",
+                "Send one message in this format:",
+                "Screen | what happened | severity | notes",
+                "",
+                "Severity can be low, medium, high, or critical.",
+                "",
+                "Example:",
+                "Proxy Vault | Add Proxy button did nothing | high | happened on mobile",
+            ]
+        )
+    else:
+        text = "\n".join(
+            [
+                "Report a Problem",
+                "",
+                "Use this during mobile QA when something feels broken or confusing.",
+                "",
+                "Fortuna will save the report as a FrictionItem with audit and event records.",
+            ]
+        )
+    return Screen(
+        text=text,
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="Start Report", callback_data=callback_for("settings:report_problem:start"))],
+                [InlineKeyboardButton(text="Button Health Report", callback_data=callback_for("button_health"))],
+                *page_controls(back_to="settings"),
+            ]
+        ),
+    )
+
+
+def render_problem_report_saved_page() -> Screen:
+    return Screen(
+        text="Problem Report Saved\n\nFortuna logged this for review. Thank you.",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="Report Another Problem", callback_data=callback_for("settings:report_problem:start"))],
+                [InlineKeyboardButton(text="Button Health Report", callback_data=callback_for("button_health"))],
+                *page_controls(back_to="settings"),
             ]
         ),
     )

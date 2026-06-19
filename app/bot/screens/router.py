@@ -176,7 +176,7 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
     if page == "proxies:olympix":
         return render_olympix_proxy_wizard_page()
     if page == "proxies:olympix:paste":
-        return render_olympix_proxy_paste_page()
+        return render_olympix_proxy_paste_page(session)
     if page == "proxies:olympix:manual":
         return render_olympix_proxy_wizard_page()
     if page == "proxies:missing" and session is not None:
@@ -623,6 +623,12 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_botstatus_page(session, user)
     if page == "integrity" and session is not None:
         return render_integrity_page(session, user)
+    if page == "settings:report_problem":
+        return render_report_problem_page()
+    if page == "settings:report_problem:start":
+        return render_report_problem_page(started=True)
+    if page == "settings:report_problem:saved":
+        return render_problem_report_saved_page()
     if page == "availability" and session is not None and user is not None:
         return render_availability_page(session, user)
     if page == "availability:team" and session is not None:

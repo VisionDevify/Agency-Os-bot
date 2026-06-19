@@ -2,6 +2,7 @@ from app.models.proxy import ProxyRotationHistory
 
 from .formatting import *
 from .accounts import render_account_list_page
+from app.services.live_safety import live_data_safety_status
 
 PROXY_REALITY_NOTE = "Verification Mode: simulated by default. Real provider checks must be owner-enabled per proxy."
 
@@ -98,12 +99,36 @@ def render_proxy_add_page() -> Screen:
     )
 
 
-def render_olympix_proxy_paste_page() -> Screen:
+def render_olympix_proxy_paste_page(session: Session | None = None) -> Screen:
+    safety = live_data_safety_status(session) if session is not None else None
+    safety_lines: list[str] = []
+    if safety is not None:
+        safety_lines = [
+            "Before you paste real proxy credentials, Fortuna checked:",
+            *[f"{'[ok]' if check.passed else '[fix]'} {check.label}" for check in safety.checks],
+            "",
+        ]
+        if not safety.safe:
+            return Screen(
+                text="\n".join(
+                    [
+                        "Paste Olympix Proxy",
+                        "",
+                        *safety_lines,
+                        "Real credential entry is blocked until these checks pass.",
+                        "",
+                        "Next best move:",
+                        "Open Production Observability, then /integrity and /botstatus.",
+                    ]
+                ),
+                reply_markup=page_menu(back_to="proxies:add"),
+            )
     return Screen(
         text="\n".join(
             [
                 "Paste Olympix Proxy",
                 "",
+                *safety_lines,
                 "Send one message in this format:",
                 "host:port:username:password",
                 "",

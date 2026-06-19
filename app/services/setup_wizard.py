@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.models.account import Account
+from app.models.account import ACCOUNT_PLATFORMS, Account
 from app.models.model_brand import ModelBrand, ModelBrandMember
 from app.models.opportunity import CommentStrategy, CreatorWatch, Opportunity, OpportunityResult, PostWatch
 from app.models.task import Task
@@ -53,6 +54,18 @@ def _require_setup_access(session: Session, actor: User | None) -> None:
         details={"permission": "manage_accounts_or_manage_users"},
     )
     raise PermissionError("Setup Wizard requires Owner/Admin setup permissions")
+
+
+def _validate_model_profile(*, display_name: str | None = None, timezone: str | None = None, primary_platform: str | None = None) -> None:
+    if display_name is not None and not display_name.strip():
+        raise ValueError("Model display name is required")
+    if timezone:
+        try:
+            ZoneInfo(timezone.strip())
+        except ZoneInfoNotFoundError as exc:
+            raise ValueError("Invalid timezone") from exc
+    if primary_platform and primary_platform.strip().lower() not in ACCOUNT_PLATFORMS:
+        raise ValueError("Invalid primary platform")
 
 
 def _score_checklist(checklist: FirstDayChecklist) -> int:
@@ -247,6 +260,7 @@ def create_setup_model(
     is_demo: bool = False,
 ) -> ModelBrand:
     _require_setup_access(session, actor)
+    _validate_model_profile(display_name=display_name, timezone=timezone, primary_platform=primary_platform)
     model = create_model_brand(
         session,
         actor=actor,
@@ -254,7 +268,7 @@ def create_setup_model(
         stage_name=stage_name,
         country=country,
         timezone=timezone,
-        primary_platform=primary_platform,
+        primary_platform=primary_platform.strip().lower() if primary_platform else None,
         notes=notes,
         internal_notes="Created through Setup Wizard." if not is_demo else "Demo record created by owner.",
         is_demo=is_demo,
@@ -294,6 +308,7 @@ def update_setup_model_profile(
     internal_notes: str | None = None,
 ) -> ModelBrand:
     _require_setup_access(session, actor)
+    _validate_model_profile(display_name=display_name, timezone=timezone, primary_platform=primary_platform)
     updated = update_model_brand(
         session,
         model,
@@ -302,7 +317,7 @@ def update_setup_model_profile(
         stage_name=stage_name,
         country=country,
         timezone=timezone,
-        primary_platform=primary_platform,
+        primary_platform=primary_platform.strip().lower() if primary_platform else None,
         notes=notes,
         status=status,
         internal_notes=internal_notes,

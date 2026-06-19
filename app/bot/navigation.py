@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.bot.screens import PAGE_TITLES, Screen, render_dashboard, render_main_menu, render_page
 from app.models.automation import AutomationApproval
+from app.models.callback_error import CallbackErrorLog
 from app.models.permissions import Role
 from app.models.user import User
 from app.services.audit import AuditRecorder, audit_recorder
@@ -113,6 +114,7 @@ from app.services.recommendations import get_recommendation, update_recommendati
 from app.services.intelligence import run_full_intelligence_scan, run_intelligence_analysis
 from app.services.learning import create_playbook_run, get_playbook, record_feedback, seed_default_playbooks
 from app.services.help_brain import record_help_feedback
+from app.services.friction import report_problem
 from app.services.opportunities import (
     assign_creator_watch,
     assign_post_watch,
@@ -329,6 +331,8 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         return ("manage_roles",)
     if page.startswith("callback_error:report"):
         return None
+    if page.startswith("settings:report_problem"):
+        return ("manage_roles",)
     if page in {"bot_status", "production_status"}:
         return ("view_dashboard", "manage_reports", "manage_roles")
     permission = PAGE_PERMISSIONS.get(page)
@@ -345,6 +349,20 @@ def _perform_admin_action(
 ) -> str | None:
     parts = page.split(":")
     if page.startswith("callback_error:report"):
+        callback_error_id = int(parts[2]) if len(parts) >= 3 and parts[2].isdigit() else None
+        error = session.get(CallbackErrorLog, callback_error_id) if callback_error_id is not None else None
+        report_problem(
+            session,
+            actor=actor,
+            screen=(error.affected_screen if error else "Callback fallback"),
+            issue=(
+                f"Owner reported a callback failure: {error.exception_type}"
+                if error
+                else "Owner reported a callback fallback problem."
+            ),
+            severity="high",
+            callback_error_log_id=callback_error_id,
+        )
         audit_action(
             session,
             actor=actor,
@@ -1257,6 +1275,7 @@ def screen_for_page(
         or normalized == "callback_failure_review"
         or normalized == "debug_last_error"
         or normalized.startswith("callback_error:report")
+        or normalized.startswith("settings:report_problem")
         or normalized == "owner_daily_checklist"
         or normalized == "team_onboarding_activation"
         or normalized.startswith("fortuna_action_log")
