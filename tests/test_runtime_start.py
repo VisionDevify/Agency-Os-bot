@@ -25,6 +25,32 @@ def test_runtime_defaults_railway_to_api_only() -> None:
     assert should_start_bot(env) is False
 
 
+def test_runtime_explicitly_starts_bot_with_api_on_railway() -> None:
+    env = {
+        "RAILWAY_ENVIRONMENT_ID": "prod",
+        "RAILWAY_SERVICE_NAME": "Fortuna API",
+        "TELEGRAM_BOT_TOKEN": "masked",
+        "REDIS_URL": "redis://example",
+        "FORTUNA_START_BOT_WITH_API": "true",
+    }
+
+    assert runtime_role(env) == "api"
+    assert should_start_api(env) is True
+    assert should_start_bot(env) is True
+
+
+def test_runtime_explicit_bot_with_api_still_requires_redis_on_railway() -> None:
+    env = {
+        "RAILWAY_ENVIRONMENT_ID": "prod",
+        "RAILWAY_SERVICE_NAME": "Fortuna API",
+        "TELEGRAM_BOT_TOKEN": "masked",
+        "REDIS_URL": "",
+        "FORTUNA_START_BOT_WITH_API": "true",
+    }
+
+    assert should_start_bot(env) is False
+
+
 def test_runtime_does_not_treat_public_agency_bot_service_name_as_worker() -> None:
     env = {
         "RAILWAY_ENVIRONMENT_ID": "prod",

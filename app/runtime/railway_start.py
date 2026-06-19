@@ -61,8 +61,6 @@ def should_start_api(env: Mapping[str, str] | None = None) -> bool:
 def should_start_bot(env: Mapping[str, str] | None = None) -> bool:
     values = env or os.environ
     role = runtime_role(values)
-    if role == "api":
-        return False
     primary = values.get("BOT_PRIMARY_INSTANCE")
     if primary is not None and primary.strip().casefold() in FALSE_VALUES:
         return False
@@ -77,6 +75,8 @@ def should_start_bot(env: Mapping[str, str] | None = None) -> bool:
                 if override not in TRUE_VALUES:
                     return False
             return bool(values.get("TELEGRAM_BOT_TOKEN"))
+    if role == "api":
+        return False
     if is_railway_environment(values) and not values.get("REDIS_URL"):
         override = values.get("ALLOW_POLLING_WITHOUT_REDIS", "").strip().casefold()
         if override not in TRUE_VALUES:
