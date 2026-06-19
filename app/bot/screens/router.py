@@ -665,6 +665,10 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
             return render_simulation_run_detail_page(session, int(parts[1]))
     if page == "audit_logs" and session is not None:
         return render_audit_logs_page(session, user)
+    if page == "audit_logs:details" and session is not None:
+        return render_audit_logs_page(session, user, details=True)
+    if page == "audit_logs:issues" and session is not None:
+        return render_audit_logs_page(session, user, issues_only=True)
     if page in {"bot_status", "production_status"} and session is not None:
         return render_bot_status_page(session, user)
     if page == "bot_status:details" and session is not None:

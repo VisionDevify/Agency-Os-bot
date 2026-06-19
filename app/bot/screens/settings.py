@@ -7,6 +7,7 @@ from app.bot.menu import callback_for, page_controls
 from app.services.integrity import run_integrity_check
 from app.services.bot_instances import bot_instance_diagnostics
 from app.services.observability import production_observability_summary
+from app.services.audit import sanitize_details
 from app.services.system_truth import reconcile_stale_system_warnings
 from app.services.chat_cleanup import get_or_create_chat_cleanup_preference
 from app.services.help_brain import (
@@ -155,13 +156,113 @@ def render_default_permissions_page() -> Screen:
     lines.extend(f"- {key}" for key in DEFAULT_PERMISSION_DESCRIPTIONS)
     return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="roles"))
 
-def render_audit_logs_page(session: Session, user: User | None = None) -> Screen:
+def _friendly_audit_action(action: str) -> str:
+    mapping = {
+        "management_action.performed": "Management area opened",
+        "admin_area.opened": "Admin tools opened",
+        "access.denied": "Access was blocked",
+        "callback.failed": "A button had a problem",
+        "callback.problem_reported": "A button problem was reported",
+        "integrity.audit_write_test": "Production check wrote an audit test",
+        "stale_warning.resolved": "Old warning was resolved",
+    }
+    if action in mapping:
+        return mapping[action]
+    cleaned = action.replace("_", " ").replace(".", " ").strip()
+    return cleaned.capitalize() if cleaned else "Activity recorded"
+
+
+def _friendly_audit_target(resource_type: str | None, resource_id: str | None = None) -> str:
+    if resource_type == "telegram_page":
+        page = (resource_id or "").replace(":", " ").replace("_", " ").strip()
+        return page.title() if page else "Fortuna screen"
+    mapping = {
+        "telegram_menu": "Main menu",
+        "ui_self_test": "Self-test",
+        "integrity_check": "Production check",
+        "callback_error_log": "Button error log",
+        "system_truth": "System health",
+        "user": "User profile",
+        "notification_target": "Notification target",
+    }
+    if resource_type in mapping:
+        return mapping[resource_type]
+    text = (resource_type or "activity").replace("_", " ").strip()
+    return text.title()
+
+
+def _audit_summary_lines(logs: list[AuditLog], *, user: User | None = None) -> list[str]:
+    if not logs:
+        return ["No recent activity yet."]
+    seen: list[str] = []
+    for log in logs:
+        phrase = _friendly_audit_action(log.action)
+        target = _friendly_audit_target(log.resource_type, log.resource_id)
+        line = phrase if target in {"Activity", "Fortuna Screen"} else f"{phrase}: {target}"
+        if line not in seen:
+            seen.append(line)
+        if len(seen) >= 3:
+            break
+    return [f"- {line}" for line in seen]
+
+
+def _audit_logs_markup(*, details: bool = False, filtered: bool = False) -> InlineKeyboardMarkup:
+    if details:
+        rows = [
+            [InlineKeyboardButton(text="Executive Summary", callback_data=callback_for("audit_logs"))],
+            [InlineKeyboardButton(text="Recent Issues", callback_data=callback_for("audit_logs:issues"))],
+        ]
+    elif filtered:
+        rows = [
+            [InlineKeyboardButton(text="All Recent Activity", callback_data=callback_for("audit_logs"))],
+            [InlineKeyboardButton(text="View Technical Logs", callback_data=callback_for("audit_logs:details"))],
+        ]
+    else:
+        rows = [
+            [InlineKeyboardButton(text="View Technical Logs", callback_data=callback_for("audit_logs:details"))],
+            [InlineKeyboardButton(text="Filter Activity", callback_data=callback_for("audit_logs:issues"))],
+        ]
+    rows.extend(page_controls(back_to="settings"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def render_audit_logs_page(
+    session: Session,
+    user: User | None = None,
+    *,
+    details: bool = False,
+    issues_only: bool = False,
+) -> Screen:
     logs = session.scalars(
         select(AuditLog).order_by(desc(AuditLog.created_at), desc(AuditLog.id)).limit(10)
     ).all()
-    lines = ["Audit Logs", ""]
+    if issues_only:
+        logs = [log for log in logs if log.status != "success" or "failed" in log.action or "denied" in log.action]
+    if not details:
+        last_activity = format_user_datetime(user, logs[0].created_at) if logs else "No activity yet"
+        errors = [log for log in logs if log.status != "success" or "failed" in log.action or "denied" in log.action]
+        lines = [
+            "\U0001f4dc Recent Activity",
+            "",
+            "Fortuna checked recent activity.",
+            "",
+            "Summary:",
+            *_audit_summary_lines(logs, user=user),
+            f"- {'No errors were found' if not errors else f'{len(errors)} item needs review'}",
+            "",
+            f"Last activity: {last_activity}",
+            "",
+            "Recommended action:",
+            "Nothing urgent." if not errors else "Review recent issues.",
+        ]
+        return Screen(
+            text="\n".join(lines),
+            reply_markup=_audit_logs_markup(filtered=issues_only),
+        )
+
+    lines = ["Technical Logs", ""]
     if not logs:
-        lines.append("No audit logs yet.")
+        lines.append("No technical audit logs yet.")
     for log in logs:
         actor = log.actor_user_id if log.actor_user_id is not None else "system"
         target = f"{log.resource_type}:{log.resource_id}" if log.resource_id else log.resource_type
@@ -169,8 +270,11 @@ def render_audit_logs_page(session: Session, user: User | None = None) -> Screen
         lines.append(f"{timestamp}")
         lines.append(f"Actor: {actor} | Action: {log.action}")
         lines.append(f"Target: {target} | Status: {log.status}")
+        if log.details:
+            lines.append(f"Metadata: {sanitize_details(log.details)}")
         lines.append("")
-    return Screen(text="\n".join(lines).strip(), reply_markup=page_menu(back_to="settings"))
+    lines.append("No secrets are shown here.")
+    return Screen(text="\n".join(lines).strip(), reply_markup=_audit_logs_markup(details=True))
 
 def render_access_pending() -> Screen:
     return Screen(
@@ -300,14 +404,19 @@ def _observability_time(value, user: User | None = None) -> str:
 def _yes_no(value) -> str:
     return "yes" if value else "no"
 
-def _observability_summary_markup() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="Refresh", callback_data=callback_for("production_observability"))],
+def _observability_summary_markup(*, show_bot_status: bool = False) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text="Refresh", callback_data=callback_for("production_observability"))]]
+    if show_bot_status:
+        rows.append([InlineKeyboardButton(text="Open Bot Status", callback_data=callback_for("bot_instance_status"))])
+    rows.extend(
+        [
             [InlineKeyboardButton(text="Technical Details", callback_data=callback_for("production_observability:details"))],
             [InlineKeyboardButton(text="Run Integrity Check", callback_data=callback_for("integrity"))],
             *page_controls(back_to="owner_advanced"),
         ]
+    )
+    return InlineKeyboardMarkup(
+        inline_keyboard=rows
     )
 
 
@@ -342,6 +451,97 @@ def _integrity_details_markup() -> InlineKeyboardMarkup:
     )
 
 
+def _observability_issue_blocks(summary: dict) -> list[str]:
+    codes = list(summary["system_truth_current_issue_codes"])
+    issues = list(summary["system_truth_current_issues"])
+    if not issues:
+        return []
+    blocks: list[str] = []
+    for index, issue in enumerate(issues[:3]):
+        code = codes[index] if index < len(codes) else ""
+        if code == "bot_polling":
+            if "More than one" in issue:
+                found = "More than one active bot instance was detected."
+                next_step = "Open Bot Status and stop any old worker or deployment that is still polling."
+            elif "Redis polling lock" in issue or "Redis" in issue:
+                found = "The bot is running, but the Redis polling lock needs confirmation."
+                next_step = "Open Bot Status and confirm Redis lock status is held."
+            elif "primary" in issue:
+                found = "This bot process is not marked as the primary polling instance."
+                next_step = "Open Bot Status and verify only the intended worker is primary."
+            elif "No active" in issue:
+                found = "Fortuna has not seen a fresh bot polling heartbeat."
+                next_step = "Open Bot Status and confirm the bot worker is running."
+            else:
+                found = issue
+                next_step = "Open Bot Status and confirm there is only one active bot instance."
+            blocks.extend(
+                [
+                    "Bot safety check needs review",
+                    "What Fortuna found:",
+                    found,
+                    "Why it matters:",
+                    "This prevents duplicate bot responses.",
+                    "What to do:",
+                    next_step,
+                    "",
+                ]
+            )
+        elif code == "storage":
+            blocks.extend(
+                [
+                    "Storage needs review",
+                    "What Fortuna found:",
+                    "Production storage is not confirmed durable.",
+                    "Why it matters:",
+                    "Fortuna needs durable PostgreSQL so real setup data survives deploys.",
+                    "What to do:",
+                    "Open Technical Details and confirm the database backend.",
+                    "",
+                ]
+            )
+        elif code == "redis":
+            blocks.extend(
+                [
+                    "Redis needs review",
+                    "What Fortuna found:",
+                    "Redis is not healthy.",
+                    "Why it matters:",
+                    "Redis protects bot polling and background coordination.",
+                    "What to do:",
+                    "Check Railway Redis service health.",
+                    "",
+                ]
+            )
+        elif code == "migrations":
+            blocks.extend(
+                [
+                    "Database migration needs review",
+                    "What Fortuna found:",
+                    "The database revision does not match the app revision.",
+                    "Why it matters:",
+                    "New screens may expect database tables that are not applied yet.",
+                    "What to do:",
+                    "Run the production migration command.",
+                    "",
+                ]
+            )
+        else:
+            blocks.extend(
+                [
+                    "Fortuna found something to review",
+                    "What Fortuna found:",
+                    issue,
+                    "Why it matters:",
+                    "This may affect setup or daily operations.",
+                    "What to do:",
+                    "Open Technical Details for the exact record.",
+                    "",
+                ]
+            )
+    return blocks[:-1] if blocks and blocks[-1] == "" else blocks
+
+
 def render_production_observability_page(
     session: Session,
     user: User | None = None,
@@ -362,8 +562,13 @@ def render_production_observability_page(
         notification_lines.append(f"- {item['label']}: {marker} ({item['active_count']} active)")
 
     issues = list(summary["system_truth_current_issues"])
+    issue_codes = list(summary["system_truth_current_issue_codes"])
     status = "Healthy" if not issues else "Needs Attention"
-    recommended_action = "Continue setup." if not issues else issues[0]
+    recommended_action = (
+        "Continue setup."
+        if not issues
+        else "Open Bot Status." if "bot_polling" in issue_codes else "Review the first item below."
+    )
     if not details:
         checked_lines = (
             [
@@ -373,7 +578,7 @@ def render_production_observability_page(
                 "- Migrations are current",
             ]
             if not issues
-            else [f"- {issue}" for issue in issues[:4]]
+            else _observability_issue_blocks(summary)
         )
         summary_line = (
             "Fortuna checked this. Everything is running."
@@ -403,7 +608,7 @@ def render_production_observability_page(
                     recommended_action,
                 ]
             ),
-            reply_markup=_observability_summary_markup(),
+            reply_markup=_observability_summary_markup(show_bot_status="bot_polling" in issue_codes),
         )
 
     lines = [

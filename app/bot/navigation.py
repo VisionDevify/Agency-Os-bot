@@ -348,6 +348,8 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         or page == "debug_last_error"
     ):
         return ("manage_roles",)
+    if page.startswith("audit_logs"):
+        return ("view_audit_logs",)
     if page.startswith("callback_error:report"):
         return None
     if page.startswith("settings:chat_cleanup"):
@@ -1266,7 +1268,7 @@ def screen_for_page(
         return render_dashboard(session=session, user=user)
     if (
         normalized in PAGE_TITLES
-        or normalized == "audit_logs"
+        or normalized.startswith("audit_logs")
         or normalized == "permissions"
         or normalized.startswith("accounts:")
         or normalized.startswith("account:")

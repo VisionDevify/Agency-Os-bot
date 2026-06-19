@@ -108,7 +108,12 @@ def bot_instance_diagnostics(session: Session, *, current_instance_id: str | Non
     identifier = current_instance_id or bot_instance_id()
     current = storage_status()
     active = active_bot_instance_heartbeats(session)
-    duplicates = duplicate_bot_instances(session, current_instance_id=identifier)
+    if current_instance_id is None:
+        # API-side diagnostics do not own a polling instance id. In that context, one active
+        # bot heartbeat is exactly what we want; only additional active heartbeats are duplicates.
+        duplicates = active[1:]
+    else:
+        duplicates = duplicate_bot_instances(session, current_instance_id=identifier)
     bot_heartbeat = session.scalar(select(SystemHeartbeat).where(SystemHeartbeat.service_name == "bot"))
     metadata = bot_heartbeat.metadata_json if bot_heartbeat else {}
     preflight = polling_preflight(current)

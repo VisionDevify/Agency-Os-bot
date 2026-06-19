@@ -159,11 +159,8 @@ def system_truth(session: Session) -> SystemTruth:
     database_ready = storage.backend == "postgresql" and storage.durable is True
     redis_healthy = status["redis_status"] == "healthy"
     migrations_current = revision.status == "Current"
-    bot_polling_safe = (
-        bool(bot["preflight_allowed"])
-        and not bool(bot["duplicate_instance_count"])
-        and int(bot["active_instance_count"]) == 1
-    )
+    polling_issue = _bot_polling_issue(storage.is_production, bot)
+    bot_polling_safe = polling_issue is None
 
     issue_codes: list[str] = []
     issues: list[str] = []
@@ -178,7 +175,7 @@ def system_truth(session: Session) -> SystemTruth:
         issues.append("Database migrations need attention.")
     if storage.is_production and not bot_polling_safe:
         issue_codes.append("bot_polling")
-        issues.append("Bot polling safety needs attention.")
+        issues.append(polling_issue or "Bot polling safety needs review.")
     if placeholder_count:
         issue_codes.append("proxy_placeholders")
         issues.append("Placeholder proxies are still visible to normal operations.")
@@ -212,6 +209,31 @@ def system_truth(session: Session) -> SystemTruth:
         current_issue_codes=tuple(issue_codes),
         current_issues=tuple(issues),
     )
+
+
+def _bot_polling_issue(is_production: bool, diagnostics: dict[str, object]) -> str | None:
+    if not is_production:
+        return None
+    if not bool(diagnostics.get("preflight_allowed")):
+        reason = str(diagnostics.get("preflight_reason") or "").strip()
+        if "BOT_PRIMARY_INSTANCE" in reason:
+            return "Current bot process is not marked as the primary polling instance."
+        if "Redis is required" in reason:
+            return "Redis polling lock is missing."
+        return reason or "Bot polling preflight did not pass."
+    active_count = int(diagnostics.get("active_instance_count") or 0)
+    duplicate_count = int(diagnostics.get("duplicate_instance_count") or 0)
+    if active_count <= 0:
+        return "No active bot polling heartbeat was found."
+    if duplicate_count > 0 or active_count > 1:
+        return "More than one bot instance appears active."
+    if not bool(diagnostics.get("redis_configured")):
+        return "Redis polling lock is missing."
+    redis_lock = str(diagnostics.get("redis_lock_status") or "").strip().lower()
+    polling_guard = str(diagnostics.get("polling_guard") or "").strip().lower()
+    if polling_guard != "redis_lock" or redis_lock != "held":
+        return "Redis polling lock needs confirmation."
+    return None
 
 
 def _text_for(record: object, *fields: str) -> str:
