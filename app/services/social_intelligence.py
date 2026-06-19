@@ -11,9 +11,16 @@ from app.models.opportunity import CreatorWatch, Opportunity, OpportunityResult
 from app.models.reporting import NotificationDeliveryAttempt
 from app.models.social import (
     SOCIAL_COMPLIANCE_STATUSES,
+    SOCIAL_DISCOVERY_LEAD_STATUSES,
+    SOCIAL_DISCOVERY_RUN_STATUSES,
+    SOCIAL_DISCOVERY_RUN_TYPES,
+    SOCIAL_DISCOVERY_SOURCE_TYPES,
     SOCIAL_FOLLOWER_TIERS,
     SOCIAL_PLATFORMS,
     SOCIAL_SOURCE_TYPES,
+    SocialDiscoveryLead,
+    SocialDiscoveryRun,
+    SocialDiscoverySourceConfig,
     SocialOpportunityScore,
     SocialPost,
     SocialSignal,
@@ -24,7 +31,7 @@ from app.models.user import User
 from app.services.audit import sanitize_details
 from app.services.auth import audit_action, user_has_permission
 from app.services.events import emit_event
-from app.services.learning import create_learning_event
+from app.services.learning import create_confidence_record, create_learning_event
 from app.services.notifications import active_targets_for_purposes, create_delivery_attempt
 from app.services.opportunities import comment_strategies_for_opportunity, create_manual_opportunity
 from app.services.recommendations import upsert_recommendation
@@ -249,6 +256,34 @@ def _source_performance_score(session: Session, source: SocialSource | None, nic
     total = sum(row.reviewed_count + row.skipped_count for row in rows) or len(rows)
     weighted = sum(row.historical_score * max(1, row.reviewed_count + row.skipped_count) for row in rows)
     return _clamp(weighted / total)
+
+
+def _performance_bucket(
+    session: Session,
+    source: SocialSource | None,
+    platform: str,
+    niche: str | None,
+    engagement_angle: str | None,
+) -> SocialSourcePerformance:
+    source_id = source.id if source is not None else None
+    performance = session.scalar(
+        select(SocialSourcePerformance).where(
+            SocialSourcePerformance.social_source_id == source_id,
+            SocialSourcePerformance.niche == niche,
+            SocialSourcePerformance.engagement_angle == engagement_angle,
+        )
+    )
+    if performance is None:
+        performance = SocialSourcePerformance(
+            social_source_id=source_id,
+            platform=platform,
+            niche=niche,
+            engagement_angle=engagement_angle,
+            metadata_json={"manual_only": True, "auto_posting": False},
+        )
+        session.add(performance)
+        session.flush()
+    return performance
 
 
 def score_social_post(session: Session, post: SocialPost, *, actor: User | None = None, now: datetime | None = None) -> SocialOpportunityScore:
@@ -685,3 +720,404 @@ def official_api_adapter_status() -> dict:
         "scraping": "not_supported",
         "auto_posting": "not_supported",
     }
+
+
+def create_social_discovery_source_config(
+    session: Session,
+    *,
+    actor: User | None,
+    platform: str,
+    name: str,
+    source_type: str = "manual",
+    reference_url: str | None = None,
+    niche: str | None = None,
+    compliance_status: str = "approved",
+) -> SocialDiscoverySourceConfig:
+    _require_social_manage(session, actor)
+    if platform not in SOCIAL_PLATFORMS:
+        raise ValueError(f"Invalid social platform: {platform}")
+    if source_type not in SOCIAL_DISCOVERY_SOURCE_TYPES:
+        raise ValueError(f"Invalid discovery source type: {source_type}")
+    if compliance_status not in SOCIAL_COMPLIANCE_STATUSES:
+        raise ValueError(f"Invalid compliance status: {compliance_status}")
+    config = SocialDiscoverySourceConfig(
+        platform=platform,
+        source_type=source_type,
+        name=name.strip() or "Manual Source",
+        reference_url=reference_url,
+        niche=niche,
+        compliance_status=compliance_status,
+        is_active=True,
+        metadata_json={"manual_only": True, "auto_posting": False},
+    )
+    session.add(config)
+    session.flush()
+    audit_action(
+        session,
+        actor=actor,
+        action="social_discovery.source_config_created",
+        resource_type="social_discovery_source_config",
+        resource_id=str(config.id),
+        details={"platform": platform, "source_type": source_type, "compliance_status": compliance_status},
+    )
+    return config
+
+
+def create_social_discovery_run(
+    session: Session,
+    *,
+    actor: User | None,
+    run_type: str,
+    source_config: SocialDiscoverySourceConfig | None = None,
+    status: str = "succeeded",
+    summary: dict | None = None,
+) -> SocialDiscoveryRun:
+    _require_social_manage(session, actor)
+    if run_type not in SOCIAL_DISCOVERY_RUN_TYPES:
+        raise ValueError(f"Invalid discovery run type: {run_type}")
+    if status not in SOCIAL_DISCOVERY_RUN_STATUSES:
+        raise ValueError(f"Invalid discovery run status: {status}")
+    run = SocialDiscoveryRun(
+        run_type=run_type,
+        status=status,
+        source_config_id=source_config.id if source_config else None,
+        started_by_user_id=actor.id if actor else None,
+        summary_json=sanitize_details(summary or {"manual_only": True, "auto_posting": False}),
+        finished_at=_now() if status in {"succeeded", "failed"} else None,
+    )
+    session.add(run)
+    session.flush()
+    emit_event(
+        session,
+        actor=actor,
+        event_name="social_discovery.run_completed" if status == "succeeded" else "social_discovery.run_started",
+        resource_type="social_discovery_run",
+        resource_id=str(run.id),
+        payload={"run_type": run_type, "status": status},
+    )
+    return run
+
+
+def _lead_score_from_inputs(
+    *,
+    confidence_score: int,
+    source_performance: int,
+    compliance_status: str,
+    reason_found: str,
+) -> int:
+    text = reason_found.casefold()
+    quality_hint = 15 if any(word in text for word in ("active", "niche", "conversation", "match", "timing")) else 0
+    score = _clamp((confidence_score * 0.55) + (source_performance * 0.3) + quality_hint)
+    if compliance_status == "review_required":
+        return min(score, 65)
+    if compliance_status == "blocked":
+        return 0
+    return score
+
+
+def create_social_discovery_lead(
+    session: Session,
+    *,
+    actor: User | None,
+    platform: str,
+    source_name: str,
+    source_reference: str | None = None,
+    post_reference: str | None = None,
+    niche: str | None = None,
+    reason_found: str = "Manual public lead added for human review.",
+    confidence_score: int = 60,
+    compliance_status: str = "approved",
+    recommended_angle: str | None = None,
+    discovery_run: SocialDiscoveryRun | None = None,
+    social_source: SocialSource | None = None,
+) -> SocialDiscoveryLead:
+    _require_social_manage(session, actor)
+    if platform not in SOCIAL_PLATFORMS:
+        raise ValueError(f"Invalid social platform: {platform}")
+    if compliance_status not in SOCIAL_COMPLIANCE_STATUSES:
+        raise ValueError(f"Invalid compliance status: {compliance_status}")
+    performance = _source_performance_score(session, social_source, niche)
+    score = _lead_score_from_inputs(
+        confidence_score=confidence_score,
+        source_performance=performance,
+        compliance_status=compliance_status,
+        reason_found=reason_found,
+    )
+    lead = SocialDiscoveryLead(
+        discovery_run_id=discovery_run.id if discovery_run else None,
+        social_source_id=social_source.id if social_source else None,
+        platform=platform,
+        source_name=source_name.strip() or "Manual Source",
+        source_reference=source_reference,
+        post_reference=post_reference,
+        niche=niche,
+        reason_found=reason_found,
+        confidence_score=_clamp(confidence_score),
+        opportunity_score=score,
+        compliance_status=compliance_status,
+        recommended_angle=recommended_angle or ("curiosity" if score >= 70 else "question"),
+        status="new",
+        metadata_json={"manual_only": True, "auto_posting": False, "source_performance": performance},
+    )
+    session.add(lead)
+    session.flush()
+    audit_action(
+        session,
+        actor=actor,
+        action="social_discovery.lead_created",
+        resource_type="social_discovery_lead",
+        resource_id=str(lead.id),
+        details={"platform": platform, "score": score, "compliance_status": compliance_status, "manual_only": True},
+    )
+    create_learning_event(
+        session,
+        actor=actor,
+        event_type="social_discovery.lead_created",
+        source_type="opportunity",
+        source_id=lead.id,
+        entity_type="social_discovery_lead",
+        entity_id=lead.id,
+        outcome="partial",
+        severity="info",
+        summary="Social discovery lead created for human review.",
+        details={"platform": platform, "score": score, "manual_only": True, "auto_posting": False},
+        confidence_score=lead.confidence_score,
+    )
+    return lead
+
+
+def rank_social_opportunity_leads(session: Session, *, limit: int = 5) -> list[SocialDiscoveryLead]:
+    leads = list(
+        session.scalars(
+            select(SocialDiscoveryLead)
+            .where(SocialDiscoveryLead.status == "new")
+            .order_by(
+                desc(SocialDiscoveryLead.opportunity_score),
+                desc(SocialDiscoveryLead.confidence_score),
+                desc(SocialDiscoveryLead.created_at),
+                desc(SocialDiscoveryLead.id),
+            )
+            .limit(limit)
+        ).all()
+    )
+    return leads
+
+
+def explain_social_discovery_lead(lead: SocialDiscoveryLead) -> str:
+    if lead.compliance_status == "blocked":
+        return "This lead is blocked for compliance and should not be used."
+    if lead.opportunity_score >= 80:
+        return "Strong niche fit, useful timing, and enough confidence for human review."
+    if lead.opportunity_score >= 60:
+        return "Promising enough to review manually, but not urgent."
+    return "Low-confidence lead. Review only if it matches today’s focus."
+
+
+def comment_angles_for_discovery_lead(lead: SocialDiscoveryLead) -> list[EngagementStrategy]:
+    if lead.compliance_status == "blocked":
+        return [EngagementStrategy("warning", "Do not use this lead.", "Compliance blocked.", "high")]
+    niche = lead.niche or "this topic"
+    return [
+        EngagementStrategy("curiosity", f"What made this angle around {niche} stand out?", "Invites a human reply without pushing.", "low"),
+        EngagementStrategy("relatable", f"This is the part of {niche} people usually feel but rarely say.", "Feels natural and contextual.", "low"),
+        EngagementStrategy("playful", "This has useful comment-section energy.", "Only use when the post tone is casual.", "medium"),
+        EngagementStrategy("question", f"How would you compare this with the usual advice around {niche}?", "Keeps the reply conversational.", "low"),
+        EngagementStrategy("soft CTA", "Worth saving if you want the simplest next step.", "Gentle and human-reviewed.", "medium"),
+    ]
+
+
+def create_opportunity_from_discovery_lead(
+    session: Session,
+    lead: SocialDiscoveryLead,
+    *,
+    actor: User | None,
+    assigned_to_user_id: int | None = None,
+) -> Opportunity:
+    _require_social_manage(session, actor)
+    if lead.compliance_status == "blocked":
+        raise PermissionError("Blocked social discovery leads cannot become opportunities.")
+    opportunity = create_manual_opportunity(
+        session,
+        actor=actor,
+        title=f"Review {lead.source_name}",
+        platform=lead.platform,
+        url=lead.post_reference or lead.source_reference,
+        niche=lead.niche,
+        priority="high" if lead.opportunity_score >= 80 else "normal",
+        assigned_to_user_id=assigned_to_user_id,
+        reason=f"Discovery lead scored {lead.opportunity_score}/100 for human review.",
+        suggested_angle=lead.recommended_angle,
+        source_type="manual",
+    )
+    opportunity.score = lead.opportunity_score
+    lead.status = "converted_to_opportunity"
+    lead.metadata_json = sanitize_details({**(lead.metadata_json or {}), "opportunity_id": opportunity.id})
+    comment_strategies_for_opportunity(session, opportunity, actor=actor, create_if_missing=True)
+    create_learning_event(
+        session,
+        actor=actor,
+        event_type="social_discovery.lead_converted",
+        source_type="opportunity",
+        source_id=opportunity.id,
+        entity_type="social_discovery_lead",
+        entity_id=lead.id,
+        outcome="success",
+        severity="info",
+        summary="Discovery lead converted to a human-reviewed opportunity.",
+        details={"lead_id": lead.id, "score": lead.opportunity_score, "manual_only": True, "auto_posting": False},
+        confidence_score=lead.confidence_score,
+    )
+    create_confidence_record(
+        session,
+        subject_type="opportunity",
+        subject_id=opportunity.id,
+        previous_score=None,
+        new_score=lead.opportunity_score,
+        reason="Discovery lead converted to opportunity.",
+        evidence={"lead_id": lead.id, "manual_only": True},
+    )
+    if lead.social_source_id:
+        source = session.get(SocialSource, lead.social_source_id)
+        performance = _performance_bucket(session, source, lead.platform, lead.niche, lead.recommended_angle)
+        performance.reviewed_count += 1
+        performance.clicks += 0
+        performance.replies += 1
+        performance.last_outcome = "converted"
+        performance.historical_score = _clamp(performance.historical_score + 4)
+        performance.success_rate = round((performance.replies / max(1, performance.reviewed_count)) * 100)
+        performance.metadata_json = sanitize_details(
+            {**(performance.metadata_json or {}), "last_discovery_lead_id": lead.id, "manual_only": True}
+        )
+        if source is not None:
+            source.historical_score = max(source.historical_score or 0, performance.historical_score)
+            source.last_useful_post_at = _now()
+    audit_action(
+        session,
+        actor=actor,
+        action="social_discovery.lead_converted",
+        resource_type="opportunity",
+        resource_id=str(opportunity.id),
+        details={"lead_id": lead.id, "manual_only": True, "auto_posting": False},
+    )
+    session.flush()
+    return opportunity
+
+
+def record_social_discovery_lead_feedback(
+    session: Session,
+    lead: SocialDiscoveryLead,
+    *,
+    actor: User | None,
+    status: str,
+    notes: str | None = None,
+) -> SocialDiscoveryLead:
+    _require_social_manage(session, actor)
+    if status not in SOCIAL_DISCOVERY_LEAD_STATUSES:
+        raise ValueError(f"Invalid lead status: {status}")
+    previous_score = lead.confidence_score
+    lead.status = status
+    if status == "skipped":
+        lead.confidence_score = max(0, lead.confidence_score - 5)
+        outcome = "ignored"
+    elif status in {"reviewed", "converted_to_opportunity"}:
+        lead.confidence_score = min(100, lead.confidence_score + 3)
+        outcome = "partial" if status == "reviewed" else "success"
+    else:
+        outcome = "unknown"
+    lead.metadata_json = sanitize_details({**(lead.metadata_json or {}), "feedback_notes": notes})
+    if lead.social_source_id:
+        source = session.get(SocialSource, lead.social_source_id)
+        performance = _performance_bucket(session, source, lead.platform, lead.niche, lead.recommended_angle)
+        if status == "skipped":
+            performance.skipped_count += 1
+            performance.last_outcome = "skipped"
+            performance.historical_score = max(0, performance.historical_score - 2)
+        elif status in {"reviewed", "converted_to_opportunity"}:
+            performance.reviewed_count += 1
+            performance.last_outcome = "reviewed" if status == "reviewed" else "converted"
+            performance.historical_score = _clamp(performance.historical_score + (2 if status == "reviewed" else 4))
+        performance.success_rate = round((performance.replies / max(1, performance.reviewed_count)) * 100)
+        performance.metadata_json = sanitize_details(
+            {**(performance.metadata_json or {}), "last_discovery_feedback": status, "manual_only": True}
+        )
+        if source is not None:
+            source.historical_score = max(0, min(100, performance.historical_score))
+    create_learning_event(
+        session,
+        actor=actor,
+        event_type=f"social_discovery.lead_{status}",
+        source_type="opportunity",
+        source_id=lead.id,
+        entity_type="social_discovery_lead",
+        entity_id=lead.id,
+        outcome=outcome,
+        severity="info",
+        summary=f"Discovery lead marked {status}.",
+        details={"notes": notes, "manual_only": True},
+        confidence_score=lead.confidence_score,
+    )
+    create_confidence_record(
+        session,
+        subject_type="opportunity",
+        subject_id=f"discovery_lead:{lead.id}",
+        previous_score=previous_score,
+        new_score=lead.confidence_score,
+        reason=f"Discovery lead feedback: {status}.",
+        evidence={"status": status, "manual_only": True},
+    )
+    session.flush()
+    return lead
+
+
+def route_social_discovery_lead_alert(
+    session: Session,
+    lead: SocialDiscoveryLead,
+    *,
+    actor: User | None,
+    simulate_only: bool = True,
+) -> list[NotificationDeliveryAttempt]:
+    _require_social_view(session, actor)
+    purposes = ["alerts"]
+    if lead.opportunity_score >= 90:
+        purposes.append("hq")
+    targets = active_targets_for_purposes(session, purposes)
+    if not targets:
+        upsert_recommendation(
+            session,
+            actor=actor,
+            recommendation_type="social_discovery_alert_target_missing",
+            title="Register Fortuna Alerts target",
+            description="Discovery alerts need a Fortuna Alerts target before live delivery.",
+            severity="warning",
+            entity_type="social_discovery_lead",
+            entity_id=lead.id,
+            metadata={"score": lead.opportunity_score, "purposes": purposes, "simulated": True},
+        )
+        emit_event(
+            session,
+            actor=actor,
+            event_name="social_discovery.alert_simulated",
+            resource_type="social_discovery_lead",
+            resource_id=str(lead.id),
+            payload={"reason": "missing_target", "purposes": purposes},
+        )
+        return []
+    attempts: list[NotificationDeliveryAttempt] = []
+    for target in targets:
+        attempts.append(
+            create_delivery_attempt(
+                session,
+                target,
+                event_type="social.discovery.alert",
+                actor=actor,
+                status="skipped" if simulate_only else "pending",
+                metadata={
+                    "lead_id": lead.id,
+                    "score": lead.opportunity_score,
+                    "purpose": target.purpose,
+                    "manual_only": True,
+                    "simulated": simulate_only,
+                },
+            )
+        )
+    return attempts

@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sqlalchemy import func, select
 
 from .formatting import *
+from app.services.fortuna_personality import dynamic_greeting, screen_lines
 from app.services.productization import best_next_action, setup_steps
 from app.services.system_truth import reconcile_stale_system_warnings, system_truth
 
@@ -145,22 +146,24 @@ def render_main_menu(session: Session | None = None, user: User | None = None) -
         progress = _setup_progress(session, report)
         missing = progress["missing"] or ["Nothing urgent"]
         focus = progress["top_blocker"]["title"] if progress["top_blocker"] else "Nothing urgent here"
+        greeting = dynamic_greeting(user)
         lines = [
             "\U0001f319 Fortuna OS",
             "",
-            f"{_owner_greeting(user)}, {_owner_display_name(user)}.",
+            f"{greeting.emoji} {greeting.text}",
             "",
-            "Status",
-            "\U0001f7e2 Everything is running." if production_status.startswith("\U0001f7e2") else production_status,
+            "🟢 Status" if production_status.startswith("\U0001f7e2") else "🟡 Status",
+            "Everything is running smoothly." if production_status.startswith("\U0001f7e2") else production_status,
             *emergency_warning,
             "",
-            "Today\u2019s Focus:",
+            "🎯 Today’s Focus",
+            "Today’s Focus:",
             focus,
             "",
-            "Missing:",
-            *[f"- {item}" for item in missing],
+            "🧩 Missing",
+            *[f"• {item}" for item in missing],
             "",
-            "Next Best Move",
+            "✨ Next Best Move",
             next_action.title,
             "",
             f"Estimated Time: {next_action.estimated_time}",
@@ -171,25 +174,52 @@ def render_main_menu(session: Session | None = None, user: User | None = None) -
     details = personalized_dashboard(session, user)
     items = role_home_items(user)
     next_action = best_next_action(session, user)
-    lines = [
-        f"Welcome back, {details['display_name']}",
-        "",
-        f"Role: {details['role']}",
-        f"Availability: {_status_marker(details['availability_status'])} {details['availability_status'].replace('_', ' ')}",
-        "",
-        "What matters:",
-        f"- Tasks due today: {details['tasks_due_today']}",
-        f"- Overdue items: {details['overdue_items']}",
-        f"- Assigned models: {details['assigned_models']}",
-        "",
-        "Next best move:",
-        next_action.title,
-        "",
-        "Why:",
-        next_action.reason,
-        "",
-        role_intro(details["role"]),
-    ]
+    role = details["role"]
+    if role in {"Manager", "Chatter Manager"}:
+        lines = screen_lines(
+            header="Manager Home",
+            header_emoji="👥",
+            status="No urgent team issues.",
+            noticed=["Review assignments and alerts."],
+            next_move=f"Next best move: {next_action.title}",
+        )
+        lines[1:1] = ["", f"Welcome back, {details['display_name']}", f"Role: {details['role']}"]
+    elif role in {"Senior Chatter", "Chatter"}:
+        lines = screen_lines(
+            header="My Work",
+            header_emoji="🎯",
+            status="Your work queue is ready.",
+            noticed=["Assigned opportunities and tasks live here."],
+            next_move=f"Next best move: {next_action.title}",
+        )
+        lines[1:1] = ["", f"Welcome back, {details['display_name']}", f"Role: {details['role']}"]
+    elif role == "VA":
+        lines = screen_lines(
+            header="VA Tasks",
+            header_emoji="📝",
+            status="Setup work is ready when you are.",
+            noticed=["Tasks and assignments are the main focus."],
+            next_move=f"Next best move: {next_action.title}",
+        )
+        lines[1:1] = ["", f"Welcome back, {details['display_name']}", f"Role: {details['role']}"]
+    else:
+        lines = [
+            f"✨ Welcome back, {details['display_name']}",
+            "",
+            f"Role: {details['role']}",
+            f"Availability: {_status_marker(details['availability_status'])} {details['availability_status'].replace('_', ' ')}",
+            "",
+            "🎯 What matters",
+            f"• Tasks due today: {details['tasks_due_today']}",
+            f"• Overdue items: {details['overdue_items']}",
+            f"• Assigned models: {details['assigned_models']}",
+            "",
+            "✨ Next Best Move",
+            next_action.title,
+            "",
+            "Why:",
+            next_action.reason,
+        ]
     return Screen(text="\n".join(lines), reply_markup=role_home_menu(items))
 
 

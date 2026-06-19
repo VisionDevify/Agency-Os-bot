@@ -115,6 +115,27 @@ HELP_KB_SEEDS: tuple[dict[str, str], ...] = (
         "related_route": "opportunities:score",
     },
     {
+        "topic": "social_discovery_mode",
+        "title": "Discovery Mode",
+        "role_scope": "owner,admin,manager,chatter",
+        "content": "Discovery Mode helps Fortuna turn approved manual sources, public post URLs, official APIs, or approved exports into leads for human review. It does not scrape private data or post for you.",
+        "related_route": "opportunities:discovery",
+    },
+    {
+        "topic": "social_comment_angles",
+        "title": "Comment Angles",
+        "role_scope": "owner,admin,manager,chatter",
+        "content": "Comment angles are safe idea starters like curiosity, relatable, playful, question, or soft CTA. A human reviews the idea and decides what to write manually.",
+        "related_route": "opportunities:discovery",
+    },
+    {
+        "topic": "social_learning",
+        "title": "Social Learning",
+        "role_scope": "owner,admin,manager,chatter",
+        "content": "Fortuna learns from manual results: reviewed, skipped, converted, clicks, replies, profile visits, conversions, and notes. That improves source, niche, timing, angle, and chatter recommendations.",
+        "related_route": "intelligence:learning",
+    },
+    {
         "topic": "tasks",
         "title": "Tasks",
         "role_scope": "all",
@@ -206,6 +227,20 @@ def help_article_count(session: Session) -> int:
 
 def detect_help_intent(question: str) -> str:
     text = question.casefold()
+    if "discovery mode" in text or ("discover" in text and ("opportun" in text or "lead" in text)):
+        return "social_discovery_mode"
+    if "find opportunities" in text or "finds opportunities" in text or "find opportunity" in text:
+        return "social_discovery_sources"
+    if "public post" in text or ("add" in text and "post" in text and "opportun" in text):
+        return "social_public_post"
+    if "record result" in text or ("record" in text and "result" in text):
+        return "social_record_results"
+    if "comment angle" in text or "comment ideas" in text or "angle" in text:
+        return "social_comment_angles"
+    if "fortuna learn" in text or ("how" in text and "learn" in text):
+        return "social_learning"
+    if "compliant" in text or "compliance" in text or ("safe" in text and ("social" in text or "opportun" in text)):
+        return "social_compliance"
     if "where am i" in text or "what screen" in text:
         return "where_am_i"
     if "what does back" in text or ("back" in text and "do" in text):
@@ -557,6 +592,50 @@ def help_brain_answer(
         article = _article(session, "social_opportunity_intelligence")
         answer = article.content if article else "Use compliant data only. Fortuna scores opportunities for human review and never posts automatically."
         next_action = "opportunities:score"
+    elif intent == "social_discovery_mode":
+        article = _article(session, "social_discovery_mode")
+        answer = article.content if article else (
+            "Discovery Mode turns approved manual sources or public post references into opportunity leads for human review. "
+            "It does not scrape private data, bypass platform limits, or post automatically."
+        )
+        next_action = "opportunities:discovery"
+    elif intent == "social_discovery_sources":
+        answer = (
+            "Fortuna can use manual URLs, manually entered creators/pages, approved exports, and future official API connectors. "
+            "Private data, prohibited scraping, and auto-engagement are not supported."
+        )
+        next_action = "opportunities:discovery"
+    elif intent == "social_public_post":
+        answer = (
+            "Open Opportunities -> Discovery Mode -> Paste Public Post. Add the public URL or reference, niche, and why it may matter. "
+            "Fortuna will score it and keep the next step manual."
+        )
+        next_action = "opportunities:discovery:paste_post"
+    elif intent == "social_record_results":
+        answer = (
+            "Open the opportunity or discovery lead, then record reviewed, skipped, converted, clicks, replies, profile visits, conversions, and notes. "
+            "Those manual results teach Fortuna what works."
+        )
+        next_action = "opportunities:command"
+    elif intent == "social_comment_angles":
+        article = _article(session, "social_comment_angles")
+        answer = article.content if article else (
+            "Comment angles are human-reviewed ideas like curiosity, relatable, playful, question, or soft CTA. "
+            "Fortuna drafts direction, but you decide and post manually."
+        )
+        next_action = "opportunities:discovery"
+    elif intent == "social_learning":
+        article = _article(session, "social_learning")
+        answer = article.content if article else (
+            "Fortuna learns from manual outcomes: which sources, niches, angles, timing windows, and team members produce better results."
+        )
+        next_action = "intelligence:learning"
+    elif intent == "social_compliance":
+        answer = (
+            "Safe social work means public or approved inputs, human review, no private data, no scraping against platform rules, "
+            "no rate-limit evasion, and no automatic posting, liking, following, or commenting."
+        )
+        next_action = "opportunities:discovery"
     elif intent == "no_auto_posting":
         answer = "Fortuna does not auto-post, auto-comment, like, follow, evade limits, or scrape private data. It only prepares advisory work for human review."
         next_action = "opportunities:score"

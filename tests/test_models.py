@@ -45,6 +45,9 @@ def test_model_tables_are_registered() -> None:
         Recommendation,
         Report,
         Role,
+        SocialDiscoveryLead,
+        SocialDiscoveryRun,
+        SocialDiscoverySourceConfig,
         SystemHeartbeat,
         Task,
         TeamOnboardingChecklist,
@@ -98,6 +101,9 @@ def test_model_tables_are_registered() -> None:
         "recommendations",
         "reports",
         "roles",
+        "social_discovery_leads",
+        "social_discovery_runs",
+        "social_discovery_source_configs",
         "system_heartbeats",
         "tasks",
         "team_onboarding_checklists",
@@ -136,6 +142,9 @@ def test_model_tables_are_registered() -> None:
     assert ModelBrand.__tablename__ == "model_brands"
     assert ModelBrandMember.__tablename__ == "model_brand_members"
     assert Report.__tablename__ == "reports"
+    assert SocialDiscoverySourceConfig.__tablename__ == "social_discovery_source_configs"
+    assert SocialDiscoveryRun.__tablename__ == "social_discovery_runs"
+    assert SocialDiscoveryLead.__tablename__ == "social_discovery_leads"
     assert Automation.__tablename__ == "automations"
     assert AutomationRule.__tablename__ == "automation_rules"
     assert AutomationRun.__tablename__ == "automation_runs"

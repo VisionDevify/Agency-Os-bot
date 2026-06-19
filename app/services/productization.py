@@ -205,7 +205,7 @@ def best_next_action(session: Session, user: User | None) -> ProductNextAction:
                 audience="Owner",
                 severity="setup",
             )
-        actions = todays_top_5_actions(session, actor=user, limit=1)
+        actions = todays_top_5_actions(session, actor=user)[:1]
         if actions:
             action = actions[0]
             return ProductNextAction(
@@ -226,7 +226,7 @@ def best_next_action(session: Session, user: User | None) -> ProductNextAction:
         )
 
     if role in {"Manager", "Chatter Manager"}:
-        actions = todays_top_5_actions(session, actor=user, limit=1)
+        actions = todays_top_5_actions(session, actor=user)[:1]
         if actions:
             action = actions[0]
             return ProductNextAction(

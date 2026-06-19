@@ -303,7 +303,7 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         return ("manage_reports", "manage_tasks", "manage_chatter_team")
     if page.startswith("creator:") or page.startswith("post:"):
         return ("manage_reports", "manage_tasks", "manage_chatter_team")
-    if page.startswith("opportunities") or page.startswith("opportunity:") or page.startswith("social_score:"):
+    if page.startswith("opportunities") or page.startswith("opportunity:") or page.startswith("social_score:") or page.startswith("social_lead:"):
         return ("manage_reports", "manage_tasks", "view_chatter_dashboard", "view_dashboard")
     if (
         page.startswith("automations:")
@@ -1285,6 +1285,7 @@ def screen_for_page(
         or normalized.startswith("opportunities")
         or normalized.startswith("opportunity:")
         or normalized.startswith("social_score:")
+        or normalized.startswith("social_lead:")
         or normalized.startswith("creator:")
         or normalized.startswith("post:")
         or normalized.startswith("automations:")

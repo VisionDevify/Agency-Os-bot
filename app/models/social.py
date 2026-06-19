@@ -13,6 +13,10 @@ SOCIAL_REVIEW_STATUSES = ("new", "reviewing", "reviewed", "skipped", "opportunit
 SOCIAL_SIGNAL_SEVERITIES = ("info", "warning", "critical")
 SOCIAL_SIGNAL_STATUSES = ("open", "acknowledged", "resolved", "dismissed")
 SOCIAL_SOURCE_TYPES = ("manual", "official_api", "approved_export", "approved_browser_capture")
+SOCIAL_DISCOVERY_RUN_TYPES = ("manual_url", "manual_source", "csv_import", "official_api_placeholder", "approved_public_import")
+SOCIAL_DISCOVERY_RUN_STATUSES = ("pending", "running", "succeeded", "failed")
+SOCIAL_DISCOVERY_LEAD_STATUSES = ("new", "reviewed", "converted_to_opportunity", "skipped", "archived")
+SOCIAL_DISCOVERY_SOURCE_TYPES = ("manual", "csv_export", "official_api_placeholder", "approved_public_import_placeholder")
 
 
 class SocialSource(TimestampMixin, Base):
@@ -205,3 +209,97 @@ class SocialSourcePerformance(TimestampMixin, Base):
     metadata_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
     source: Mapped[SocialSource | None] = relationship(back_populates="performance_rows", lazy="selectin")
+
+
+class SocialDiscoverySourceConfig(TimestampMixin, Base):
+    __tablename__ = "social_discovery_source_configs"
+    __table_args__ = (
+        CheckConstraint("platform in ('x', 'instagram', 'reddit', 'other')", name="ck_social_discovery_configs_platform"),
+        CheckConstraint(
+            "source_type in ('manual', 'csv_export', 'official_api_placeholder', 'approved_public_import_placeholder')",
+            name="ck_social_discovery_configs_source_type",
+        ),
+        CheckConstraint(
+            "compliance_status in ('approved', 'review_required', 'blocked')",
+            name="ck_social_discovery_configs_compliance",
+        ),
+        Index("ix_social_discovery_configs_platform", "platform"),
+        Index("ix_social_discovery_configs_active", "is_active"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    platform: Mapped[str] = mapped_column(String(40), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(80), default="manual", nullable=False)
+    name: Mapped[str] = mapped_column(String(180), nullable=False)
+    reference_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    niche: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    compliance_status: Mapped[str] = mapped_column(String(40), default="approved", nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+
+
+class SocialDiscoveryRun(TimestampMixin, Base):
+    __tablename__ = "social_discovery_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "run_type in ('manual_url', 'manual_source', 'csv_import', 'official_api_placeholder', 'approved_public_import')",
+            name="ck_social_discovery_runs_type",
+        ),
+        CheckConstraint("status in ('pending', 'running', 'succeeded', 'failed')", name="ck_social_discovery_runs_status"),
+        Index("ix_social_discovery_runs_status", "status"),
+        Index("ix_social_discovery_runs_type", "run_type"),
+        Index("ix_social_discovery_runs_started_by", "started_by_user_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    status: Mapped[str] = mapped_column(String(40), default="pending", nullable=False)
+    source_config_id: Mapped[int | None] = mapped_column(
+        ForeignKey("social_discovery_source_configs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    started_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    summary_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    error_message: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SocialDiscoveryLead(TimestampMixin, Base):
+    __tablename__ = "social_discovery_leads"
+    __table_args__ = (
+        CheckConstraint("platform in ('x', 'instagram', 'reddit', 'other')", name="ck_social_discovery_leads_platform"),
+        CheckConstraint("confidence_score >= 0 and confidence_score <= 100", name="ck_social_discovery_leads_confidence"),
+        CheckConstraint("opportunity_score >= 0 and opportunity_score <= 100", name="ck_social_discovery_leads_score"),
+        CheckConstraint(
+            "compliance_status in ('approved', 'review_required', 'blocked')",
+            name="ck_social_discovery_leads_compliance",
+        ),
+        CheckConstraint(
+            "status in ('new', 'reviewed', 'converted_to_opportunity', 'skipped', 'archived')",
+            name="ck_social_discovery_leads_status",
+        ),
+        Index("ix_social_discovery_leads_run_id", "discovery_run_id"),
+        Index("ix_social_discovery_leads_platform", "platform"),
+        Index("ix_social_discovery_leads_niche", "niche"),
+        Index("ix_social_discovery_leads_score", "opportunity_score"),
+        Index("ix_social_discovery_leads_status", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    discovery_run_id: Mapped[int | None] = mapped_column(
+        ForeignKey("social_discovery_runs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    social_source_id: Mapped[int | None] = mapped_column(ForeignKey("social_sources.id", ondelete="SET NULL"), nullable=True)
+    platform: Mapped[str] = mapped_column(String(40), nullable=False)
+    source_name: Mapped[str] = mapped_column(String(180), nullable=False)
+    source_reference: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    post_reference: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    niche: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    reason_found: Mapped[str] = mapped_column(Text(), nullable=False)
+    confidence_score: Mapped[int] = mapped_column(Integer, default=50, nullable=False)
+    opportunity_score: Mapped[int] = mapped_column(Integer, default=50, nullable=False)
+    compliance_status: Mapped[str] = mapped_column(String(40), default="approved", nullable=False)
+    recommended_angle: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    status: Mapped[str] = mapped_column(String(40), default="new", nullable=False)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)

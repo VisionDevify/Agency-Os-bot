@@ -4,13 +4,19 @@ from app.bot.menu import callback_for, page_controls
 
 from .formatting import *
 from app.models.opportunity import CreatorPostAlert, OwnPostAlert
-from app.models.social import SocialOpportunityScore
+from app.models.social import SocialDiscoveryLead, SocialOpportunityScore
 from app.services.social_intelligence import (
     best_social_opportunities,
+    comment_angles_for_discovery_lead,
+    create_opportunity_from_discovery_lead,
     create_opportunity_from_social_score,
     engagement_strategies_for_score,
+    explain_social_discovery_lead,
     official_api_adapter_status,
+    rank_social_opportunity_leads,
+    record_social_discovery_lead_feedback,
     record_social_outcome,
+    route_social_discovery_lead_alert,
     social_notification_framework_status,
 )
 
@@ -165,6 +171,208 @@ def render_social_score_action_page(session: Session, score_id: int, action: str
             )
         return render_opportunity_result_status_page(session, score.opportunity_id)
     return render_social_opportunity_intelligence_page(session)
+
+
+def _discovery_menu(best: SocialDiscoveryLead | None = None) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(text="Add Manual Source", callback_data=callback_for("opportunities:discovery:add_source"))],
+        [InlineKeyboardButton(text="Paste Public Post", callback_data=callback_for("opportunities:discovery:paste_post"))],
+        [InlineKeyboardButton(text="View Leads", callback_data=callback_for("opportunities:discovery:leads"))],
+        [InlineKeyboardButton(text="How Discovery Works", callback_data=callback_for("help:discovery_mode"))],
+    ]
+    if best is not None:
+        rows.insert(0, [InlineKeyboardButton(text="Review Best Lead", callback_data=callback_for(f"social_lead:{best.id}"))])
+    rows.extend(page_controls(back_to="opportunities"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def render_social_discovery_page(session: Session) -> Screen:
+    leads = rank_social_opportunity_leads(session, limit=5)
+    best = leads[0] if leads else None
+    lines = [
+        "🔎 Discovery Mode",
+        "",
+        "Fortuna can help find new public opportunity leads from approved sources.",
+        "",
+    ]
+    if best is None:
+        lines.extend(
+            [
+                "🟡 Current Status",
+                "No discovery sources connected yet.",
+                "",
+                "✨ Next Best Move",
+                "Add a manual source or paste a public post URL.",
+                "",
+                "Fortuna only supports manual entries, approved exports, and future official API connectors here.",
+                "No scraping. No auto-posting.",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                f"Fortuna found {len(leads)} possible opportunities.",
+                "",
+                "🔥 Best Lead",
+                f"{best.source_name} — {best.platform.upper() if best.platform == 'x' else best.platform.title()}",
+                "",
+                "Why it matters:",
+                explain_social_discovery_lead(best),
+                "",
+                "Suggested angle:",
+                best.recommended_angle or "curiosity",
+                "",
+                "✨ Next Best Move",
+                "Review the lead and create an opportunity if it fits today’s focus.",
+            ]
+        )
+    return Screen("\n".join(lines), _discovery_menu(best))
+
+
+def render_social_discovery_instruction_page(kind: str) -> Screen:
+    if kind == "add_source":
+        text = "\n".join(
+            [
+                "Add Manual Source",
+                "",
+                "For now, add creator/page sources through Creator Watch or paste a public post.",
+                "",
+                "Future connectors can use official APIs or approved exports.",
+                "Fortuna will not scrape or post automatically.",
+            ]
+        )
+    else:
+        text = "\n".join(
+            [
+                "Paste Public Post",
+                "",
+                "Send a public URL or safe reference using the manual intake flow.",
+                "",
+                "Do not paste private content, passwords, tokens, or anything behind a login.",
+            ]
+        )
+    return Screen(text, page_menu(back_to="opportunities:discovery"))
+
+
+def render_social_discovery_leads_page(session: Session) -> Screen:
+    leads = rank_social_opportunity_leads(session, limit=10)
+    lines = [
+        "🔎 Discovery Leads",
+        "",
+        f"Fortuna found {len(leads)} possible opportunities.",
+        "",
+    ]
+    buttons: list[tuple[str, str]] = []
+    if not leads:
+        lines.extend(
+            [
+                "No leads yet.",
+                "",
+                "Next best move:",
+                "Paste a public post or add a manual source.",
+            ]
+        )
+    for lead in leads:
+        lines.append(f"• {lead.source_name} — {lead.platform.upper() if lead.platform == 'x' else lead.platform.title()}")
+        lines.append(f"  {explain_social_discovery_lead(lead)}")
+        buttons.append((lead.source_name[:36], f"nav:social_lead:{lead.id}"))
+    return Screen("\n".join(lines), choice_menu(buttons, back_to="opportunities:discovery") if buttons else page_menu(back_to="opportunities:discovery"))
+
+
+def _social_lead_menu(lead: SocialDiscoveryLead) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Create Opportunity", callback_data=callback_for(f"social_lead:{lead.id}:create_opportunity"))],
+            [InlineKeyboardButton(text="Generate Comment Ideas", callback_data=callback_for(f"social_lead:{lead.id}:angles"))],
+            [
+                InlineKeyboardButton(text="Mark Reviewed", callback_data=callback_for(f"social_lead:{lead.id}:reviewed")),
+                InlineKeyboardButton(text="Skip", callback_data=callback_for(f"social_lead:{lead.id}:skipped")),
+            ],
+            [InlineKeyboardButton(text="Simulate Alert Routing", callback_data=callback_for(f"social_lead:{lead.id}:route_alert"))],
+            *page_controls(back_to="opportunities:discovery:leads"),
+        ]
+    )
+
+
+def render_social_discovery_lead_detail_page(session: Session, lead_id: int) -> Screen:
+    lead = session.get(SocialDiscoveryLead, lead_id)
+    if lead is None:
+        return Screen("Discovery lead not found.", page_menu(back_to="opportunities:discovery"))
+    lines = [
+        "🔎 Discovery Lead",
+        "",
+        f"Source: {lead.source_name}",
+        f"Platform: {lead.platform.upper() if lead.platform == 'x' else lead.platform.title()}",
+        f"Niche: {lead.niche or 'Not set'}",
+        "",
+        "Why it matters:",
+        explain_social_discovery_lead(lead),
+        "",
+        "Suggested angle:",
+        lead.recommended_angle or "curiosity",
+        "",
+        "Compliance:",
+        "Human review only. Fortuna will not post, like, follow, or scrape.",
+        "",
+        "Next best move:",
+        "Create an opportunity or generate comment ideas.",
+    ]
+    return Screen("\n".join(lines), _social_lead_menu(lead))
+
+
+def render_social_discovery_lead_angles_page(session: Session, lead_id: int) -> Screen:
+    lead = session.get(SocialDiscoveryLead, lead_id)
+    if lead is None:
+        return Screen("Discovery lead not found.", page_menu(back_to="opportunities:discovery"))
+    lines = [
+        "✍️ Comment Ideas",
+        "",
+        "Fortuna drafted a few angles.",
+        "Choose one to review manually.",
+        "",
+    ]
+    for strategy in comment_angles_for_discovery_lead(lead):
+        lines.append(strategy.angle.title())
+        lines.append(strategy.sample)
+        lines.append(f"Why: {strategy.why}")
+        lines.append(f"Risk: {strategy.risk}")
+        lines.append("")
+    lines.append("No auto-posting. Human approval only.")
+    return Screen(
+        "\n".join(lines).strip(),
+        InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="Mark Used", callback_data=callback_for(f"social_lead:{lead.id}:reviewed"))],
+                [InlineKeyboardButton(text="Not Useful", callback_data=callback_for(f"social_lead:{lead.id}:skipped"))],
+                *page_controls(back_to=f"social_lead:{lead.id}"),
+            ]
+        ),
+    )
+
+
+def render_social_discovery_lead_action_page(session: Session, lead_id: int, action: str, user: User | None = None) -> Screen:
+    lead = session.get(SocialDiscoveryLead, lead_id)
+    if lead is None:
+        return Screen("Discovery lead not found.", page_menu(back_to="opportunities:discovery"))
+    if action == "create_opportunity":
+        opportunity = create_opportunity_from_discovery_lead(session, lead, actor=user)
+        return render_opportunity_detail_page(session, opportunity.id)
+    if action == "angles":
+        return render_social_discovery_lead_angles_page(session, lead.id)
+    if action == "reviewed":
+        record_social_discovery_lead_feedback(session, lead, actor=user, status="reviewed")
+        return Screen("Reviewed\n\nFortuna recorded this and will learn from it.", page_menu(back_to="opportunities:discovery"))
+    if action == "skipped":
+        record_social_discovery_lead_feedback(session, lead, actor=user, status="skipped")
+        return Screen("Skipped\n\nFortuna recorded this and will learn from it.", page_menu(back_to="opportunities:discovery"))
+    if action == "route_alert":
+        attempts = route_social_discovery_lead_alert(session, lead, actor=user, simulate_only=True)
+        if attempts:
+            text = "Alert routing simulated.\n\nFortuna recorded delivery attempts without sending live alerts."
+        else:
+            text = "Alert routing simulated.\n\nNo Alerts target is registered yet. Fortuna created a recommendation instead of crashing."
+        return Screen(text, page_menu(back_to=f"social_lead:{lead.id}"))
+    return render_social_discovery_lead_detail_page(session, lead.id)
 
 def render_creator_intake_page(session: Session, page: str) -> Screen:
     parts = page.split(":")

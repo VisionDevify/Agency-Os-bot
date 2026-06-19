@@ -41,6 +41,9 @@ from app.models.reporting import (
     NotificationTarget,
 )
 from app.models.social import (
+    SocialDiscoveryLead,
+    SocialDiscoveryRun,
+    SocialDiscoverySourceConfig,
     SocialOpportunityScore,
     SocialPost,
     SocialSignal,
@@ -125,6 +128,9 @@ __all__ = [
     "RolePermission",
     "SystemHeartbeat",
     "SetupWizardState",
+    "SocialDiscoveryLead",
+    "SocialDiscoveryRun",
+    "SocialDiscoverySourceConfig",
     "SocialOpportunityScore",
     "SocialPost",
     "SocialSignal",

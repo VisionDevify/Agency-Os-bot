@@ -527,6 +527,14 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_opportunity_command_center_page(session, user=user)
     if page == "opportunities:score" and session is not None:
         return render_social_opportunity_intelligence_page(session)
+    if page == "opportunities:discovery" and session is not None:
+        return render_social_discovery_page(session)
+    if page == "opportunities:discovery:add_source":
+        return render_social_discovery_instruction_page("add_source")
+    if page == "opportunities:discovery:paste_post":
+        return render_social_discovery_instruction_page("paste_post")
+    if page == "opportunities:discovery:leads" and session is not None:
+        return render_social_discovery_leads_page(session)
     if page == "opportunities:list" and session is not None:
         return render_opportunity_list_page(session)
     if page == "opportunities:creators" and session is not None:
@@ -598,6 +606,12 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         parts = page.split(":")
         if len(parts) >= 3 and parts[1].isdigit():
             return render_social_score_action_page(session, int(parts[1]), parts[2], user=user)
+    if page.startswith("social_lead:") and session is not None:
+        parts = page.split(":")
+        if len(parts) >= 2 and parts[1].isdigit():
+            if len(parts) >= 3:
+                return render_social_discovery_lead_action_page(session, int(parts[1]), parts[2], user=user)
+            return render_social_discovery_lead_detail_page(session, int(parts[1]))
     if page == "users" and session is not None:
         return render_users_page(session)
     if page == "users:pending" and session is not None:
