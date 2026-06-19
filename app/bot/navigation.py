@@ -1140,6 +1140,7 @@ def screen_for_page(
     if normalized in {
         "production_observability",
         "integrity",
+        "integrity:details",
         "bot_instance_status",
         "ui_self_test",
         "ui_self_test:run",
@@ -1293,6 +1294,7 @@ def screen_for_page(
         or normalized == "production_status"
         or normalized == "production_observability"
         or normalized == "integrity"
+        or normalized == "integrity:details"
         or normalized == "owner_advanced"
         or normalized == "today_priorities"
         or normalized == "setup_progress"

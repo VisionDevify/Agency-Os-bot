@@ -195,11 +195,11 @@ def render_main_menu(session: Session | None = None, user: User | None = None) -
 
 def render_owner_advanced_page() -> Screen:
     lines = [
-        "Fortuna OS Advanced",
+        "\U0001f319 More",
         "",
-        "The deeper controls live here when you need them.",
+        "Advanced tools are here when you need them.",
         "",
-        "Use Simple Mode for the daily flow.",
+        "Most days, Home and Today are enough. These areas are for deeper checks and owner tools.",
     ]
     return Screen(text="\n".join(lines), reply_markup=owner_advanced_home_menu())
 

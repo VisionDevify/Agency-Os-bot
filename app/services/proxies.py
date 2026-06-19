@@ -1,10 +1,11 @@
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+import hashlib
 import re
 import secrets
 import string
 
-from sqlalchemy import desc, func, select
+from sqlalchemy import delete, desc, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import settings
@@ -12,7 +13,7 @@ from app.models.account import Account
 from app.models.audit import AuditLog
 from app.models.incident import Incident
 from app.models.model_brand import ModelBrand
-from app.models.proxy import PROXY_STATUSES, Proxy, ProxyHealthCheckResult, ProxyRotationHistory
+from app.models.proxy import PROXY_STATUSES, Proxy, ProxyHealthCheckResult, ProxyRotationHistory, ProxySessionMemory
 from app.models.user import User
 from app.services.auth import audit_action, is_owner, user_has_permission
 from app.services.crypto import encrypt_secret
@@ -149,6 +150,78 @@ def mask_session_suffix(session_suffix: str | None) -> str:
         return "Not set"
     clean = normalize_session_suffix(session_suffix)
     return f"\u2022\u2022\u2022\u2022{clean[-4:]}" if len(clean) > 4 else f"\u2022\u2022\u2022\u2022{clean}"
+
+
+def _session_suffix_hash(session_suffix: str | None) -> str:
+    clean = normalize_session_suffix(session_suffix)
+    return hashlib.sha256(clean.encode("utf-8")).hexdigest()
+
+
+def remember_proxy_session(
+    session: Session,
+    proxy: Proxy,
+    session_suffix: str | None,
+    *,
+    source: str,
+    used_at: datetime | None = None,
+) -> ProxySessionMemory | None:
+    clean = normalize_session_suffix(session_suffix)
+    if not clean:
+        return None
+    memory = ProxySessionMemory(
+        proxy_id=proxy.id,
+        session_suffix_hash=_session_suffix_hash(clean),
+        session_suffix_masked=mask_session_suffix(clean),
+        source=source,
+        used_at=used_at or _now(),
+    )
+    session.add(memory)
+    return memory
+
+
+def recent_proxy_session_hashes(session: Session, proxy: Proxy, *, days: int = 30) -> set[str]:
+    cutoff = _now() - timedelta(days=days)
+    hashes = set(
+        session.scalars(
+            select(ProxySessionMemory.session_suffix_hash).where(
+                ProxySessionMemory.proxy_id == proxy.id,
+                ProxySessionMemory.used_at >= cutoff,
+            )
+        ).all()
+    )
+    if proxy.session_suffix:
+        hashes.add(_session_suffix_hash(proxy.session_suffix))
+    if proxy.previous_session_suffix:
+        hashes.add(_session_suffix_hash(proxy.previous_session_suffix))
+    return hashes
+
+
+def session_suffix_recently_used(session: Session, proxy: Proxy, session_suffix: str, *, days: int = 30) -> bool:
+    return _session_suffix_hash(session_suffix) in recent_proxy_session_hashes(session, proxy, days=days)
+
+
+def prune_old_proxy_session_memory(session: Session, *, older_than_days: int = 120) -> int:
+    cutoff = _now() - timedelta(days=older_than_days)
+    result = session.execute(delete(ProxySessionMemory).where(ProxySessionMemory.used_at < cutoff))
+    return int(result.rowcount or 0)
+
+
+def _generate_unique_olympix_session_suffix(
+    session: Session,
+    proxy: Proxy,
+    *,
+    length: int,
+    current: str,
+    max_attempts: int = 40,
+) -> str:
+    recent_hashes = recent_proxy_session_hashes(session, proxy, days=30)
+    current_hash = _session_suffix_hash(current)
+    for _ in range(max_attempts):
+        candidate = generate_olympix_session_suffix(length)
+        candidate_hash = _session_suffix_hash(candidate)
+        if candidate_hash != current_hash and candidate_hash not in recent_hashes:
+            return candidate
+    raise RuntimeError("Unable to generate a unique proxy session suffix. Rotation was not changed.")
 
 
 def mask_proxy_username(username: str | None) -> str:
@@ -413,6 +486,7 @@ def create_proxy(
     target_country: str | None = None,
     target_state: str | None = None,
     target_city: str | None = None,
+    memory_source: str = "created",
 ) -> Proxy:
     _require_any_permission(session, actor, "manage_proxies")
     if port < 0 or port > 65535:
@@ -439,6 +513,7 @@ def create_proxy(
     )
     session.add(proxy)
     session.flush()
+    remember_proxy_session(session, proxy, suffix, source=memory_source)
     emit_event(
         session,
         actor=actor,
@@ -473,6 +548,7 @@ def create_olympix_proxy_from_string(
         target_country=target_country,
         target_state=target_state,
         target_city=target_city,
+        memory_source="imported",
     )
     audit_action(
         session,
@@ -1112,6 +1188,8 @@ def rotate_session(
     _require_any_permission(session, actor, "manage_proxies", "rotate_proxy")
     previous = proxy.session_suffix
     suffix = new_suffix or generate_session_suffix()
+    if session_suffix_recently_used(session, proxy, suffix, days=30):
+        raise RuntimeError("Fortuna could not rotate safely because that session was used recently.")
     emit_event(
         session,
         actor=actor,
@@ -1180,6 +1258,7 @@ def rotate_session(
         created_by_user_id=actor.id,
     )
     session.add(history)
+    remember_proxy_session(session, proxy, suffix, source="rotated")
     _sync_proxy_health(session, proxy, actor=actor)
     session.flush()
     emit_event(
@@ -1209,11 +1288,7 @@ def rotate_olympix_session(session: Session, proxy: Proxy, *, actor: User) -> Pr
     if "olympix" not in proxy.provider.casefold() and "," not in proxy.base_username:
         return rotate_session(session, proxy, actor=actor)
     length = len(current) if current else 8
-    new_suffix = generate_olympix_session_suffix(length)
-    for _ in range(5):
-        if new_suffix != current:
-            break
-        new_suffix = generate_olympix_session_suffix(length)
+    new_suffix = _generate_unique_olympix_session_suffix(session, proxy, length=length, current=current)
     return rotate_session(session, proxy, actor=actor, new_suffix=new_suffix)
 
 
@@ -1250,6 +1325,7 @@ def rollback_session(session: Session, proxy: Proxy, *, actor: User) -> ProxyRot
         created_by_user_id=actor.id,
     )
     session.add(history)
+    remember_proxy_session(session, proxy, previous, source="rollback")
     session.flush()
     emit_event(
         session,
@@ -1361,11 +1437,18 @@ def repair_proxy(
         rotation_actor = repair_actor
     if rotation_actor is None:
         proxy.previous_session_suffix = proxy.session_suffix
-        proxy.session_suffix = generate_session_suffix()
+        current = normalize_session_suffix(proxy.session_suffix)
+        proxy.session_suffix = _generate_unique_olympix_session_suffix(
+            session,
+            proxy,
+            length=len(current) if current else 8,
+            current=current,
+        )
         proxy.generated_username = generated_username(proxy.base_username, proxy.session_suffix)
         proxy.rotation_count += 1
         proxy.last_rotation = _now()
         history_status = "succeeded" if repair_result.success else "failed"
+        remember_proxy_session(session, proxy, proxy.session_suffix, source="rotated")
         session.add(
             ProxyRotationHistory(
                 proxy_id=proxy.id,

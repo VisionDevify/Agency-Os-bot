@@ -1,0 +1,75 @@
+from __future__ import annotations
+
+
+ROOT_SCREEN = "menu"
+
+ROOT_LEVEL_SCREENS = {
+    "menu",
+    "start_here",
+    "today_priorities",
+    "setup_progress",
+    "first_workspace",
+    "proxies",
+    "opportunities",
+    "help",
+    "owner_advanced",
+}
+
+MORE_CHILDREN = {
+    "intelligence",
+    "automations",
+    "reports",
+    "settings",
+    "production_observability",
+    "users",
+    "executive_mode",
+}
+
+
+def parent_page_for(page: str | None) -> str:
+    current = page or ROOT_SCREEN
+    if current in ROOT_LEVEL_SCREENS:
+        return ROOT_SCREEN
+    if current in MORE_CHILDREN:
+        return "owner_advanced"
+    if current.startswith("intelligence:trends"):
+        return "intelligence"
+    if current.startswith("intelligence:learning:"):
+        return "intelligence:learning"
+    if current.startswith("intelligence:"):
+        return "intelligence"
+    if current.startswith("proxy:"):
+        parts = current.split(":")
+        if len(parts) >= 3 and parts[2] == "manage":
+            return f"proxy:{parts[1]}"
+        if len(parts) >= 4 and parts[2] in {"rotate_preview", "archive_confirm", "delete_confirm"}:
+            return f"proxy:{parts[1]}:manage"
+        if len(parts) >= 3:
+            return f"proxy:{parts[1]}"
+        return "proxies:list"
+    if current.startswith("proxies:"):
+        return "proxies"
+    if current.startswith("setup:wizard:model") or current.startswith("model:"):
+        return "setup_progress"
+    if current.startswith("accounts:") or current.startswith("account:"):
+        return "setup_progress" if "add" in current else "accounts"
+    if current.startswith("opportunities:") or current.startswith("opportunity:"):
+        return "opportunities"
+    if current.startswith("notification_") or current.startswith("notification:"):
+        return "settings"
+    if current in {"integrity", "integrity:details", "bot_status", "bot_instance_status"}:
+        return "production_observability"
+    return ROOT_SCREEN
+
+
+def root_page_for(page: str | None) -> str:
+    current = page or ROOT_SCREEN
+    if current == ROOT_SCREEN:
+        return ROOT_SCREEN
+    if current in MORE_CHILDREN or current.startswith(("intelligence", "automations", "reports", "settings")):
+        return "owner_advanced"
+    if current.startswith(("proxy:", "proxies:")):
+        return "proxies"
+    if current.startswith(("setup:", "model:", "account:", "accounts:")):
+        return "setup_progress"
+    return ROOT_SCREEN

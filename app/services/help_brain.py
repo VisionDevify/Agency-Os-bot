@@ -206,6 +206,12 @@ def help_article_count(session: Session) -> int:
 
 def detect_help_intent(question: str) -> str:
     text = question.casefold()
+    if "where am i" in text or "what screen" in text:
+        return "where_am_i"
+    if "what does back" in text or ("back" in text and "do" in text):
+        return "back_navigation"
+    if "get home" in text or "main menu" in text or "go home" in text:
+        return "home_navigation"
     if "creator alert" in text or ("creator" in text and "alert" in text):
         return "creator_alerts"
     if "social" in text and ("opportunity" in text or "intelligence" in text):
@@ -396,6 +402,16 @@ def help_brain_answer(
 
     if intent == "readiness_low":
         answer, next_action = _readiness_answer(session, user)
+    elif intent == "where_am_i":
+        page = (current_page or "this screen").replace("_", " ").replace(":", " -> ")
+        answer = f"You are on {page}. The top of the screen tells you what matters, and the main button is the safest next step."
+        next_action = current_page or "menu"
+    elif intent == "back_navigation":
+        answer = "Back returns to the section that opened the current screen. Main Menu always takes you home and clears the path."
+        next_action = current_page or "menu"
+    elif intent == "home_navigation":
+        answer = "Tap Main Menu from any screen to return home. If you feel lost, use What Should I Do Next from Home or Help."
+        next_action = "menu"
     elif intent == "postgres_explained":
         answer = (
             "Postgres is Fortuna's durable production database. It keeps users, setup, audit logs, proxies, "

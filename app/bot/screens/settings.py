@@ -267,7 +267,7 @@ def _observability_summary_markup() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Refresh", callback_data=callback_for("production_observability"))],
             [InlineKeyboardButton(text="Technical Details", callback_data=callback_for("production_observability:details"))],
             [InlineKeyboardButton(text="Run Integrity Check", callback_data=callback_for("integrity"))],
-            *page_controls(back_to="settings"),
+            *page_controls(back_to="owner_advanced"),
         ]
     )
 
@@ -278,7 +278,27 @@ def _observability_details_markup(back_to: str = "production_observability") -> 
             [InlineKeyboardButton(text="Executive Summary", callback_data=callback_for(back_to))],
             [InlineKeyboardButton(text="Run Integrity Check", callback_data=callback_for("integrity"))],
             [InlineKeyboardButton(text="Bot Instance Diagnostics", callback_data=callback_for("bot_instance_status"))],
-            *page_controls(back_to="settings"),
+            *page_controls(back_to=back_to),
+        ]
+    )
+
+
+def _integrity_summary_markup() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Refresh", callback_data=callback_for("integrity"))],
+            [InlineKeyboardButton(text="Technical Details", callback_data=callback_for("integrity:details"))],
+            *page_controls(back_to="production_observability"),
+        ]
+    )
+
+
+def _integrity_details_markup() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Executive Summary", callback_data=callback_for("integrity"))],
+            [InlineKeyboardButton(text="Production Observability", callback_data=callback_for("production_observability"))],
+            *page_controls(back_to="production_observability"),
         ]
     )
 
@@ -433,12 +453,59 @@ def render_production_observability_page(
     ]
     return Screen(text="\n".join(lines), reply_markup=_observability_details_markup())
 
-def render_integrity_page(session: Session, user: User | None = None) -> Screen:
+def render_integrity_page(session: Session, user: User | None = None, *, details: bool = False) -> Screen:
     reconcile_stale_system_warnings(session, actor=user)
     result = run_integrity_check(session, actor=user)
     marker = "PASS" if result["overall"] == "pass" else "WARNING" if result["overall"] == "warning" else "FAIL"
+    issues = [check for check in result["checks"] if check.status != "pass"]
+    if not details:
+        if result["overall"] == "pass":
+            title = "\U0001f7e2 Production Check"
+            status = "Everything looks healthy."
+            summary = "Fortuna checked production storage, Redis, the bot instance, migrations, and core tables."
+            recommended = "Continue setup."
+        elif result["overall"] == "warning":
+            title = "\U0001f7e1 Production Check"
+            status = "One or more checks need attention."
+            summary = "Fortuna found a warning. The details are available if you want to inspect it."
+            recommended = issues[0].detail if issues else "Review Technical Details."
+        else:
+            title = "\U0001f534 Production Check"
+            status = "Fortuna found a production problem."
+            summary = "A core safety check failed. Review details before entering real data."
+            recommended = issues[0].detail if issues else "Review Technical Details."
+        issue_lines = [f"- {check.detail}" for check in issues[:4]]
+        return Screen(
+            text="\n".join(
+                [
+                    title,
+                    "Production Integrity Check",
+                    "",
+                    status,
+                    "",
+                    "Fortuna checked:",
+                    "- Database",
+                    "- Redis",
+                    "- Bot instances",
+                    "- Migrations",
+                    "- Learning",
+                    "- Automation",
+                    "- Proxies",
+                    "",
+                    "Summary:",
+                    summary,
+                    *(["", "Needs attention:", *issue_lines] if issue_lines else []),
+                    "",
+                    "Recommended action:",
+                    recommended,
+                    "",
+                    "No secrets or connection strings are shown here.",
+                ]
+            ),
+            reply_markup=_integrity_summary_markup(),
+        )
     lines = [
-        "Production Integrity Check",
+        "Production Check Technical Details",
         "",
         f"Overall: {marker}",
         f"Storage: {result['storage_display_backend']}",
@@ -462,7 +529,7 @@ def render_integrity_page(session: Session, user: User | None = None) -> Screen:
             "No secrets, tokens, proxy passwords, or raw connection strings are shown here.",
         ]
     )
-    return Screen(text="\n".join(lines), reply_markup=production_observability_menu())
+    return Screen(text="\n".join(lines), reply_markup=_integrity_details_markup())
 
 
 def render_botstatus_page(

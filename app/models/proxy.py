@@ -10,6 +10,7 @@ PROXY_STATUSES = ("healthy", "warning", "critical", "disabled")
 PROXY_ROTATION_STATUSES = ("started", "succeeded", "failed", "rolled_back")
 PROXY_HEALTH_CHECK_TYPES = ("simulated", "connectivity", "location", "full")
 PROXY_HEALTH_CHECK_STATUSES = ("passed", "failed", "warning", "skipped")
+PROXY_SESSION_MEMORY_SOURCES = ("created", "imported", "rotated", "rollback")
 
 
 class Proxy(TimestampMixin, Base):
@@ -68,6 +69,11 @@ class Proxy(TimestampMixin, Base):
         lazy="selectin",
     )
     health_check_results: Mapped[list["ProxyHealthCheckResult"]] = relationship(
+        back_populates="proxy",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    session_memory: Mapped[list["ProxySessionMemory"]] = relationship(
         back_populates="proxy",
         cascade="all, delete-orphan",
         lazy="selectin",
@@ -146,3 +152,33 @@ class ProxyHealthCheckResult(Base):
     )
 
     proxy: Mapped[Proxy] = relationship(back_populates="health_check_results", lazy="selectin")
+
+
+class ProxySessionMemory(Base):
+    __tablename__ = "proxy_session_memory"
+    __table_args__ = (
+        CheckConstraint(
+            "source in ('created', 'imported', 'rotated', 'rollback')",
+            name="ck_proxy_session_memory_source",
+        ),
+        Index("ix_proxy_session_memory_proxy_id", "proxy_id"),
+        Index("ix_proxy_session_memory_suffix_hash", "session_suffix_hash"),
+        Index("ix_proxy_session_memory_used_at", "used_at"),
+        Index("ix_proxy_session_memory_proxy_used", "proxy_id", "used_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    proxy_id: Mapped[int] = mapped_column(
+        ForeignKey("proxies.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    session_suffix_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    session_suffix_masked: Mapped[str] = mapped_column(String(40), nullable=False)
+    source: Mapped[str] = mapped_column(String(40), nullable=False)
+    used_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    proxy: Mapped[Proxy] = relationship(back_populates="session_memory", lazy="selectin")

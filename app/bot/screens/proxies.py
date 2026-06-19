@@ -40,6 +40,41 @@ def render_proxies_home(session: Session | None = None) -> Screen:
     else:
         proxies = []
         total = missing_proxy = real_enabled = 0
+    if total == 0:
+        markup = choice_menu(
+            [
+                ("Paste Proxy", "nav:proxies:olympix:paste"),
+                ("View Proxies", "nav:proxies:list"),
+                ("How Rotation Works", "nav:proxies:rotation_help"),
+                ("Help", "nav:help_copilot:add_proxy"),
+                ("More Details", "nav:proxies:advanced"),
+            ],
+            back_to="menu",
+        )
+    elif total == 1:
+        proxy = proxies[0]
+        markup = choice_menu(
+            [
+                ("Assign Proxy", f"nav:proxy:{proxy.id}:assign"),
+                ("Rotate", f"nav:proxy:{proxy.id}:rotate_preview"),
+                ("View Proxies", "nav:proxies:list"),
+                ("How Rotation Works", "nav:proxies:rotation_help"),
+                ("More Details", f"nav:proxy:{proxy.id}:advanced"),
+            ],
+            back_to="menu",
+        )
+    else:
+        markup = choice_menu(
+            [
+                ("View Proxies", "nav:proxies:list"),
+                ("Assign Proxy", "nav:proxies:list"),
+                ("Rotate", "nav:proxies:list"),
+                ("Paste Another", "nav:proxies:olympix:paste"),
+                ("Help", "nav:help_copilot:add_proxy"),
+                ("More Details", "nav:proxies:advanced"),
+            ],
+            back_to="menu",
+        )
     return Screen(
         text="\n".join(
             (
@@ -80,7 +115,7 @@ def render_proxies_home(session: Session | None = None) -> Screen:
                 ]
             )
         ),
-        reply_markup=proxies_menu(),
+        reply_markup=markup,
     )
 
 

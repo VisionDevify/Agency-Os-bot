@@ -30,7 +30,7 @@ from app.models.opportunity import (
     PostWatch,
 )
 from app.models.permissions import Permission, Role, RolePermission, UserRole
-from app.models.proxy import Proxy, ProxyHealthCheckResult, ProxyRotationHistory
+from app.models.proxy import Proxy, ProxyHealthCheckResult, ProxyRotationHistory, ProxySessionMemory
 from app.models.recommendation import Recommendation
 from app.models.reporting import (
     AccountabilitySnapshot,
@@ -115,6 +115,7 @@ __all__ = [
     "Proxy",
     "ProxyHealthCheckResult",
     "ProxyRotationHistory",
+    "ProxySessionMemory",
     "Recommendation",
     "Report",
     "Role",

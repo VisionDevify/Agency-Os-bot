@@ -59,22 +59,19 @@ def owner_advanced_home_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
-                InlineKeyboardButton(text="Fortuna HQ", callback_data=callback_for("executive_mode")),
                 InlineKeyboardButton(text="Intelligence", callback_data=callback_for("intelligence")),
-            ],
-            [
                 InlineKeyboardButton(text="Automation", callback_data=callback_for("automations")),
-                InlineKeyboardButton(text="Proxy Vault", callback_data=callback_for("proxies")),
             ],
             [
                 InlineKeyboardButton(text="Reports", callback_data=callback_for("reports")),
-                InlineKeyboardButton(text="Observability", callback_data=callback_for("production_observability")),
+                InlineKeyboardButton(text="Settings", callback_data=callback_for("settings")),
             ],
             [
-                InlineKeyboardButton(text="Settings", callback_data=callback_for("settings")),
-                InlineKeyboardButton(text="Owner Management", callback_data=callback_for("users")),
+                InlineKeyboardButton(text="Health", callback_data=callback_for("production_observability")),
+                InlineKeyboardButton(text="Owner Tools", callback_data=callback_for("users")),
             ],
             [InlineKeyboardButton(text="Simple Mode", callback_data=callback_for("menu"))],
+            *page_controls(back_to="menu"),
         ]
     )
 
@@ -635,7 +632,7 @@ def users_menu(user_buttons: list[tuple[str, str]]) -> InlineKeyboardMarkup:
     rows.extend(
         [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in user_buttons]
     )
-    rows.extend(page_controls(back_to="menu"))
+    rows.extend(page_controls(back_to="owner_advanced"))
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -865,7 +862,7 @@ def reports_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="Chatter Dashboard", callback_data=callback_for("reports:chatter")),
                 InlineKeyboardButton(text="VA Dashboard", callback_data=callback_for("reports:va")),
             ],
-            *page_controls(back_to="menu"),
+            *page_controls(back_to="owner_advanced"),
         ]
     )
 
@@ -973,7 +970,7 @@ def intelligence_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="View Trends", callback_data=callback_for("intelligence:trends"))],
             [InlineKeyboardButton(text="Ask Fortuna", callback_data=callback_for("help_copilot:next"))],
             [InlineKeyboardButton(text="More Details", callback_data=callback_for("intelligence:details"))],
-            *page_controls(back_to="menu"),
+            *page_controls(back_to="owner_advanced"),
         ]
     )
 
@@ -1007,7 +1004,7 @@ def intelligence_details_menu() -> InlineKeyboardMarkup:
             ],
             [InlineKeyboardButton(text="Learning Center", callback_data=callback_for("intelligence:learning"))],
             [InlineKeyboardButton(text="Production Status", callback_data=callback_for("production_status"))],
-            *page_controls(back_to="menu"),
+            *page_controls(back_to="intelligence"),
         ]
     )
 
@@ -1309,7 +1306,7 @@ def automations_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Safe Automations", callback_data=callback_for("automations:templates"))],
             [InlineKeyboardButton(text="Run History", callback_data=callback_for("automations:runs"))],
             [InlineKeyboardButton(text="More Details", callback_data=callback_for("automations:rules"))],
-            *page_controls(back_to="menu"),
+            *page_controls(back_to="owner_advanced"),
         ]
     )
 
@@ -1439,7 +1436,7 @@ def proxy_manage_menu(proxy_id: int) -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Archive Proxy", callback_data=f"nav:proxy:{proxy_id}:archive_confirm")],
             [InlineKeyboardButton(text="Delete Proxy", callback_data=f"nav:proxy:{proxy_id}:delete_confirm")],
             [InlineKeyboardButton(text="Technical Details", callback_data=f"nav:proxy:{proxy_id}")],
-            *page_controls(back_to="proxies:list"),
+            *page_controls(back_to=f"proxy:{proxy_id}"),
         ]
     )
 
@@ -1731,10 +1728,7 @@ def settings_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="Notification Group Pilot", callback_data=callback_for("notification_group_pilot"))],
             [InlineKeyboardButton(text="Notification Routing", callback_data=callback_for("notification_routing"))],
             [InlineKeyboardButton(text="Notification Targets", callback_data=callback_for("notification_targets"))],
-            [
-                InlineKeyboardButton(text="Back", callback_data=callback_for("menu")),
-                InlineKeyboardButton(text="Main Menu", callback_data=callback_for("menu")),
-            ],
+            *page_controls(back_to="owner_advanced"),
         ]
     )
 
@@ -1873,7 +1867,7 @@ def production_observability_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="Add Current Chat as Target", callback_data=callback_for("notification_targets:add_current")),
             ],
             [InlineKeyboardButton(text="Preview Routing", callback_data=callback_for("notification_targets:routing_test"))],
-            *page_controls(back_to="settings"),
+            *page_controls(back_to="owner_advanced"),
         ]
     )
 

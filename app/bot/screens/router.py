@@ -679,6 +679,8 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_botstatus_page(session, user, details=True)
     if page == "integrity" and session is not None:
         return render_integrity_page(session, user)
+    if page == "integrity:details" and session is not None:
+        return render_integrity_page(session, user, details=True)
     if page == "settings:report_problem":
         return render_report_problem_page()
     if page == "settings:report_problem:start":
