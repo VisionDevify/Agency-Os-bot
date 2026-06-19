@@ -301,21 +301,22 @@ def render_chat_cleanup_page(session: Session, user: User | None, chat_id: int |
         mode = "Clean on /start" if enabled else "Keep menu history"
     status = "Enabled" if enabled else "Keeping history"
     explanation = (
-        "Clean mode keeps Fortuna feeling like an app instead of filling the chat with old menus."
+        "Old temporary menus will be cleaned when you use /start."
         if enabled
         else "Fortuna will leave old menu messages in place when you use /start."
     )
     toggle_label = "Keep Menu History" if enabled else "Clean on /start"
     lines = [
-        "Chat Cleanup",
+        "🧹 Chat Cleanup",
         "",
         f"Mode: {mode}",
         f"Status: {status}",
+        "Preserve reports and alerts: Always on",
         "",
         explanation,
         "",
-        "Fortuna only cleans temporary menu/navigation messages.",
-        "Alerts, reports, approvals, exports, and useful error reports are left alone.",
+        "Clean mode removes old Fortuna menu screens when you use /start, so the bot feels like an app instead of a cluttered chat.",
+        "Alerts, reports, approvals, exports, and delivery messages are preserved.",
     ]
     return Screen(
         text="\n".join(lines),
@@ -714,6 +715,15 @@ def render_production_observability_page(
         f"Navigation Issues: {summary['button_health_navigation_issue_count']}",
         f"UX Issues: {summary['button_health_ux_issue_count']}",
         f"Last Button Scan: {_observability_time(summary['button_health_last_scan_at'], user)}",
+        "",
+        "Chat Cleanup:",
+        f"Last Cleanup: {_observability_time(summary['chat_cleanup_latest_at'], user)}",
+        f"Attempted: {summary['chat_cleanup_attempted_count']}",
+        f"Deleted: {summary['chat_cleanup_deleted_count']}",
+        f"Preserved: {summary['chat_cleanup_preserved_count']}",
+        f"Failed: {summary['chat_cleanup_failed_count']}",
+        f"Reused Active Batch: {summary['chat_cleanup_reuse_count']}",
+        f"Inactive Temporary Menus: {summary['chat_cleanup_stale_count']}",
         "",
         "Recovery:",
         f"Backup Health: {summary['recovery_backup_health']}",

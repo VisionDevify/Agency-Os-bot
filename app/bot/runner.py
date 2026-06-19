@@ -115,13 +115,19 @@ from app.services.callback_protection import (
     classify_telegram_error,
 )
 from app.services.chat_cleanup import (
-    ERROR_FALLBACK,
+    TEMPORARY_ERROR,
     TEMPORARY_NAVIGATION,
     chat_cleanup_enabled,
+    classify_delete_exception,
+    complete_cleanup_run,
     is_stale_navigation_callback,
+    mark_cleanup_started,
     mark_message_delete_failed,
     mark_message_deleted,
-    temporary_navigation_messages,
+    reset_navigation_session,
+    reuse_cleanup_run,
+    start_cleanup_run,
+    temporary_cleanup_messages,
     track_bot_message,
 )
 from app.services.friction import report_problem
@@ -443,27 +449,60 @@ async def _send_pending_routing_smoke_tests(bot: Bot, session, actor: User) -> N
             logger.warning("Unable to send routing smoke test to configured testing target")
 
 
-async def _cleanup_navigation_messages_on_start(bot: Bot, session, *, user: User, chat_id: int) -> None:
-    if not chat_cleanup_enabled(session, user=user, chat_id=chat_id):
-        return
-    for record in temporary_navigation_messages(session, chat_id=chat_id, user=user):
-        try:
-            await bot.delete_message(chat_id, record.message_id)
-            mark_message_deleted(record)
-        except Exception:
-            mark_message_delete_failed(record)
-            logger.info("Unable to delete old Fortuna navigation message")
+async def _cleanup_navigation_messages_on_start(bot: Bot, session, *, user: User, chat_id: int) -> int:
+    cleanup_lock = await CALLBACK_LOCKS.acquire_cleanup_lock(chat_id=chat_id, ttl_seconds=10)
+    if cleanup_lock is None:
+        run = reuse_cleanup_run(session, chat_id=chat_id, user=user)
+        session.flush()
+        logger.info("Reusing active Fortuna chat cleanup batch %s", run.cleanup_run_id)
+        return reset_navigation_session(session, chat_id=chat_id, user=None)
+
+    try:
+        if not chat_cleanup_enabled(session, user=user, chat_id=chat_id):
+            return reset_navigation_session(session, chat_id=chat_id, user=None)
+
+        run = start_cleanup_run(session, chat_id=chat_id, user=user)
+        attempted = 0
+        deleted = 0
+        failed = 0
+        for record in temporary_cleanup_messages(session, chat_id=chat_id):
+            attempted += 1
+            mark_cleanup_started(record, run)
+            try:
+                await bot.delete_message(chat_id, record.message_id)
+                mark_message_deleted(record, run=run)
+                deleted += 1
+            except Exception as exc:
+                status = classify_delete_exception(exc)
+                mark_message_delete_failed(record, reason=status, run=run)
+                if status not in {"already_missing"}:
+                    failed += 1
+                logger.info("Unable to delete old Fortuna temporary message: %s", status)
+        complete_cleanup_run(session, run, attempted_count=attempted, deleted_count=deleted, failed_count=failed)
+        return reset_navigation_session(session, chat_id=chat_id, user=None)
+    finally:
+        await CALLBACK_LOCKS.release(cleanup_lock)
 
 
-async def _send_tracked_navigation_message(message: Message, session, *, user: User, screen, page: str) -> None:
+async def _send_tracked_navigation_message(
+    message: Message,
+    session,
+    *,
+    user: User,
+    screen,
+    page: str,
+    navigation_version: int | None = None,
+) -> None:
     sent = await message.answer(screen.text, reply_markup=screen.reply_markup)
     track_bot_message(
         session,
         chat_id=sent.chat.id,
         user=user,
         message_id=sent.message_id,
-        message_type=TEMPORARY_NAVIGATION,
-        page=page,
+        message_label=TEMPORARY_NAVIGATION,
+        screen=page,
+        active_navigation=True,
+        navigation_version=navigation_version,
     )
 
 
@@ -532,7 +571,7 @@ async def _edit_or_send_callback_screen(
     session=None,
     user: User | None = None,
     page: str | None = None,
-    message_type: str = TEMPORARY_NAVIGATION,
+    message_label: str = TEMPORARY_NAVIGATION,
 ) -> SafeRenderResult:
     if callback.message is None:
         return SafeRenderResult(success=False, outcome="missing_callback_message")
@@ -554,8 +593,9 @@ async def _edit_or_send_callback_screen(
                 chat_id=chat_id,
                 user=user,
                 message_id=message_id,
-                message_type=message_type,
-                page=page,
+                message_label=message_label,
+                screen=page,
+                active_navigation=message_label == TEMPORARY_NAVIGATION,
             )
         return SafeRenderResult(success=True, edited=True, message_id=message_id, outcome="edited")
     except Exception as exc:
@@ -572,8 +612,9 @@ async def _edit_or_send_callback_screen(
                     chat_id=sent.chat.id,
                     user=user,
                     message_id=sent.message_id,
-                    message_type=message_type,
-                    page=page,
+                    message_label=message_label,
+                    screen=page,
+                    active_navigation=message_label == TEMPORARY_NAVIGATION,
                 )
             return SafeRenderResult(
                 success=True,
@@ -637,7 +678,7 @@ async def _handle_callback_failure(
         session=session,
         user=actor,
         page=page,
-        message_type=ERROR_FALLBACK,
+        message_label=TEMPORARY_ERROR,
     )
     with contextlib.suppress(Exception):
         await callback.answer("Fortuna logged the problem.", show_alert=True)
@@ -690,8 +731,20 @@ async def start(message: Message) -> None:
             principal = _principal_from_user(user)
             require_owner(principal, settings.owner_telegram_id)
             screen = render_main_menu(session=session, user=user)
-            await _cleanup_navigation_messages_on_start(message.bot, session, user=user, chat_id=message.chat.id)
-            await _send_tracked_navigation_message(message, session, user=user, screen=screen, page="menu")
+            navigation_version = await _cleanup_navigation_messages_on_start(
+                message.bot,
+                session,
+                user=user,
+                chat_id=message.chat.id,
+            )
+            await _send_tracked_navigation_message(
+                message,
+                session,
+                user=user,
+                screen=screen,
+                page="menu",
+                navigation_version=navigation_version,
+            )
             session.commit()
             return
 
@@ -711,8 +764,59 @@ async def start(message: Message) -> None:
             screen = render_onboarding_page(session, user)
         else:
             screen = render_main_menu(session=session, user=user)
-        await _cleanup_navigation_messages_on_start(message.bot, session, user=user, chat_id=message.chat.id)
-        await _send_tracked_navigation_message(message, session, user=user, screen=screen, page="menu")
+        navigation_version = await _cleanup_navigation_messages_on_start(
+            message.bot,
+            session,
+            user=user,
+            chat_id=message.chat.id,
+        )
+        await _send_tracked_navigation_message(
+            message,
+            session,
+            user=user,
+            screen=screen,
+            page="menu",
+            navigation_version=navigation_version,
+        )
+        session.commit()
+
+
+@dp.message(Command("clean"))
+async def clean_chat(message: Message) -> None:
+    if message.from_user is None or SessionLocal is None:
+        await message.answer("Chat cleanup is unavailable.")
+        return
+
+    with SessionLocal() as session:
+        telegram_id = message.from_user.id
+        _record_bot_heartbeat(session, status="healthy", source="telegram_clean")
+        user = get_or_create_telegram_user(
+            session,
+            telegram_user_id=telegram_id,
+            display_name=_display_name_from_message_user(message.from_user),
+            username=_username_from_message_user(message.from_user),
+            owner_telegram_id=settings.owner_telegram_id,
+        )
+        user.last_seen = datetime.now(UTC)
+        if not user.is_owner:
+            await message.answer("Chat cleanup is owner-only.")
+            session.commit()
+            return
+        screen = render_main_menu(session=session, user=user)
+        navigation_version = await _cleanup_navigation_messages_on_start(
+            message.bot,
+            session,
+            user=user,
+            chat_id=message.chat.id,
+        )
+        await _send_tracked_navigation_message(
+            message,
+            session,
+            user=user,
+            screen=screen,
+            page="menu",
+            navigation_version=navigation_version,
+        )
         session.commit()
 
 
@@ -1719,7 +1823,32 @@ async def _navigate_locked(callback: CallbackQuery, page: str) -> None:
                 user=user,
                 message_id=callback.message.message_id,
             ):
-                await _safe_callback_answer(callback, "That menu is old - use the latest Fortuna screen.")
+                screen = render_main_menu(session=session, user=user)
+                navigation_version = reset_navigation_session(session, chat_id=chat_id, user=user)
+                try:
+                    sent = await callback.message.answer(screen.text, reply_markup=screen.reply_markup)
+                    track_bot_message(
+                        session,
+                        chat_id=sent.chat.id,
+                        user=user,
+                        message_id=sent.message_id,
+                        message_label=TEMPORARY_NAVIGATION,
+                        screen="menu",
+                        active_navigation=True,
+                        navigation_version=navigation_version,
+                    )
+                except Exception:
+                    logger.exception("Unable to send fresh Home for stale callback")
+                    _record_callback_button_issue(
+                        session,
+                        page=page,
+                        callback_data=callback.data,
+                        issue_type="dead_end",
+                        severity="medium",
+                        evidence_summary="A stale menu callback could not open a fresh Home screen.",
+                        recommended_fix="Inspect Telegram send permissions and stale callback handling.",
+                    )
+                await _safe_callback_answer(callback, "That menu is old. I opened a fresh Home for you.")
                 session.commit()
                 return
             chat_title = getattr(callback.message.chat, "title", None)

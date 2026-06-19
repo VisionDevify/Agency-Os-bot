@@ -132,6 +132,14 @@ class CallbackLockManager:
     ) -> Optional[LockHandle]:
         return await self._acquire(f"message_edit_lock:{chat_id}:{message_id}", ttl_seconds=ttl_seconds)
 
+    async def acquire_cleanup_lock(
+        self,
+        *,
+        chat_id: int,
+        ttl_seconds: int = 10,
+    ) -> Optional[LockHandle]:
+        return await self._acquire(f"cleanup_lock:{chat_id}", ttl_seconds=ttl_seconds)
+
     async def _acquire(self, key: str, *, ttl_seconds: int) -> Optional[LockHandle]:
         ttl_seconds = max(1, min(int(ttl_seconds), 30))
         owner_id = str(uuid4())

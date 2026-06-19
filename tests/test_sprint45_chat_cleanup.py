@@ -13,8 +13,8 @@ from app.models.chat import BotChatMessage
 from app.services.auth import setup_owner_if_needed
 from app.services.permissions import PermissionPrincipal, RoleName
 from app.services.chat_cleanup import (
-    ERROR_FALLBACK,
     PERSISTENT_ALERT,
+    TEMPORARY_ERROR,
     TEMPORARY_NAVIGATION,
     set_chat_cleanup_enabled,
     track_bot_message,
@@ -94,16 +94,16 @@ def test_start_cleanup_deletes_only_temporary_navigation_messages() -> None:
             chat_id=10,
             user=owner,
             message_id=11,
-            message_type=TEMPORARY_NAVIGATION,
-            page="menu",
+            message_label=TEMPORARY_NAVIGATION,
+            screen="menu",
         )
         track_bot_message(
             session,
             chat_id=10,
             user=owner,
             message_id=12,
-            message_type=PERSISTENT_ALERT,
-            page="creator_alert",
+            message_label=PERSISTENT_ALERT,
+            screen="creator_alert",
         )
 
         bot = FakeBot()
@@ -112,10 +112,10 @@ def test_start_cleanup_deletes_only_temporary_navigation_messages() -> None:
         assert bot.deleted == [(10, 11)]
         temp = session.query(BotChatMessage).filter_by(message_id=11).one()
         alert = session.query(BotChatMessage).filter_by(message_id=12).one()
-        assert temp.deleted_at is not None
-        assert temp.is_active is False
-        assert alert.deleted_at is None
-        assert alert.is_active is True
+        assert temp.deletion_status == "deleted"
+        assert temp.active_navigation is False
+        assert alert.deletion_status == "preserved"
+        assert alert.active_navigation is False
 
 
 def test_start_cleanup_failure_does_not_block_fresh_home_tracking() -> None:
@@ -126,8 +126,8 @@ def test_start_cleanup_failure_does_not_block_fresh_home_tracking() -> None:
             chat_id=10,
             user=owner,
             message_id=11,
-            message_type=TEMPORARY_NAVIGATION,
-            page="menu",
+            message_label=TEMPORARY_NAVIGATION,
+            screen="menu",
         )
 
         asyncio.run(_cleanup_navigation_messages_on_start(FakeBot(fail_ids={11}), session, user=owner, chat_id=10))
@@ -135,9 +135,10 @@ def test_start_cleanup_failure_does_not_block_fresh_home_tracking() -> None:
 
         failed = session.query(BotChatMessage).filter_by(message_id=11).one()
         fresh = session.query(BotChatMessage).filter_by(message_id=1000).one()
-        assert failed.delete_error == "telegram_delete_failed"
-        assert fresh.message_type == TEMPORARY_NAVIGATION
-        assert fresh.page == "menu"
+        assert failed.deletion_status == "failed"
+        assert fresh.message_label == TEMPORARY_NAVIGATION
+        assert fresh.screen == "menu"
+        assert fresh.active_navigation is True
 
 
 def test_chat_cleanup_respects_keep_menu_history_setting() -> None:
@@ -148,8 +149,8 @@ def test_chat_cleanup_respects_keep_menu_history_setting() -> None:
             chat_id=10,
             user=owner,
             message_id=11,
-            message_type=TEMPORARY_NAVIGATION,
-            page="menu",
+            message_label=TEMPORARY_NAVIGATION,
+            screen="menu",
         )
         set_chat_cleanup_enabled(session, user=owner, chat_id=10, enabled=False)
 
@@ -158,8 +159,8 @@ def test_chat_cleanup_respects_keep_menu_history_setting() -> None:
 
         assert bot.deleted == []
         record = session.query(BotChatMessage).filter_by(message_id=11).one()
-        assert record.deleted_at is None
-        assert record.is_active is True
+        assert record.deletion_status == "active"
+        assert record.active_navigation is False
 
 
 def test_callback_navigation_updates_active_message_tracking() -> None:
@@ -179,8 +180,9 @@ def test_callback_navigation_updates_active_message_tracking() -> None:
 
         record = session.query(BotChatMessage).filter_by(chat_id=10, message_id=22).one()
         assert callback.message.edited == ["Proxy Vault"]
-        assert record.message_type == TEMPORARY_NAVIGATION
-        assert record.page == "proxies"
+        assert record.message_label == TEMPORARY_NAVIGATION
+        assert record.screen == "proxies"
+        assert record.active_navigation is True
 
 
 def test_duplicate_callback_message_not_modified_is_harmless() -> None:
@@ -224,8 +226,8 @@ def test_stale_callback_edit_sends_fresh_screen() -> None:
 
         assert callback.message.sent
         record = session.query(BotChatMessage).filter_by(chat_id=10, message_id=1000).one()
-        assert record.message_type == TEMPORARY_NAVIGATION
-        assert record.page == "recovery_center"
+        assert record.message_label == TEMPORARY_NAVIGATION
+        assert record.screen == "recovery_center"
 
 
 def test_callback_edit_and_fallback_send_failure_does_not_raise() -> None:
@@ -253,7 +255,7 @@ def test_callback_edit_and_fallback_send_failure_does_not_raise() -> None:
         assert callback.answered == [("Fortuna had trouble updating that message. Use /start to refresh.", True)]
 
 
-def test_error_fallback_is_labeled_but_not_cleanup_candidate() -> None:
+def test_error_fallback_is_temporary_and_cleanup_candidate() -> None:
     with session_scope() as session:
         owner = setup_owner_if_needed(session, telegram_user_id=1, owner_telegram_id=1)
         callback = FakeCallback(FakeMessage(10, message_id=23))
@@ -265,16 +267,17 @@ def test_error_fallback_is_labeled_but_not_cleanup_candidate() -> None:
                 session=session,
                 user=owner,
                 page="proxy:1",
-                message_type=ERROR_FALLBACK,
+                message_label=TEMPORARY_ERROR,
             )
         )
         bot = FakeBot()
         asyncio.run(_cleanup_navigation_messages_on_start(bot, session, user=owner, chat_id=10))
 
         record = session.query(BotChatMessage).filter_by(message_id=23).one()
-        assert record.message_type == ERROR_FALLBACK
-        assert bot.deleted == []
-        assert record.is_active is True
+        assert record.message_label == TEMPORARY_ERROR
+        assert bot.deleted == [(10, 23)]
+        assert record.deletion_status == "deleted"
+        assert record.active_navigation is False
 
 
 def test_chat_cleanup_settings_route_and_toggle_render() -> None:
@@ -286,7 +289,8 @@ def test_chat_cleanup_settings_route_and_toggle_render() -> None:
 
         assert "Chat Cleanup" in screen.text
         assert "Clean on /start" in screen.text
-        assert "temporary menu/navigation messages" in screen.text
+        assert "Preserve reports and alerts" in screen.text
+        assert "delivery messages are preserved" in screen.text
 
         toggled = screen_for_page(
             "settings:chat_cleanup:toggle",

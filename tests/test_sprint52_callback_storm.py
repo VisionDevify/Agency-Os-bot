@@ -101,8 +101,8 @@ def test_redis_failure_degrades_to_memory_locks() -> None:
 def test_stale_navigation_callback_is_detected() -> None:
     with session_scope() as session:
         owner = setup_owner_if_needed(session, telegram_user_id=1, owner_telegram_id=1)
-        track_bot_message(session, chat_id=10, user=owner, message_id=11, page="menu")
-        track_bot_message(session, chat_id=10, user=owner, message_id=12, page="proxies")
+        track_bot_message(session, chat_id=10, user=owner, message_id=11, screen="menu")
+        track_bot_message(session, chat_id=10, user=owner, message_id=12, screen="proxies")
 
         assert is_stale_navigation_callback(session, chat_id=10, user=owner, message_id=11) is True
         assert is_stale_navigation_callback(session, chat_id=10, user=owner, message_id=12) is False

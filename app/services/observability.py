@@ -18,6 +18,7 @@ from app.models.reporting import NotificationTarget
 from app.models.user import User
 from app.services.build_metadata import safe_build_metadata, safe_metadata_value
 from app.services.button_health import button_health_summary
+from app.services.chat_cleanup import chat_cleanup_metrics
 from app.services.help_brain import help_questions_today, notification_pilot_status, proxy_pilot_status
 from app.services.heartbeats import list_heartbeats, system_status_summary
 from app.services.bot_instances import bot_instance_diagnostics
@@ -109,6 +110,7 @@ def production_observability_summary(session: Session) -> dict[str, object]:
     latest_self_test = _latest(session, UISelfTestRun, desc(UISelfTestRun.created_at), desc(UISelfTestRun.id))
     recovery = recovery_risk_assessment(session)
     buttons = button_health_summary(session)
+    cleanup = chat_cleanup_metrics(session)
     owner_count = session.scalar(select(func.count(User.id)).where(User.is_owner.is_(True))) or 0
     role_count = session.scalar(select(func.count(Role.id))) or 0
     audit_count = session.scalar(select(func.count(AuditLog.id))) or 0
@@ -155,6 +157,13 @@ def production_observability_summary(session: Session) -> dict[str, object]:
                 buttons.open_issue_count,
                 "Open Button Health." if buttons.open_issue_count else None,
             ),
+            StatusCondition(
+                "chat_cleanup",
+                "needs_review" if cleanup.failed_count >= 3 else "healthy",
+                "Chat cleanup protects Telegram menu history.",
+                cleanup.failed_count if cleanup.failed_count >= 3 else 0,
+                "Open Chat Cleanup settings." if cleanup.failed_count >= 3 else None,
+            ),
         ]
     )
     observability_issues = list(truth.current_issues)
@@ -162,6 +171,8 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         observability_issues.append(f"Recovery: {recovery.next_best_move}")
     if buttons.open_issue_count:
         observability_issues.append(f"Navigation/Button Health: {buttons.open_issue_count} open issue(s).")
+    if cleanup.failed_count >= 3:
+        observability_issues.append(f"Chat Cleanup: {cleanup.failed_count} recent deletion failure(s).")
 
     return {
         "app_display_name": build_metadata["app_name"],
@@ -272,4 +283,11 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         "button_health_navigation_issue_count": buttons.navigation_issue_count,
         "button_health_ux_issue_count": buttons.ux_issue_count,
         "button_health_last_scan_at": buttons.last_scan_at,
+        "chat_cleanup_latest_at": cleanup.latest_cleanup_at,
+        "chat_cleanup_attempted_count": cleanup.attempted_count,
+        "chat_cleanup_deleted_count": cleanup.deleted_count,
+        "chat_cleanup_preserved_count": cleanup.preserved_count,
+        "chat_cleanup_failed_count": cleanup.failed_count,
+        "chat_cleanup_reuse_count": cleanup.concurrency_reuse_count,
+        "chat_cleanup_stale_count": cleanup.stale_callback_count,
     }
