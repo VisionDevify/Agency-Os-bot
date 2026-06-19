@@ -254,3 +254,34 @@ def test_command_status_screens_are_tracked_as_temporary_messages() -> None:
         assert record.message_label == TEMPORARY_STATUS
         assert record.screen == "botstatus"
         assert record.deletion_status == "active"
+
+
+def test_start_cleanup_uses_bounded_foreground_batch() -> None:
+    with session_scope() as session:
+        owner = setup_owner_if_needed(session, telegram_user_id=1, owner_telegram_id=1)
+        for index in range(5):
+            track_bot_message(
+                session,
+                chat_id=10,
+                user=owner,
+                message_id=300 + index,
+                message_label=TEMPORARY_NAVIGATION,
+                screen="menu",
+            )
+
+        bot = FakeBot()
+        asyncio.run(
+            _cleanup_navigation_messages_on_start(
+                bot,
+                session,
+                user=owner,
+                chat_id=10,
+                cleanup_limit=2,
+                time_budget_seconds=10,
+            )
+        )
+
+        run = session.query(ChatCleanupRun).one()
+        assert run.attempted_count == 2
+        assert len(bot.deleted) == 2
+        assert session.query(BotChatMessage).filter_by(chat_id=10, deletion_status="active").count() == 3

@@ -450,7 +450,15 @@ async def _send_pending_routing_smoke_tests(bot: Bot, session, actor: User) -> N
             logger.warning("Unable to send routing smoke test to configured testing target")
 
 
-async def _cleanup_navigation_messages_on_start(bot: Bot, session, *, user: User, chat_id: int) -> int:
+async def _cleanup_navigation_messages_on_start(
+    bot: Bot,
+    session,
+    *,
+    user: User,
+    chat_id: int,
+    cleanup_limit: int | None = 60,
+    time_budget_seconds: float = 3.0,
+) -> int:
     cleanup_lock = await CALLBACK_LOCKS.acquire_cleanup_lock(chat_id=chat_id, ttl_seconds=10)
     if cleanup_lock is None:
         run = reuse_cleanup_run(session, chat_id=chat_id, user=user)
@@ -466,7 +474,11 @@ async def _cleanup_navigation_messages_on_start(bot: Bot, session, *, user: User
         attempted = 0
         deleted = 0
         failed = 0
-        for record in temporary_cleanup_messages(session, chat_id=chat_id):
+        deadline = time.monotonic() + max(0.5, float(time_budget_seconds))
+        for record in temporary_cleanup_messages(session, chat_id=chat_id, limit=cleanup_limit):
+            if attempted > 0 and time.monotonic() >= deadline:
+                logger.info("Stopping foreground chat cleanup early to keep /start responsive")
+                break
             attempted += 1
             mark_cleanup_started(record, run)
             try:
