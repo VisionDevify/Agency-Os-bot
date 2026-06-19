@@ -230,11 +230,11 @@ def test_role_home_visibility_and_setup_summary_are_simple() -> None:
         summary = render_setup_summary_page(session, owner)
 
         assert "Setup Fortuna" in owner_labels
-        assert {"Team", "Models", "Tasks", "Incidents", "Opportunities", "Reports"} <= manager_labels
+        assert {"Team", "Assignments", "Alerts", "Help"} <= manager_labels
         assert "Automation" not in manager_labels
-        assert {"My Models", "My Opportunities", "My Tasks", "Availability", "Help"} <= chatter_labels
+        assert {"My Work", "Opportunities", "Alerts", "Help"} <= chatter_labels
         assert "Proxy Vault" not in chatter_labels
-        assert {"My Models", "My Accounts", "My Tasks", "Availability", "Help"} <= va_labels
+        assert {"Tasks", "Assignments", "Help"} <= va_labels
         assert "Setup Summary" in summary.text
 
 

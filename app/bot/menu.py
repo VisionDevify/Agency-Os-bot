@@ -109,20 +109,13 @@ def today_priorities_menu(action_buttons: list[tuple[str, str]] | None = None) -
 
 def setup_progress_menu(rows_data: list[tuple[str, str, str]] | None = None) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
+    next_row = (rows_data or [("Setup", "first_workspace", "first_workspace")])[0]
+    label, fix_page, _view_page = next_row
+    rows.append([InlineKeyboardButton(text=f"Continue: {label}", callback_data=callback_for(fix_page))])
     rows.append([InlineKeyboardButton(text="First Workspace Guide", callback_data=callback_for("first_workspace"))])
-    for label, fix_page, view_page in (rows_data or [])[:6]:
-        rows.append(
-            [
-                InlineKeyboardButton(text=f"Fix {label}", callback_data=callback_for(fix_page)),
-                InlineKeyboardButton(text="View", callback_data=callback_for(view_page)),
-            ]
-        )
-    rows.extend(
-        [
-            [InlineKeyboardButton(text="What Should I Do Next?", callback_data=callback_for("assistant_next"))],
-            *page_controls(back_to="menu"),
-        ]
-    )
+    rows.append([InlineKeyboardButton(text="What Should I Do Next?", callback_data=callback_for("assistant_next"))])
+    rows.append([InlineKeyboardButton(text="More Details", callback_data=callback_for("coo:readiness"))])
+    rows.extend(page_controls(back_to="menu"))
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -1246,26 +1239,11 @@ def chatter_workspace_menu() -> InlineKeyboardMarkup:
 def help_copilot_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Where do I start?", callback_data=callback_for("help_copilot:where_start"))],
-            [InlineKeyboardButton(text="How do I create the first model?", callback_data=callback_for("help_copilot:create_first_model"))],
-            [InlineKeyboardButton(text="How do I edit a model?", callback_data=callback_for("help_copilot:edit_model"))],
-            [InlineKeyboardButton(text="How do I add accounts?", callback_data=callback_for("help_copilot:add_accounts"))],
-            [InlineKeyboardButton(text="How do I assign a chatter?", callback_data=callback_for("help_copilot:assign_chatter"))],
-            [InlineKeyboardButton(text="How do I add a creator?", callback_data=callback_for("help_copilot:add_creator"))],
-            [InlineKeyboardButton(text="How do I create an opportunity?", callback_data=callback_for("help_copilot:create_opportunity"))],
-            [InlineKeyboardButton(text="How do I assign an opportunity?", callback_data=callback_for("help_copilot:assign_opportunity"))],
-            [InlineKeyboardButton(text="Where are my opportunities?", callback_data=callback_for("help_copilot:my_opportunities"))],
-            [InlineKeyboardButton(text="Why can't I access this?", callback_data=callback_for("help_copilot:access"))],
             [InlineKeyboardButton(text="What should I do next?", callback_data=callback_for("help_copilot:next"))],
-            [InlineKeyboardButton(text="What's blocking setup?", callback_data=callback_for("help_copilot:activation"))],
-            [InlineKeyboardButton(text="Why is readiness low?", callback_data=callback_for("help_copilot:readiness_low"))],
             [InlineKeyboardButton(text="How do I finish setup?", callback_data=callback_for("help_copilot:finish_setup"))],
-            [InlineKeyboardButton(text="How do I record results?", callback_data=callback_for("help_copilot:record_results"))],
-            [InlineKeyboardButton(text="How do I complete an opportunity?", callback_data=callback_for("help_copilot:opportunity"))],
-            [InlineKeyboardButton(text="How do I register notification groups?", callback_data=callback_for("help_copilot:notification_groups"))],
-            [InlineKeyboardButton(text="How do I assign a proxy?", callback_data=callback_for("help_copilot:proxy_setup"))],
-            [InlineKeyboardButton(text="What did Fortuna do today?", callback_data=callback_for("help_copilot:what_fortuna_did"))],
-            [InlineKeyboardButton(text="How does Availability work?", callback_data=callback_for("help_copilot:availability"))],
+            [InlineKeyboardButton(text="Help me add a proxy", callback_data=callback_for("help_copilot:add_proxy"))],
+            [InlineKeyboardButton(text="Explain this screen", callback_data=callback_for("help_copilot:where"))],
+            [InlineKeyboardButton(text="I'm stuck", callback_data=callback_for("help_copilot:why_broken"))],
             *page_controls(back_to="help"),
         ]
     )

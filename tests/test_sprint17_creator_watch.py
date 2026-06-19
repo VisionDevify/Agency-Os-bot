@@ -205,7 +205,7 @@ def test_chatter_workspace_help_copilot_and_activation_score() -> None:
             user=chatter,
         )
 
-        assert {"My Models", "My Opportunities", "My Tasks", "Availability", "Help"} <= {
+        assert {"My Work", "Opportunities", "Alerts", "Help"} <= {
             label for label, _ in role_home_items(chatter)
         }
         assert "Chatter Workspace" not in {label for label, _ in role_home_items(chatter)}

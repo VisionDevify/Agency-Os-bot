@@ -61,7 +61,7 @@ def test_first_workspace_flow_guides_zero_data_owner() -> None:
         assert "Add proxy: Needs Attention" in screen.text
         assert "Next best action:" in screen.text
         assert "Complete model profile" in labels
-        assert "Add proxy" in labels
+        assert "Add proxy" not in labels
         assert "Run Daily Cycle" in labels
         _assert_clean(screen.text)
 

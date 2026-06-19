@@ -72,9 +72,9 @@ def team_invite_message(role: str, *, bot_username: str = "@FortunaSolstice_Bot"
         "manager": "Manager",
     }[normalized]
     first_area = {
-        "chatter": "My Models, My Opportunities, My Tasks, Availability, and Help",
-        "va": "My Models, My Accounts, My Tasks, Availability, and Help",
-        "manager": "Team, Models, Tasks, Incidents, Opportunities, Reports, and Help",
+        "chatter": "My Work, Opportunities, Alerts, and Help",
+        "va": "Tasks, Assignments, and Help",
+        "manager": "Team, Assignments, Alerts, and Help",
     }[normalized]
     return "\n".join(
         [
@@ -170,32 +170,22 @@ def role_home_items(user: User | None) -> list[tuple[str, str]]:
         ]
     if role in {"Manager", "Chatter Manager"}:
         return [
-            ("Manager Queue", "manager_queue"),
-            ("Today Top 5", "coo:top5"),
             ("Team", "availability:team"),
-            ("Models", "models"),
-            ("Tasks", "tasks"),
-            ("Incidents", "incidents"),
-            ("Opportunities", "opportunities:manager"),
-            ("Reports", "reports"),
-            ("Manager QA", "manager_qa"),
+            ("Assignments", "manager_queue"),
+            ("Alerts", "notification_group_pilot"),
             ("Help", "help"),
         ]
     if role in {"Senior Chatter", "Chatter"}:
         return [
             ("My Work", "my_work"),
-            ("My Models", "my_models"),
-            ("My Opportunities", "my_opportunities"),
-            ("My Tasks", "tasks:my"),
-            ("Availability", "availability"),
+            ("Opportunities", "my_opportunities"),
+            ("Alerts", "opportunities"),
             ("Help", "help"),
         ]
     if role == "VA":
         return [
-            ("My Models", "my_models"),
-            ("My Accounts", "my_accounts"),
-            ("My Tasks", "tasks:my"),
-            ("Availability", "availability"),
+            ("Tasks", "tasks:my"),
+            ("Assignments", "my_work"),
             ("Help", "help"),
         ]
     if role == "Model/Client":
@@ -213,7 +203,7 @@ def role_home_items(user: User | None) -> list[tuple[str, str]]:
 
 
 def _user_timezone(user: User | None) -> ZoneInfo:
-    timezone = user.timezone if user and user.timezone else "UTC"
+    timezone = user.timezone if user and user.timezone and user.timezone != "UTC" else "America/New_York"
     try:
         return ZoneInfo(timezone)
     except ZoneInfoNotFoundError:

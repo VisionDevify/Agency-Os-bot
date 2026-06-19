@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from sqlalchemy import func, select
 
 from .formatting import *
+from app.services.productization import best_next_action, setup_steps
 from app.services.system_truth import reconcile_stale_system_warnings, system_truth
 
 def _owner_display_name(user: User) -> str:
@@ -131,6 +132,7 @@ def render_main_menu(session: Session | None = None, user: User | None = None) -
         reconcile_stale_system_warnings(session, actor=user)
         report = build_activation_report(session)
         truth = system_truth(session)
+        next_action = best_next_action(session, user)
         production_status = "\U0001f7e2 Production Healthy" if truth.production_ready else "\U0001f7e1 Production Needs Attention"
         emergency_warning: list[str] = []
         if truth.database_backend == "sqlite_fallback":
@@ -159,24 +161,32 @@ def render_main_menu(session: Session | None = None, user: User | None = None) -
             *[f"- {item}" for item in missing],
             "",
             "Next Best Move",
-            "Continue setup." if progress["missing"] else "Nothing urgent here.",
+            next_action.title,
+            "",
+            f"Estimated Time: {next_action.estimated_time}",
             "",
             "Ready when you are.",
         ]
         return Screen(text="\n".join(lines), reply_markup=owner_simple_home_menu())
     details = personalized_dashboard(session, user)
     items = role_home_items(user)
+    next_action = best_next_action(session, user)
     lines = [
         f"Welcome back, {details['display_name']}",
         "",
         f"Role: {details['role']}",
         f"Availability: {_status_marker(details['availability_status'])} {details['availability_status'].replace('_', ' ')}",
-        f"Tasks Due Today: {details['tasks_due_today']}",
-        f"Overdue Items: {details['overdue_items']}",
-        f"Assigned Models: {details['assigned_models']}",
         "",
-        "Recommended Action:",
-        details["recommended_action"],
+        "What matters:",
+        f"- Tasks due today: {details['tasks_due_today']}",
+        f"- Overdue items: {details['overdue_items']}",
+        f"- Assigned models: {details['assigned_models']}",
+        "",
+        "Next best move:",
+        next_action.title,
+        "",
+        "Why:",
+        next_action.reason,
         "",
         role_intro(details["role"]),
     ]
@@ -307,7 +317,9 @@ def render_first_workspace_flow_page(session: Session, user: User | None = None)
     next_step = next((step for step in steps if not step["done"] and not step["waiting"]), None)
     if next_step is None:
         next_step = next((step for step in steps if not step["done"]), None)
-    action_buttons = [(step["label"], step["page"]) for step in steps if not step["done"]][:7]
+    action_buttons = []
+    if next_step is not None:
+        action_buttons.append((next_step["label"], next_step["page"]))
     if first_model and not team_count and team_blockers:
         action_buttons.append(("Skip Team For Now", "first_workspace:skip_team"))
     lines = [
@@ -372,30 +384,39 @@ def render_today_priorities_page(session: Session, user: User | None = None) -> 
 
 
 def render_setup_progress_page(session: Session, user: User | None = None) -> Screen:
-    report = build_activation_report(session)
-    progress = _setup_progress(session, report)
+    steps = setup_steps(session)
+    next_step = next((step for step in steps if not step.complete and not step.optional and step.status != "Waiting"), None)
+    if next_step is None:
+        next_step = next((step for step in steps if not step.complete and step.status != "Waiting"), None)
     lines = [
         "\U0001f9e9 Setup",
         "",
-        "Fortuna checked your first workspace path.",
+        "Fortuna checked your setup path.",
         "",
         "Setup Steps:",
     ]
     rows: list[tuple[str, str, str]] = []
-    for section in progress["sections"]:
-        if section["complete"]:
-            marker = "\u2705 Complete"
-        elif section["attention"]:
-            marker = "\u26a0 Needs info"
+    for step in steps:
+        if step.complete:
+            marker = "\u2705"
+        elif step.optional:
+            marker = "\U0001f7e1"
+        elif step.status == "Waiting":
+            marker = "\u23f3"
         else:
-            marker = "\U0001f534 Missing"
-        lines.append(f"- {section['label']}: {marker}")
-        rows.append((section["label"], section["fix"], section["view"]))
+            marker = "\U0001f534"
+        lines.append(f"Step {step.number}: {step.label}")
+        lines.append(f"{marker} {step.status}")
+        if not step.complete and step.status != "Waiting":
+            rows.append((step.label, step.action_page, step.action_page))
     lines.extend(
         [
             "",
-            "Next Best Move",
-            progress["top_blocker"]["title"] if progress["top_blocker"] else "Nothing urgent here.",
+            "Next Best Move:",
+            next_step.action_label if next_step else "Run the daily cycle.",
+            "",
+            "Why:",
+            next_step.why if next_step else "Setup looks complete enough for daily operations.",
             "",
             "One step at a time. You\u2019re close.",
         ]
@@ -404,38 +425,22 @@ def render_setup_progress_page(session: Session, user: User | None = None) -> Sc
 
 
 def render_assistant_next_page(session: Session, user: User | None = None) -> Screen:
-    report = build_activation_report(session)
-    progress = _setup_progress(session, report)
-    actions = todays_top_5_actions(session, actor=user)
-    recommendations = list_recommendations(session, status="open", limit=3)
-    target = "setup_progress"
-    if progress["top_blocker"]:
-        title = progress["top_blocker"]["title"]
-        reason = "Fortuna noticed this setup blocker is holding readiness down."
-        target = progress["top_blocker"].get("action_page") or "setup_progress"
-    elif actions:
-        title = actions[0].title
-        reason = actions[0].explanation
-        target = actions[0].action_page
-    elif recommendations:
-        title = recommendations[0].title
-        reason = recommendations[0].description
-        target = "reports:executive:recommendations"
-    else:
-        title = "Nothing urgent here."
-        reason = "Fortuna does not see a setup blocker or urgent operational item right now."
+    next_action = best_next_action(session, user)
     lines = [
         "What Should I Do Next?",
         "",
         "Fortuna recommends:",
-        title,
+        next_action.title,
         "",
         "Why:",
-        reason,
+        next_action.reason,
+        "",
+        "Estimated time:",
+        next_action.estimated_time,
         "",
         "Ready when you are.",
     ]
-    return Screen("\n".join(lines), assistant_next_menu(target))
+    return Screen("\n".join(lines), assistant_next_menu(next_action.action_page))
 
 def render_dashboard(
     stats: DashboardStats | None = None,

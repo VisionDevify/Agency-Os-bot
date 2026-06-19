@@ -42,9 +42,9 @@ def test_team_invite_packet_generation_is_safe_and_role_specific() -> None:
         assert "Access pending approval" in message
         assert "Do not send passwords or verification codes" in message
         assert role != "" and role in packet
-    assert "My Opportunities" in packet["chatter"]
-    assert "My Accounts" in packet["va"]
-    assert "Team, Models, Tasks" in packet["manager"]
+    assert "My Work, Opportunities, Alerts, and Help" in packet["chatter"]
+    assert "Tasks, Assignments, and Help" in packet["va"]
+    assert "Team, Assignments, Alerts, and Help" in packet["manager"]
 
 
 def test_team_invite_message_rejects_unknown_roles() -> None:

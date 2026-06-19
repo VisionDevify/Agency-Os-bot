@@ -50,7 +50,7 @@ def render_help_copilot_page(session: Session, user: User | None = None, *, ques
         "model_unhealthy": "Why is this model unhealthy?",
         "record_results": "How do I record results?",
         "opportunity": "How do I complete an opportunity?",
-        "where": "Where do I go?",
+        "where": "Explain this screen.",
         "availability": "How does Availability work?",
         "screen:creator_detail": "Explain this Creator Detail screen.",
         "screen:opportunity_detail": "Explain this Opportunity Detail screen.",
@@ -71,7 +71,7 @@ def render_help_copilot_page(session: Session, user: User | None = None, *, ques
             result.answer,
             "",
             "Next Button",
-            result.next_action,
+            "Open Next Step",
         ]
         return Screen(text="\n".join(lines), reply_markup=help_feedback_menu(result.log_id, next_action=result.next_action))
     else:

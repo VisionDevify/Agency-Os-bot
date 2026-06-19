@@ -65,17 +65,18 @@ def test_role_specific_home_screens_hide_irrelevant_systems() -> None:
 
         assert "Fortuna Automation" in {label for label, _ in role_home_items(owner)}
         manager_labels = {label for label, _ in role_home_items(manager)}
-        assert {"Team", "Models", "Tasks", "Incidents", "Opportunities", "Reports"} <= manager_labels
+        assert {"Team", "Assignments", "Alerts", "Help"} <= manager_labels
+        assert len(manager_labels) <= 4
         assert "Operations Dashboard" not in manager_labels
         chatter_labels = {label for label, _ in role_home_items(chatter)}
         va_labels = {label for label, _ in role_home_items(va)}
         client_labels = {label for label, _ in role_home_items(client)}
 
         assert primary_role(chatter) == "Chatter"
-        assert {"My Models", "My Tasks", "My Opportunities", "Help"} <= chatter_labels
+        assert {"My Work", "Opportunities", "Alerts", "Help"} <= chatter_labels
         assert "Proxies" not in chatter_labels
         assert "Automation" not in chatter_labels
-        assert {"My Models", "My Accounts", "My Tasks", "Availability", "Help"} <= va_labels
+        assert {"Tasks", "Assignments", "Help"} <= va_labels
         assert "Uploads" not in va_labels
         assert {"My Dashboard", "My Accounts", "My Reports", "My Team"} <= client_labels
 

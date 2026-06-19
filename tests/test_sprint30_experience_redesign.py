@@ -109,10 +109,10 @@ def test_setup_progress_groups_real_setup_areas() -> None:
 
         assert "Setup" in screen.text
         assert "Setup Steps" in screen.text
-        for section in ("Model Setup", "Accounts", "Team", "Creators", "Notifications", "Proxy"):
+        for section in ("Model", "Account", "Team", "Creators", "Alerts", "Proxy"):
             assert section in screen.text
-        assert "Fix Model Setup" in labels
-        assert "View" in labels
+        assert "Continue:" in labels
+        assert "More Details" in labels
         _assert_no_raw_backend_text(screen.text)
 
 

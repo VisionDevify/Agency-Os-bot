@@ -23,6 +23,7 @@ from app.services.auth import audit_action, is_owner, user_has_permission
 from app.services.events import emit_event
 from app.services.learning import create_learning_event
 from app.services.notifications import notification_group_setup_status
+from app.services.productization import best_next_action
 from app.services.proxies import latest_proxy_health_check_results, list_proxies, proxy_check_mode
 
 
@@ -200,6 +201,10 @@ def detect_help_intent(question: str) -> str:
     text = question.casefold()
     if "creator alert" in text or ("creator" in text and "alert" in text):
         return "creator_alerts"
+    if "explain this screen" in text or "what is this screen" in text:
+        return "explain_screen"
+    if "availability" in text:
+        return "availability"
     if "own post" in text and "alert" in text:
         return "own_post_alerts"
     if "postgres" in text or "durable" in text or "persistence" in text:
@@ -288,16 +293,13 @@ def _readiness_answer(session: Session, user: User | None) -> tuple[str, str]:
 def _user_work_answer(session: Session, user: User | None) -> tuple[str, str]:
     if user is None:
         return "Open /start and complete onboarding first.", "menu"
-    if _adminish(user):
-        report = build_activation_report(session)
-        blockers = report.get("blockers", [])
-        if blockers:
-            first = blockers[0]
-            return (
-                f"Your safest next move is: {first['title']}. {first['description']} "
-                "Open Start Here and fix one item at a time.",
-                first.get("action_page") or "start_here",
-            )
+    next_action = best_next_action(session, user)
+    if next_action.title:
+        return (
+            f"Your next best move is {next_action.title}. It is the safest next move because {next_action.reason} "
+            f"Estimated time: {next_action.estimated_time}.",
+            next_action.action_page,
+        )
     open_tasks = session.scalar(
         select(func.count(Task.id)).where(Task.assigned_to_user_id == user.id, Task.status.in_(("open", "in_progress", "blocked")))
     ) or 0
@@ -404,6 +406,12 @@ def help_brain_answer(
         next_action = "proxies"
     elif intent == "safe_next":
         answer, next_action = _user_work_answer(session, user)
+    elif intent == "explain_screen":
+        answer = (
+            "This screen starts with what matters, then the recommended action, then deeper details only if you ask for them. "
+            "Use What Should I Do Next if you want Fortuna to choose one path."
+        )
+        next_action = current_page or "assistant_next"
     elif intent == "screen_crowded":
         answer = (
             "Fortuna now starts in Simple Mode so the daily view stays calm. "
@@ -453,6 +461,12 @@ def help_brain_answer(
             "Open the account, then choose Assign Best Proxy or Choose Proxy. If no proxy exists yet, tap Add Proxy First and use the one-paste Olympix flow."
         )
         next_action = "accounts:attention"
+    elif intent == "availability":
+        answer = (
+            "Availability tells Fortuna whether you are on shift, away, or unavailable. "
+            "Keep it current so work is routed to the right person without extra noise."
+        )
+        next_action = "availability"
     elif intent == "notification_groups":
         answer, next_action = _notification_answer(session, user)
     elif intent == "creator_alerts":
