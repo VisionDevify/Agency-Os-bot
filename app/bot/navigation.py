@@ -247,6 +247,10 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         return None
     if page in {"start_here", "first_workspace", "owner_advanced", "today_priorities", "setup_progress", "assistant_next"}:
         return ("view_dashboard", "manage_reports")
+    if page == "recovery_center" or page.startswith("recovery:"):
+        return ("manage_roles",)
+    if page == "team_intelligence" or page.startswith("team_intelligence:"):
+        return ("manage_reports", "manage_users", "manage_tasks")
     if page.startswith("coo"):
         return ("view_dashboard", "manage_reports", "manage_tasks", "manage_users")
     if page == "executive_mode":
@@ -303,7 +307,7 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         return ("manage_reports", "manage_tasks", "manage_chatter_team")
     if page.startswith("creator:") or page.startswith("post:"):
         return ("manage_reports", "manage_tasks", "manage_chatter_team")
-    if page.startswith("opportunities") or page.startswith("opportunity:") or page.startswith("social_score:") or page.startswith("social_lead:"):
+    if page.startswith("opportunities") or page.startswith("opportunity:") or page.startswith("opportunity_prediction:") or page.startswith("social_score:") or page.startswith("social_lead:"):
         return ("manage_reports", "manage_tasks", "view_chatter_dashboard", "view_dashboard")
     if (
         page.startswith("automations:")

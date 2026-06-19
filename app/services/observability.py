@@ -21,6 +21,7 @@ from app.services.heartbeats import list_heartbeats, system_status_summary
 from app.services.bot_instances import bot_instance_diagnostics
 from app.services.persistence import storage_status
 from app.services.notifications import notification_routing_mode_summary, purpose_aliases
+from app.services.recovery import recovery_risk_assessment
 from app.services.system_truth import (
     AlembicRevisionStatus,
     alembic_revision_status,
@@ -102,6 +103,7 @@ def production_observability_summary(session: Session) -> dict[str, object]:
     proxy_pilot = proxy_pilot_status(session)
     bot_diagnostics = bot_instance_diagnostics(session)
     latest_self_test = _latest(session, UISelfTestRun, desc(UISelfTestRun.created_at), desc(UISelfTestRun.id))
+    recovery = recovery_risk_assessment(session)
     owner_count = session.scalar(select(func.count(User.id)).where(User.is_owner.is_(True))) or 0
     role_count = session.scalar(select(func.count(Role.id))) or 0
     audit_count = session.scalar(select(func.count(AuditLog.id))) or 0
@@ -203,4 +205,14 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         "proxy_pilot_status": f"{proxy_pilot['enabled']}/{proxy_pilot['total']} proxies enabled",
         "last_ui_self_test_status": latest_self_test.status if latest_self_test else "None",
         "last_ui_self_test_at": latest_self_test.created_at if latest_self_test else None,
+        "recovery_last_backup": recovery.last_backup_status,
+        "recovery_backup_health": recovery.protection_status,
+        "recovery_external_storage_configured": recovery.external_storage_configured,
+        "recovery_restore_test_status": recovery.restore_test_status,
+        "recovery_confidence": recovery.recovery_confidence,
+        "recovery_risk_score": recovery.risk_score,
+        "recovery_risk_level": recovery.risk_level,
+        "recovery_alerts": list(recovery.alerts),
+        "recovery_evidence": list(recovery.evidence),
+        "recovery_next_best_move": recovery.next_best_move,
     }

@@ -70,6 +70,10 @@ def owner_advanced_home_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="Health", callback_data=callback_for("production_observability")),
                 InlineKeyboardButton(text="Owner Tools", callback_data=callback_for("users")),
             ],
+            [
+                InlineKeyboardButton(text="Recovery Center", callback_data=callback_for("recovery_center")),
+                InlineKeyboardButton(text="Team Intelligence", callback_data=callback_for("team_intelligence")),
+            ],
             [InlineKeyboardButton(text="Simple Mode", callback_data=callback_for("menu"))],
             *page_controls(back_to="menu"),
         ]
@@ -1114,6 +1118,7 @@ def opportunities_menu(opportunity_buttons: list[tuple[str, str]] | None = None)
                 InlineKeyboardButton(text="Discovery Mode", callback_data=callback_for("opportunities:discovery")),
                 InlineKeyboardButton(text="Opportunity Intelligence", callback_data=callback_for("opportunities:score")),
             ],
+            [InlineKeyboardButton(text="Best Opportunity", callback_data=callback_for("opportunities:best"))],
             [
                 InlineKeyboardButton(text="Opportunity Results", callback_data=callback_for("opportunities:results")),
                 InlineKeyboardButton(text="Manager View", callback_data=callback_for("opportunities:manager")),

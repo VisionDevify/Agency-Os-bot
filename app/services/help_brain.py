@@ -25,6 +25,7 @@ from app.services.learning import create_learning_event
 from app.services.notifications import notification_group_setup_status
 from app.services.productization import best_next_action
 from app.services.proxies import latest_proxy_health_check_results, list_proxies, proxy_check_mode
+from app.services.recovery import recovery_risk_assessment
 
 
 @dataclass(frozen=True)
@@ -177,6 +178,41 @@ HELP_KB_SEEDS: tuple[dict[str, str], ...] = (
         "content": "What Fortuna Did lists scans, actions, recommendations, follow-ups, and automation activity.",
         "related_route": "fortuna_action_log",
     },
+    {
+        "topic": "recovery_center",
+        "title": "Recovery Center",
+        "role_scope": "owner,admin",
+        "content": "Recovery Center shows whether backups and restore tests are actually recorded. If evidence is missing, Fortuna says not set up or not tested yet.",
+        "related_route": "recovery_center",
+    },
+    {
+        "topic": "disaster_recovery",
+        "title": "Disaster Recovery",
+        "role_scope": "owner,admin",
+        "content": "If Railway breaks, rebuild Fortuna from the repo, environment secrets, Postgres, Redis, and the latest encrypted backup.",
+        "related_route": "recovery:disaster_plan",
+    },
+    {
+        "topic": "restore_test",
+        "title": "Restore Tests",
+        "role_scope": "owner,admin",
+        "content": "A restore test proves a backup can be verified or restored. Verification alone is useful, but a full test database restore is stronger evidence.",
+        "related_route": "recovery:restore:test",
+    },
+    {
+        "topic": "opportunity_prediction",
+        "title": "Opportunity Prediction",
+        "role_scope": "owner,admin,manager,chatter",
+        "content": "Fortuna ranks opportunities from source history, niche fit, timing, angle performance, team workload, and manual results. It never auto-posts.",
+        "related_route": "opportunities:best",
+    },
+    {
+        "topic": "team_performance_intelligence",
+        "title": "Team Performance Intelligence",
+        "role_scope": "owner,admin,manager",
+        "content": "Team Intelligence uses task and opportunity outcomes to suggest who is available, overloaded, or a good fit for new work.",
+        "related_route": "team_intelligence",
+    },
 )
 
 
@@ -229,6 +265,18 @@ def detect_help_intent(question: str) -> str:
     text = question.casefold()
     if "discovery mode" in text or ("discover" in text and ("opportun" in text or "lead" in text)):
         return "social_discovery_mode"
+    if "recovery risk" in text or "recovery alert" in text:
+        return "recovery_risk"
+    if "recovery center" in text or "backup" in text or "backups" in text:
+        return "recovery_center"
+    if "railway breaks" in text or "rebuild fortuna" in text or "disaster" in text:
+        return "disaster_recovery"
+    if "restore test" in text:
+        return "restore_test"
+    if "choose best opportun" in text or "best opportun" in text or "opportunity prediction" in text:
+        return "opportunity_prediction"
+    if "chatter performs" in text or "best chatter" in text or "team intelligence" in text:
+        return "team_performance"
     if "find opportunities" in text or "finds opportunities" in text or "find opportunity" in text:
         return "social_discovery_sources"
     if "public post" in text or ("add" in text and "post" in text and "opportun" in text):
@@ -437,6 +485,56 @@ def help_brain_answer(
 
     if intent == "readiness_low":
         answer, next_action = _readiness_answer(session, user)
+    elif intent == "recovery_center":
+        if not _adminish(user):
+            answer = "Recovery Center is owner/admin-only. Ask an owner to confirm backups before entering critical data."
+            next_action = "help"
+        else:
+            recovery = recovery_risk_assessment(session)
+            answer = (
+                "Recovery Center checks real backup and restore records. "
+                f"Current status: {recovery.protection_status}. "
+                f"Risk: {recovery.risk_score}/100 ({recovery.risk_level}). "
+                f"Next: {recovery.next_best_move}"
+            )
+            next_action = "recovery_center"
+    elif intent == "recovery_risk":
+        if not _adminish(user):
+            answer = "Recovery risk is owner/admin-only. The short version: backups and restore tests lower risk; missing evidence raises it."
+            next_action = "help"
+        else:
+            recovery = recovery_risk_assessment(session)
+            drivers = "; ".join(recovery.evidence[:3]) or "No evidence has been recorded yet."
+            answer = (
+                f"Recovery Risk is {recovery.risk_score}/100 ({recovery.risk_level}). "
+                "Fortuna calculates it from backup age, recent failures, storage redundancy, encryption, checksum records, and restore-test evidence. "
+                f"Main drivers: {drivers}"
+            )
+            next_action = "recovery_center"
+    elif intent == "disaster_recovery":
+        answer = (
+            "If Railway breaks, rebuild Fortuna from the code repo, safe environment secrets, Postgres, Redis, and the latest encrypted backup. "
+            "Recovery Center -> Disaster Plan shows the steps."
+        )
+        next_action = "recovery:disaster_plan" if _adminish(user) else "help"
+    elif intent == "restore_test":
+        answer = (
+            "A restore test checks whether a backup can be verified or restored. "
+            "If no test database is configured, Fortuna can verify checksum/decryption readiness but will not call that a full restore pass."
+        )
+        next_action = "recovery:restore:test" if _adminish(user) else "help"
+    elif intent == "opportunity_prediction":
+        answer = (
+            "Fortuna chooses the best opportunity from score, source history, niche fit, timing assumptions, angle performance, and team workload. "
+            "It only recommends. A human reviews and posts manually."
+        )
+        next_action = "opportunities:best"
+    elif intent == "team_performance":
+        answer = (
+            "Team Intelligence looks at completed tasks, overdue work, opportunity outcomes, and workload balance. "
+            "It suggests who may be a good fit for new work, but it does not reassign automatically."
+        )
+        next_action = "team_intelligence" if _adminish(user) else "my_work"
     elif intent == "where_am_i":
         page = (current_page or "this screen").replace("_", " ").replace(":", " -> ")
         answer = f"You are on {page}. The top of the screen tells you what matters, and the main button is the safest next step."

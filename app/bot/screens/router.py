@@ -11,8 +11,11 @@ from .intelligence import *
 from .learning import *
 from .automations import *
 from .opportunities import *
+from .predictions import *
+from .recovery import *
 from .settings import *
 from .team import *
+from .team_intelligence import *
 from .coo import *
 from .help import *
 from .errors import *
@@ -22,6 +25,24 @@ from app.services.opportunities import mark_creator_post_alert_reviewed, mark_ow
 def render_page(page: str, session: Session | None = None, user: User | None = None) -> Screen:
     if page == "owner_advanced":
         return render_owner_advanced_page()
+    if page == "recovery_center" and session is not None:
+        return render_recovery_center_page(session, user)
+    if page == "recovery:details" and session is not None:
+        return render_recovery_center_page(session, user, details=True)
+    if page == "recovery:backup:run" and session is not None:
+        return render_backup_run_page(session, user)
+    if page == "recovery:history" and session is not None:
+        return render_backup_history_page(session, user)
+    if page == "recovery:restore:test" and session is not None:
+        return render_restore_test_page(session, user)
+    if page == "recovery:disaster_plan":
+        return render_disaster_plan_page()
+    if page == "recovery:disaster_plan:details":
+        return render_disaster_plan_page(details=True)
+    if page == "team_intelligence" and session is not None:
+        return render_team_intelligence_page(session, user)
+    if page == "team_intelligence:details" and session is not None:
+        return render_team_intelligence_page(session, user, details=True)
     if page == "today_priorities" and session is not None:
         return render_today_priorities_page(session, user)
     if page == "setup_progress" and session is not None:
@@ -527,6 +548,8 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_opportunity_command_center_page(session, user=user)
     if page == "opportunities:score" and session is not None:
         return render_social_opportunity_intelligence_page(session)
+    if page == "opportunities:best" and session is not None:
+        return render_best_opportunity_page(session, user=user)
     if page == "opportunities:discovery" and session is not None:
         return render_social_discovery_page(session)
     if page == "opportunities:discovery:add_source":
@@ -602,6 +625,10 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
             if len(parts) >= 3 and parts[2] == "strategies":
                 return render_opportunity_strategies_page(session, int(parts[1]))
             return render_opportunity_detail_page(session, int(parts[1]))
+    if page.startswith("opportunity_prediction:") and session is not None:
+        parts = page.split(":")
+        if len(parts) >= 2 and parts[1].isdigit():
+            return render_opportunity_prediction_detail_page(session, int(parts[1]))
     if page.startswith("social_score:") and session is not None:
         parts = page.split(":")
         if len(parts) >= 3 and parts[1].isdigit():

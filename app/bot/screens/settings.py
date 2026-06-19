@@ -411,6 +411,7 @@ def _observability_summary_markup(*, show_bot_status: bool = False) -> InlineKey
     rows.extend(
         [
             [InlineKeyboardButton(text="Technical Details", callback_data=callback_for("production_observability:details"))],
+            [InlineKeyboardButton(text="Recovery Center", callback_data=callback_for("recovery_center"))],
             [InlineKeyboardButton(text="Run Integrity Check", callback_data=callback_for("integrity"))],
             *page_controls(back_to="owner_advanced"),
         ]
@@ -563,6 +564,7 @@ def render_production_observability_page(
 
     issues = list(summary["system_truth_current_issues"])
     issue_codes = list(summary["system_truth_current_issue_codes"])
+    recovery_alerts = list(summary.get("recovery_alerts") or [])
     status = "Healthy" if not issues else "Needs Attention"
     recommended_action = (
         "Continue setup."
@@ -580,6 +582,16 @@ def render_production_observability_page(
             if not issues
             else _observability_issue_blocks(summary)
         )
+        recovery_lines = [
+            "",
+            "Recovery:",
+            f"- Risk: {summary['recovery_risk_score']}/100 ({summary['recovery_risk_level']})",
+            f"- Last Backup: {summary['recovery_last_backup']}",
+            f"- Restore Test: {summary['recovery_restore_test_status']}",
+            f"- Next: {summary['recovery_next_best_move']}",
+        ]
+        if recovery_alerts:
+            recovery_lines.insert(2, f"- Alert: {recovery_alerts[0]}")
         summary_line = (
             "Fortuna checked this. Everything is running."
             if not issues
@@ -600,6 +612,7 @@ def render_production_observability_page(
                     "",
                     "Fortuna checked:",
                     *checked_lines,
+                    *recovery_lines,
                     "",
                     "Summary:",
                     summary_line,
@@ -691,6 +704,18 @@ def render_production_observability_page(
         "",
         "UI Self-Test:",
         f"Last Result: {summary['last_ui_self_test_status']} at {_observability_time(summary['last_ui_self_test_at'], user)}",
+        "",
+        "Recovery:",
+        f"Backup Health: {summary['recovery_backup_health']}",
+        f"Last Backup: {summary['recovery_last_backup']}",
+        f"External Storage Configured: {_yes_no(summary['recovery_external_storage_configured'])}",
+        f"Restore Test: {summary['recovery_restore_test_status']}",
+        f"Recovery Confidence: {summary['recovery_confidence']}",
+        f"Recovery Risk: {summary['recovery_risk_score']}/100 ({summary['recovery_risk_level']})",
+        f"Recovery Alerts: {', '.join(summary['recovery_alerts']) or 'None'}",
+        f"Recovery Next Move: {summary['recovery_next_best_move']}",
+        "Recovery Evidence:",
+        *[f"- {line}" for line in summary["recovery_evidence"]],
         "",
         "Logs:",
         summary["railway_note"],

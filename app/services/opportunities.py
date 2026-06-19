@@ -2253,6 +2253,9 @@ def record_opportunity_result(
     from app.services.learning import capture_opportunity_result
 
     capture_opportunity_result(session, result, actor=actor)
+    from app.services.opportunity_prediction import update_prediction_learning_from_result
+
+    update_prediction_learning_from_result(session, result, actor=actor)
     return result
 
 

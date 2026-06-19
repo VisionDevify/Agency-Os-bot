@@ -11,8 +11,11 @@ from .intelligence import *
 from .learning import *
 from .automations import *
 from .opportunities import *
+from .predictions import *
+from .recovery import *
 from .settings import *
 from .team import *
+from .team_intelligence import *
 from .coo import *
 from .help import *
 from .errors import *

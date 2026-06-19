@@ -30,8 +30,11 @@ from app.models.opportunity import (
     OwnPostAlert,
     PostWatch,
 )
+from app.models.performance import TeamPerformanceSnapshot
 from app.models.permissions import Permission, Role, RolePermission, UserRole
+from app.models.prediction import OpportunityPrediction
 from app.models.proxy import Proxy, ProxyHealthCheckResult, ProxyRotationHistory, ProxySessionMemory
+from app.models.recovery import BackupRun, BackupStorageTarget, RestoreTestRun
 from app.models.recommendation import Recommendation
 from app.models.reporting import (
     AccountabilitySnapshot,
@@ -107,6 +110,7 @@ __all__ = [
     "NotificationDigest",
     "NotificationRoutingConfig",
     "Opportunity",
+    "OpportunityPrediction",
     "OpportunityResult",
     "OpportunitySource",
     "OwnPostAlert",
@@ -126,6 +130,9 @@ __all__ = [
     "Report",
     "Role",
     "RolePermission",
+    "BackupRun",
+    "BackupStorageTarget",
+    "RestoreTestRun",
     "SystemHeartbeat",
     "SetupWizardState",
     "SocialDiscoveryLead",
@@ -137,6 +144,7 @@ __all__ = [
     "SocialSource",
     "SocialSourcePerformance",
     "Task",
+    "TeamPerformanceSnapshot",
     "TeamOnboardingChecklist",
     "TrendSnapshot",
     "UISelfTestRun",

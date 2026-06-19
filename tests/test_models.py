@@ -12,6 +12,8 @@ def test_model_tables_are_registered() -> None:
         AutomationRunStep,
         AutomationSchedule,
         AutomationSimulationRun,
+        BackupRun,
+        BackupStorageTarget,
         CommentStrategy,
         ConfidenceRecord,
         CreatorWatch,
@@ -33,6 +35,7 @@ def test_model_tables_are_registered() -> None:
         NotificationDigest,
         NotificationTarget,
         Opportunity,
+        OpportunityPrediction,
         OpportunityResult,
         OpportunitySource,
         OutcomeMemory,
@@ -44,12 +47,14 @@ def test_model_tables_are_registered() -> None:
         ProxyRotationHistory,
         Recommendation,
         Report,
+        RestoreTestRun,
         Role,
         SocialDiscoveryLead,
         SocialDiscoveryRun,
         SocialDiscoverySourceConfig,
         SystemHeartbeat,
         Task,
+        TeamPerformanceSnapshot,
         TeamOnboardingChecklist,
         TrendSnapshot,
         User,
@@ -71,6 +76,8 @@ def test_model_tables_are_registered() -> None:
         "automation_run_steps",
         "automation_schedules",
         "automation_simulation_runs",
+        "backup_runs",
+        "backup_storage_targets",
         "comment_strategies",
         "creator_watches",
         "daily_briefings",
@@ -89,6 +96,7 @@ def test_model_tables_are_registered() -> None:
         "notification_targets",
         "notification_digests",
         "opportunities",
+        "opportunity_predictions",
         "opportunity_results",
         "opportunity_sources",
         "outcome_memory",
@@ -100,12 +108,14 @@ def test_model_tables_are_registered() -> None:
         "proxy_rotation_history",
         "recommendations",
         "reports",
+        "restore_test_runs",
         "roles",
         "social_discovery_leads",
         "social_discovery_runs",
         "social_discovery_source_configs",
         "system_heartbeats",
         "tasks",
+        "team_performance_snapshots",
         "team_onboarding_checklists",
         "trend_snapshots",
         "user_roles",
@@ -152,6 +162,9 @@ def test_model_tables_are_registered() -> None:
     assert AutomationApproval.__tablename__ == "automation_approvals"
     assert AutomationSchedule.__tablename__ == "automation_schedules"
     assert AutomationSimulationRun.__tablename__ == "automation_simulation_runs"
+    assert BackupRun.__tablename__ == "backup_runs"
+    assert BackupStorageTarget.__tablename__ == "backup_storage_targets"
+    assert RestoreTestRun.__tablename__ == "restore_test_runs"
     assert Recommendation.__tablename__ == "recommendations"
     assert SystemHeartbeat.__tablename__ == "system_heartbeats"
     assert IntelligenceSignal.__tablename__ == "intelligence_signals"
@@ -167,8 +180,10 @@ def test_model_tables_are_registered() -> None:
     assert ConfidenceRecord.__tablename__ == "confidence_records"
     assert OpportunitySource.__tablename__ == "opportunity_sources"
     assert Opportunity.__tablename__ == "opportunities"
+    assert OpportunityPrediction.__tablename__ == "opportunity_predictions"
     assert OpportunityResult.__tablename__ == "opportunity_results"
     assert CreatorWatch.__tablename__ == "creator_watches"
     assert PostWatch.__tablename__ == "post_watches"
     assert CommentStrategy.__tablename__ == "comment_strategies"
     assert TeamOnboardingChecklist.__tablename__ == "team_onboarding_checklists"
+    assert TeamPerformanceSnapshot.__tablename__ == "team_performance_snapshots"

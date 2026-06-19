@@ -23,6 +23,8 @@ MORE_CHILDREN = {
     "production_observability",
     "users",
     "executive_mode",
+    "recovery_center",
+    "team_intelligence",
 }
 
 
@@ -55,6 +57,12 @@ def parent_page_for(page: str | None) -> str:
         return "setup_progress" if "add" in current else "accounts"
     if current.startswith("opportunities:") or current.startswith("opportunity:"):
         return "opportunities"
+    if current.startswith("opportunity_prediction:"):
+        return "opportunities"
+    if current.startswith("recovery:"):
+        return "recovery_center"
+    if current.startswith("team_intelligence:"):
+        return "team_intelligence"
     if current.startswith("notification_") or current.startswith("notification:"):
         return "settings"
     if current in {"integrity", "integrity:details", "bot_status", "bot_instance_status"}:
@@ -68,7 +76,7 @@ def root_page_for(page: str | None) -> str:
         return ROOT_SCREEN
     if current.startswith("settings:chat_cleanup"):
         return "settings"
-    if current in MORE_CHILDREN or current.startswith(("intelligence", "automations", "reports", "settings")):
+    if current in MORE_CHILDREN or current.startswith(("intelligence", "automations", "reports", "settings", "recovery", "team_intelligence")):
         return "owner_advanced"
     if current.startswith(("proxy:", "proxies:")):
         return "proxies"
