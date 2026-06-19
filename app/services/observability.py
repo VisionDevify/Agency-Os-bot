@@ -17,12 +17,14 @@ from app.models.permissions import Role
 from app.models.reporting import NotificationTarget
 from app.models.user import User
 from app.services.build_metadata import safe_build_metadata, safe_metadata_value
+from app.services.button_health import button_health_summary
 from app.services.help_brain import help_questions_today, notification_pilot_status, proxy_pilot_status
 from app.services.heartbeats import list_heartbeats, system_status_summary
 from app.services.bot_instances import bot_instance_diagnostics
 from app.services.persistence import storage_status
 from app.services.notifications import notification_routing_mode_summary, purpose_aliases
 from app.services.recovery import recovery_risk_assessment
+from app.services.shared_status import StatusCondition, compute_shared_status, status_from_risk_level
 from app.services.system_truth import (
     AlembicRevisionStatus,
     alembic_revision_status,
@@ -106,6 +108,7 @@ def production_observability_summary(session: Session) -> dict[str, object]:
     bot_diagnostics = bot_instance_diagnostics(session)
     latest_self_test = _latest(session, UISelfTestRun, desc(UISelfTestRun.created_at), desc(UISelfTestRun.id))
     recovery = recovery_risk_assessment(session)
+    buttons = button_health_summary(session)
     owner_count = session.scalar(select(func.count(User.id)).where(User.is_owner.is_(True))) or 0
     role_count = session.scalar(select(func.count(Role.id))) or 0
     audit_count = session.scalar(select(func.count(AuditLog.id))) or 0
@@ -125,6 +128,40 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         production_risk = "unsafe"
     else:
         production_risk = "degraded"
+    operations_issue_count = len(truth.current_issues)
+    operations_status = "healthy" if truth.production_ready else ("critical" if production_risk == "unsafe" else "needs_attention")
+    recovery_status = status_from_risk_level(recovery.risk_level)
+    recovery_issue_count = len(recovery.alerts) or (0 if recovery_status == "healthy" else 1)
+    shared_status = compute_shared_status(
+        [
+            StatusCondition(
+                "operations",
+                operations_status,
+                "Operations are checked through SystemTruth.",
+                operations_issue_count,
+                "Open Production Observability details." if operations_issue_count else None,
+            ),
+            StatusCondition(
+                "recovery",
+                recovery_status,
+                recovery.next_best_move,
+                recovery_issue_count,
+                recovery.next_best_move if recovery_status != "healthy" else None,
+            ),
+            StatusCondition(
+                "button_health",
+                buttons.overall_status,
+                "Button and navigation scan results.",
+                buttons.open_issue_count,
+                "Open Button Health." if buttons.open_issue_count else None,
+            ),
+        ]
+    )
+    observability_issues = list(truth.current_issues)
+    if recovery_status != "healthy":
+        observability_issues.append(f"Recovery: {recovery.next_best_move}")
+    if buttons.open_issue_count:
+        observability_issues.append(f"Navigation/Button Health: {buttons.open_issue_count} open issue(s).")
 
     return {
         "app_display_name": build_metadata["app_name"],
@@ -178,6 +215,12 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         "system_truth_status": truth.production_status,
         "system_truth_ready": truth.production_ready,
         "system_truth_current_issues": list(truth.current_issues),
+        "observability_current_issues": observability_issues,
+        "shared_status": shared_status.status,
+        "shared_status_label": shared_status.label,
+        "shared_status_icon": shared_status.icon,
+        "active_issue_count": shared_status.issue_count,
+        "recommended_action": shared_status.recommended_action,
         "system_truth_current_issue_codes": list(truth.current_issue_codes),
         "system_truth_readiness_score": truth.setup_readiness_score,
         "system_truth_placeholder_proxy_count": truth.proxy_placeholder_count,
@@ -221,4 +264,12 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         "recovery_alerts": list(recovery.alerts),
         "recovery_evidence": list(recovery.evidence),
         "recovery_next_best_move": recovery.next_best_move,
+        "recovery_status": recovery_status,
+        "recovery_issue_count": recovery_issue_count,
+        "button_health_status": buttons.overall_status,
+        "button_health_open_issue_count": buttons.open_issue_count,
+        "button_health_technical_issue_count": buttons.technical_issue_count,
+        "button_health_navigation_issue_count": buttons.navigation_issue_count,
+        "button_health_ux_issue_count": buttons.ux_issue_count,
+        "button_health_last_scan_at": buttons.last_scan_at,
     }

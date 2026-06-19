@@ -215,11 +215,11 @@ def performance_menu() -> InlineKeyboardMarkup:
     )
 
 
-def help_center_menu(topic_buttons: list[tuple[str, str]] | None = None) -> InlineKeyboardMarkup:
+def help_center_menu(topic_buttons: list[tuple[str, str]] | None = None, *, back_to: str = "menu", ask_page: str = "help_copilot") -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in (topic_buttons or [])]
     rows.append([InlineKeyboardButton(text="How Fortuna OS Is Organized", callback_data=callback_for("structure"))])
-    rows.append([InlineKeyboardButton(text="Ask Fortuna", callback_data=callback_for("help_copilot"))])
-    rows.extend(page_controls(back_to="menu"))
+    rows.append([InlineKeyboardButton(text="Ask Fortuna", callback_data=callback_for(ask_page))])
+    rows.extend(page_controls(back_to=back_to))
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -1245,20 +1245,20 @@ def chatter_workspace_menu() -> InlineKeyboardMarkup:
     )
 
 
-def help_copilot_menu() -> InlineKeyboardMarkup:
+def help_copilot_menu(*, back_to: str = "help", prefix: str = "help_copilot") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="What should I do next?", callback_data=callback_for("help_copilot:next"))],
-            [InlineKeyboardButton(text="How do I finish setup?", callback_data=callback_for("help_copilot:finish_setup"))],
-            [InlineKeyboardButton(text="Help me add a proxy", callback_data=callback_for("help_copilot:add_proxy"))],
-            [InlineKeyboardButton(text="Explain this screen", callback_data=callback_for("help_copilot:where"))],
-            [InlineKeyboardButton(text="I'm stuck", callback_data=callback_for("help_copilot:why_broken"))],
-            *page_controls(back_to="help"),
+            [InlineKeyboardButton(text="What should I do next?", callback_data=callback_for(f"{prefix}:question:next"))],
+            [InlineKeyboardButton(text="How do I finish setup?", callback_data=callback_for(f"{prefix}:question:finish_setup"))],
+            [InlineKeyboardButton(text="Help me add a proxy", callback_data=callback_for(f"{prefix}:question:add_proxy"))],
+            [InlineKeyboardButton(text="Explain this screen", callback_data=callback_for(f"{prefix}:question:where"))],
+            [InlineKeyboardButton(text="I'm stuck", callback_data=callback_for(f"{prefix}:question:why_broken"))],
+            *page_controls(back_to=back_to),
         ]
     )
 
 
-def help_feedback_menu(log_id: int | None, *, next_action: str | None = None) -> InlineKeyboardMarkup:
+def help_feedback_menu(log_id: int | None, *, next_action: str | None = None, back_to: str = "help_copilot") -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = []
     if next_action:
         rows.append([InlineKeyboardButton(text="Open Next Step", callback_data=callback_for(next_action))])
@@ -1270,7 +1270,7 @@ def help_feedback_menu(log_id: int | None, *, next_action: str | None = None) ->
             ]
         )
         rows.append([InlineKeyboardButton(text="Still Confused", callback_data=callback_for(f"help_feedback:{log_id}:still_confused"))])
-    rows.extend(page_controls(back_to="help_copilot"))
+    rows.extend(page_controls(back_to=back_to))
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

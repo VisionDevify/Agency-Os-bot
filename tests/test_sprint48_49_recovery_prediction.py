@@ -72,8 +72,8 @@ def test_recovery_risk_score_uses_backup_age_failures_restore_and_storage() -> N
 
         assert assessment.risk_score >= 75
         assert assessment.risk_level == "Critical"
-        assert "Backup is older than the freshness target." in assessment.evidence
-        assert assessment.backup_copies_count == 1
+        assert "No verified backup copies were found in the recent window." in assessment.evidence
+        assert assessment.backup_copies_count == 0
         assert assessment.encryption_status == "Not set up yet"
         assert assessment.checksum_status == "Not set up yet"
 
@@ -95,6 +95,9 @@ def test_recovery_low_risk_requires_redundant_encrypted_checked_and_restored_evi
             storage_target="External A",
             encrypted=True,
             checksum="a" * 64,
+            artifact_uri="file:///backup-a.dump.enc",
+            artifact_verified=True,
+            external_storage_used=True,
             started_at=now - timedelta(hours=1),
             finished_at=now - timedelta(hours=1),
         )
@@ -105,16 +108,23 @@ def test_recovery_low_risk_requires_redundant_encrypted_checked_and_restored_evi
             storage_target="External B",
             encrypted=True,
             checksum="b" * 64,
+            artifact_uri="file:///backup-b.dump.enc",
+            artifact_verified=True,
+            external_storage_used=True,
             started_at=now - timedelta(hours=1),
             finished_at=now - timedelta(hours=1),
         )
         session.add(
             RestoreTestRun(
+                run_identifier="restore-low-risk",
                 backup_run_id=first.id,
-                status="succeeded",
+                status="passed",
                 started_at=now,
                 finished_at=now,
                 result_summary='{"checksum_verified": true, "archive_decrypts": true, "test_database_restored": true}',
+                checksum_verified=True,
+                decrypt_verified=True,
+                full_restore_performed=True,
             )
         )
         session.flush()
@@ -138,11 +148,13 @@ def test_restore_test_records_verified_not_fake_pass_when_no_test_database() -> 
             encrypted=True,
             checksum="c" * 64,
             storage_target="local_runtime",
+            artifact_uri="file:///backup-c.dump.enc",
+            artifact_verified=True,
         )
 
         test = run_restore_test(session, actor=owner)
 
-        assert test.status == "verified"
+        assert test.status == "verified_only"
         assert "test_database_restored" in (test.result_summary or "")
         assert "False" not in render_recovery_center_page(session, owner).text
 

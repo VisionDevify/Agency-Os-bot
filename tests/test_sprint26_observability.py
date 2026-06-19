@@ -77,7 +77,7 @@ def test_production_observability_renders_safe_metadata_and_owner_gate() -> None
         screen = render_production_observability_page(session)
         details = render_production_observability_page(session, details=True)
 
-        assert "Production Observability" in screen.text
+        assert "Production Status" in screen.text
         assert "Status:" in screen.text
         assert "Recommended Action:" in screen.text
         assert "App Name: Fortuna OS" not in screen.text

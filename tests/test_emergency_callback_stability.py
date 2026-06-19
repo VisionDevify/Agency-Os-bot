@@ -97,8 +97,10 @@ def test_button_health_report_route_renders() -> None:
 
         screen = screen_for_page("button_health", principal, session=session, user=owner)
 
-        assert "Fortuna Self-Test" in screen.text
-        assert "Status:" in screen.text
+        assert "Button Health" in screen.text
+        assert "Technical:" in screen.text
+        assert "Navigation:" in screen.text
+        assert "UX:" in screen.text
         assert "Recommended Action:" in screen.text
         assert "Working:" not in screen.text
         assert "nav:button_health:run" in _callbacks(screen.reply_markup)

@@ -7,6 +7,7 @@ from .formatting import *
 from app.services.fortuna_personality import dynamic_greeting, screen_lines
 from app.services.productization import best_next_action, setup_steps
 from app.services.system_truth import reconcile_stale_system_warnings, system_truth
+from app.services.button_health import button_health_summary
 
 def _owner_display_name(user: User) -> str:
     return user.display_name or user.username or "there"
@@ -386,8 +387,16 @@ def render_today_priorities_page(session: Session, user: User | None = None) -> 
     approvals = pending_approvals(session)
     followups = outstanding_blockers(session)
     recommendations = list_recommendations(session, status="open", limit=5)
-    next_action = actions[0].title if actions else (recommendations[0].title if recommendations else "Nothing urgent here.")
+    button_health = button_health_summary(session)
+    button_needs_review = button_health.open_issue_count > 0 and button_health.overall_status in {"needs_review", "needs_attention", "critical"}
+    next_action = (
+        "Open Button Health."
+        if button_needs_review
+        else actions[0].title if actions else (recommendations[0].title if recommendations else "Nothing urgent here.")
+    )
     buttons = [(f"Open {index}: {action.title[:24]}", action.action_page) for index, action in enumerate(actions[:3], start=1)]
+    if button_needs_review:
+        buttons.insert(0, ("Review Button Health", "button_health"))
     lines = [
         "Today's Priorities",
         "",
@@ -401,6 +410,17 @@ def render_today_priorities_page(session: Session, user: User | None = None) -> 
             lines.append(f"{index}. {action.title}")
     else:
         lines.append("- Nothing urgent here.")
+    if button_needs_review:
+        lines.extend(
+            [
+                "",
+                "Needs Review:",
+                f"Fortuna found {button_health.open_issue_count} button or navigation issue(s).",
+                "",
+                "Next Best Move:",
+                "Open Button Health.",
+            ]
+        )
     lines.extend(["", "Urgent Items:"])
     urgent = [rec for rec in recommendations if rec.severity == "critical"]
     lines.extend(f"- {rec.title}" for rec in urgent[:3]) if urgent else lines.append("- None right now.")

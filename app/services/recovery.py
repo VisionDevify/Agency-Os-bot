@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -30,6 +31,9 @@ BACKUP_FRESHNESS_TARGET_HOURS = 24
 RESTORE_TEST_STALE_DAYS = 30
 BACKUP_FAILURE_LOOKBACK_DAYS = 7
 BACKUP_COPY_LOOKBACK_DAYS = 7
+SUCCESS_BACKUP_STATUSES = {"success", "succeeded"}
+TERMINAL_BACKUP_STATUSES = {"success", "succeeded", "failed", "skipped", "manual_required", "not_configured"}
+TERMINAL_RESTORE_STATUSES = {"verified_only", "verified", "passed", "succeeded", "failed", "skipped", "not_available"}
 
 
 @dataclass(frozen=True)
@@ -64,6 +68,29 @@ def _clamp_score(value: int) -> int:
     return max(0, min(100, int(value)))
 
 
+def _new_run_identifier(prefix: str) -> str:
+    return f"{prefix}-{uuid.uuid4().hex}"
+
+
+def _backup_is_verified_success(run: BackupRun | None) -> bool:
+    return bool(
+        run
+        and run.status in SUCCESS_BACKUP_STATUSES
+        and run.artifact_uri
+        and run.artifact_verified
+        and run.checksum
+        and run.encrypted
+    )
+
+
+def _backup_is_terminal(run: BackupRun | None) -> bool:
+    return bool(run and run.status in TERMINAL_BACKUP_STATUSES)
+
+
+def _restore_is_terminal(run: RestoreTestRun | None) -> bool:
+    return bool(run and run.status in TERMINAL_RESTORE_STATUSES)
+
+
 def _require_owner_or_admin(session: Session, actor: User | None) -> None:
     if actor is not None and (actor.is_owner or user_has_permission(actor, "manage_roles")):
         return
@@ -79,10 +106,16 @@ def _require_owner_or_admin(session: Session, actor: User | None) -> None:
 
 
 def _latest_backup(session: Session, *, succeeded_only: bool = False) -> BackupRun | None:
-    statement = select(BackupRun).order_by(desc(BackupRun.started_at), desc(BackupRun.id)).limit(1)
+    statement = select(BackupRun).order_by(desc(BackupRun.started_at), desc(BackupRun.id))
     if succeeded_only:
-        statement = statement.where(BackupRun.status == "succeeded")
-    return session.scalar(statement)
+        statement = statement.where(
+            BackupRun.status.in_(tuple(SUCCESS_BACKUP_STATUSES)),
+            BackupRun.artifact_uri.is_not(None),
+            BackupRun.artifact_verified.is_(True),
+            BackupRun.checksum.is_not(None),
+            BackupRun.encrypted.is_(True),
+        )
+    return session.scalar(statement.limit(1))
 
 
 def _latest_restore_test(session: Session) -> RestoreTestRun | None:
@@ -105,9 +138,13 @@ def backup_copy_count(session: Session, *, now: datetime | None = None) -> int:
     targets = session.scalars(
         select(BackupRun.storage_target)
         .where(
-            BackupRun.status == "succeeded",
+            BackupRun.status.in_(tuple(SUCCESS_BACKUP_STATUSES)),
             BackupRun.started_at >= since,
             BackupRun.storage_target.is_not(None),
+            BackupRun.artifact_uri.is_not(None),
+            BackupRun.artifact_verified.is_(True),
+            BackupRun.checksum.is_not(None),
+            BackupRun.encrypted.is_(True),
         )
         .distinct()
     ).all()
@@ -231,11 +268,11 @@ def recovery_risk_assessment(session: Session, *, now: datetime | None = None) -
         evidence.append("No restore test has been recorded.")
     else:
         restore_age_days = max(0, round((_aware(current) - _aware(latest_restore.started_at)).total_seconds() / 86400))
-        checksum_verified = bool(restore_payload.get("checksum_verified"))
-        restored_test_db = bool(restore_payload.get("test_database_restored"))
-        if latest_restore.status == "succeeded" and restored_test_db:
+        checksum_verified = bool(latest_restore.checksum_verified or restore_payload.get("checksum_verified"))
+        restored_test_db = bool(latest_restore.full_restore_performed or restore_payload.get("test_database_restored"))
+        if latest_restore.status in {"passed", "succeeded"} and restored_test_db:
             restore_status = f"Restore tested {restore_age_days}d ago"
-        elif latest_restore.status in {"verified", "succeeded"} and checksum_verified:
+        elif latest_restore.status in {"verified_only", "verified"} and checksum_verified:
             restore_status = f"Backup file verified {restore_age_days}d ago"
             risk += 10
             evidence.append("Backup file was verified, but no full test database restore is recorded.")
@@ -243,6 +280,10 @@ def recovery_risk_assessment(session: Session, *, now: datetime | None = None) -
             restore_status = "Failed"
             risk += 25
             evidence.append("Latest restore test failed.")
+        elif latest_restore.status == "not_available":
+            restore_status = "Not available"
+            risk += 20
+            evidence.append("Restore testing could not run because no verified backup artifact was available.")
         else:
             restore_status = latest_restore.status.title()
             risk += 15
@@ -356,31 +397,67 @@ def record_backup_run(
     *,
     actor: User | None,
     backup_type: str = "manual",
-    status: str = "succeeded",
+    status: str = "manual_required",
+    run_identifier: str | None = None,
     storage_target: str = "local_runtime",
     encrypted: bool = True,
     checksum: str | None = None,
+    artifact_uri: str | None = None,
+    artifact_verified: bool = False,
+    external_storage_used: bool = False,
     size_bytes: int | None = None,
+    result_summary: str | None = None,
     error_summary: str | None = None,
     started_at: datetime | None = None,
     finished_at: datetime | None = None,
 ) -> BackupRun:
-    run = BackupRun(
-        backup_type=backup_type,
-        status=status,
-        started_at=started_at or _now(),
-        finished_at=finished_at or _now(),
-        size_bytes=size_bytes,
-        storage_target=storage_target,
-        encrypted=encrypted,
-        checksum=checksum,
-        error_summary=error_summary,
-        created_by_user_id=actor.id if actor else None,
-    )
-    session.add(run)
+    identifier = run_identifier or _new_run_identifier("backup")
+    existing = session.scalar(select(BackupRun).where(BackupRun.run_identifier == identifier))
+    if _backup_is_terminal(existing):
+        return existing
+
+    if status in SUCCESS_BACKUP_STATUSES and not (
+        artifact_uri and artifact_verified and checksum and encrypted
+    ):
+        status = "manual_required"
+        result_summary = result_summary or "Backup execution needs a verified artifact before it can count as successful."
+        error_summary = error_summary or "No verified backup artifact was recorded."
+
+    if existing is None:
+        run = BackupRun(
+            run_identifier=identifier,
+            backup_type=backup_type,
+            status=status,
+            started_at=started_at or _now(),
+            finished_at=finished_at or _now(),
+            size_bytes=size_bytes,
+            storage_target=storage_target,
+            encrypted=encrypted,
+            checksum=checksum,
+            artifact_uri=artifact_uri,
+            artifact_verified=artifact_verified,
+            external_storage_used=external_storage_used,
+            result_summary=result_summary,
+            error_summary=error_summary,
+            created_by_user_id=actor.id if actor else None,
+        )
+        session.add(run)
+    else:
+        run = existing
+        run.status = status
+        run.finished_at = finished_at or _now()
+        run.size_bytes = size_bytes
+        run.storage_target = storage_target
+        run.encrypted = encrypted
+        run.checksum = checksum
+        run.artifact_uri = artifact_uri
+        run.artifact_verified = artifact_verified
+        run.external_storage_used = external_storage_used
+        run.result_summary = result_summary
+        run.error_summary = error_summary
     target = session.scalar(select(BackupStorageTarget).where(BackupStorageTarget.name == storage_target))
     if target is not None:
-        if status == "succeeded":
+        if status in SUCCESS_BACKUP_STATUSES:
             target.last_success_at = run.finished_at
         elif status == "failed":
             target.last_failure_at = run.finished_at
@@ -406,17 +483,18 @@ def run_backup(session: Session, *, actor: User | None, backup_type: str = "manu
             finished_at=_now(),
         )
     else:
-        manifest = _backup_manifest(session, backup_type, target.name)
-        digest = _checksum(manifest)
         run = record_backup_run(
             session,
             actor=actor,
             backup_type=backup_type,
-            status="succeeded",
+            status="manual_required",
             storage_target=target.name,
             encrypted=True,
-            checksum=digest,
-            size_bytes=len(json.dumps(manifest).encode("utf-8")),
+            result_summary=(
+                "Automated Postgres export is not configured in this runtime. "
+                "Use Manual Export or configure external backup storage before Fortuna can count backups as protected."
+            ),
+            error_summary="Manual backup export or external storage configuration is required.",
             started_at=started,
             finished_at=_now(),
         )
@@ -438,59 +516,84 @@ def run_backup(session: Session, *, actor: User | None, backup_type: str = "manu
         status=run.status,
         payload={"backup_type": backup_type, "encrypted": run.encrypted},
     )
-    if run.status == "failed":
+    if run.status in {"failed", "manual_required", "not_configured"}:
         upsert_recommendation(
             session,
             actor=actor,
             recommendation_type="recovery_backup_failed",
             title="Backup needs attention",
-            description="Fortuna could not record a successful encrypted backup.",
-            severity="critical",
+            description=run.error_summary or "Fortuna could not record a verified backup artifact.",
+            severity="critical" if run.status == "failed" else "warning",
             entity_type="backup_run",
             entity_id=run.id,
-            metadata={"reason": "encryption_not_configured"},
+            metadata={"reason": run.status, "run_identifier": run.run_identifier},
         )
     return run
 
 
-def run_restore_test(session: Session, *, actor: User | None) -> RestoreTestRun:
+def run_restore_test(session: Session, *, actor: User | None, run_identifier: str | None = None) -> RestoreTestRun:
     _require_owner_or_admin(session, actor)
+    identifier = run_identifier or _new_run_identifier("restore")
+    existing = session.scalar(select(RestoreTestRun).where(RestoreTestRun.run_identifier == identifier))
+    if _restore_is_terminal(existing):
+        return existing
+
     backup = _latest_backup(session, succeeded_only=True)
     started = _now()
     if backup is None:
-        test = RestoreTestRun(
-            backup_run_id=None,
-            status="failed",
-            started_at=started,
-            finished_at=_now(),
-            result_summary="No successful backup exists.",
-            error_summary="Run a backup before testing restore readiness.",
-        )
-    elif not backup.encrypted or not backup.checksum:
-        test = RestoreTestRun(
-            backup_run_id=backup.id,
-            status="failed",
-            started_at=started,
-            finished_at=_now(),
-            result_summary="Backup metadata is incomplete.",
-            error_summary="Encrypted backup and checksum are required before restore testing.",
-        )
-    else:
         payload = {
+            "backup_run_id": None,
+            "status": "not_available",
+            "result_summary": "No verified backup artifact is available yet.",
+            "error_summary": "Run a backup that produces a verified artifact before testing restore readiness.",
+            "checksum_verified": False,
+            "decrypt_verified": False,
+            "full_restore_performed": False,
+        }
+    elif not _backup_is_verified_success(backup):
+        payload = {
+            "backup_run_id": backup.id,
+            "status": "failed",
+            "result_summary": "Backup metadata is incomplete.",
+            "error_summary": "A verified encrypted backup artifact and checksum are required before restore testing.",
+            "checksum_verified": False,
+            "decrypt_verified": False,
+            "full_restore_performed": False,
+        }
+    else:
+        summary_payload = {
             "checksum_verified": True,
             "archive_decrypts": True,
             "test_database_restored": False,
             "message": "Fortuna verified the backup file metadata, but no test restore database is configured yet.",
         }
+        payload = {
+            "backup_run_id": backup.id,
+            "status": "verified_only",
+            "result_summary": json.dumps(summary_payload, sort_keys=True),
+            "error_summary": None,
+            "checksum_verified": True,
+            "decrypt_verified": True,
+            "full_restore_performed": False,
+        }
+    if existing is None:
         test = RestoreTestRun(
-            backup_run_id=backup.id,
-            status="verified",
+            run_identifier=identifier,
             started_at=started,
             finished_at=_now(),
-            result_summary=json.dumps(payload, sort_keys=True),
-            error_summary=None,
+            **payload,
         )
-    session.add(test)
+        session.add(test)
+    else:
+        test = existing
+        test.backup_run_id = payload["backup_run_id"]
+        test.status = payload["status"]
+        test.finished_at = _now()
+        test.result_summary = payload["result_summary"]
+        test.error_summary = payload["error_summary"]
+        test.checksum_verified = payload["checksum_verified"]
+        test.decrypt_verified = payload["decrypt_verified"]
+        test.full_restore_performed = payload["full_restore_performed"]
     session.flush()
     audit_action(
         session,

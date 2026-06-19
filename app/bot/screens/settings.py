@@ -7,6 +7,8 @@ from app.bot.menu import callback_for, page_controls
 from app.services.integrity import run_integrity_check
 from app.services.bot_instances import bot_instance_diagnostics
 from app.services.observability import production_observability_summary
+from app.services.button_health import button_health_summary, run_button_issue_scan
+from app.services.recovery import recovery_risk_assessment
 from app.services.audit import sanitize_details
 from app.services.system_truth import reconcile_stale_system_warnings
 from app.services.chat_cleanup import get_or_create_chat_cleanup_preference
@@ -412,6 +414,7 @@ def _observability_summary_markup(*, show_bot_status: bool = False) -> InlineKey
         [
             [InlineKeyboardButton(text="Technical Details", callback_data=callback_for("production_observability:details"))],
             [InlineKeyboardButton(text="Recovery Center", callback_data=callback_for("recovery_center"))],
+            [InlineKeyboardButton(text="Button Health", callback_data=callback_for("button_health"))],
             [InlineKeyboardButton(text="Run Integrity Check", callback_data=callback_for("integrity"))],
             *page_controls(back_to="owner_advanced"),
         ]
@@ -562,38 +565,36 @@ def render_production_observability_page(
         marker = "Configured" if item["configured"] else "Missing"
         notification_lines.append(f"- {item['label']}: {marker} ({item['active_count']} active)")
 
-    issues = list(summary["system_truth_current_issues"])
+    issues = list(summary.get("observability_current_issues") or summary["system_truth_current_issues"])
     issue_codes = list(summary["system_truth_current_issue_codes"])
     recovery_alerts = list(summary.get("recovery_alerts") or [])
-    status = "Healthy" if not issues else "Needs Attention"
-    recommended_action = (
-        "Continue setup."
-        if not issues
-        else "Open Bot Status." if "bot_polling" in issue_codes else "Review the first item below."
-    )
+    status = str(summary.get("shared_status_label") or ("Healthy" if not issues else "Needs Attention"))
+    recommended_action = str(summary.get("recommended_action") or "Continue setup.")
     if not details:
-        checked_lines = (
-            [
-                "- PostgreSQL is durable",
-                "- Redis is healthy",
-                "- One bot instance is active",
-                "- Migrations are current",
-            ]
-            if not issues
-            else _observability_issue_blocks(summary)
-        )
+        operations_ok = not summary["system_truth_current_issues"]
+        checked_lines = [
+            "PostgreSQL is durable",
+            "Redis is healthy",
+            "One bot instance is active",
+            "Migrations are current",
+        ] if operations_ok else _observability_issue_blocks(summary)
         recovery_lines = [
             "",
             "Recovery:",
-            f"- Risk: {summary['recovery_risk_score']}/100 ({summary['recovery_risk_level']})",
-            f"- Last Backup: {summary['recovery_last_backup']}",
-            f"- Restore Test: {summary['recovery_restore_test_status']}",
-            f"- Next: {summary['recovery_next_best_move']}",
+            f"{'Healthy' if summary['recovery_status'] == 'healthy' else 'Needs attention'} - {summary['recovery_backup_health']}",
+            f"Last Backup: {summary['recovery_last_backup']}",
+            f"Restore Test: {summary['recovery_restore_test_status']}",
+            f"Next: {summary['recovery_next_best_move']}",
+            "",
+            "Navigation:",
+            f"{summary['button_health_open_issue_count']} open button/navigation issue(s).",
         ]
         if recovery_alerts:
-            recovery_lines.insert(2, f"- Alert: {recovery_alerts[0]}")
+            recovery_lines.insert(2, f"Alert: {recovery_alerts[0]}")
         summary_line = (
-            "Fortuna checked this. Everything is running."
+            "Fortuna checked this. Operations are running, but recovery still needs setup."
+            if summary["recovery_status"] != "healthy" and operations_ok
+            else "Fortuna checked this. Everything is running."
             if not issues
             else "Fortuna found one thing that needs attention."
             if len(issues) == 1
@@ -602,15 +603,15 @@ def render_production_observability_page(
         return Screen(
             text="\n".join(
                 [
-                    "🟢 Production Observability" if not issues else "🟡 Production Observability",
+                    f"{summary['shared_status_icon']} Production Status",
                     "",
                     "Status:",
                     status,
                     "",
-                    f"Issues Found: {len(issues)}",
+                    f"Issues Found: {summary['active_issue_count']}",
                     f"Last Check: {format_user_datetime(user, datetime.now(UTC))}",
                     "",
-                    "Fortuna checked:",
+                    "Operations:" if operations_ok else "Operations Need Review:",
                     *checked_lines,
                     *recovery_lines,
                     "",
@@ -705,6 +706,14 @@ def render_production_observability_page(
         "",
         "UI Self-Test:",
         f"Last Result: {summary['last_ui_self_test_status']} at {_observability_time(summary['last_ui_self_test_at'], user)}",
+        "",
+        "Button and Navigation Health:",
+        f"Overall: {summary['button_health_status']}",
+        f"Open Issues: {summary['button_health_open_issue_count']}",
+        f"Technical Issues: {summary['button_health_technical_issue_count']}",
+        f"Navigation Issues: {summary['button_health_navigation_issue_count']}",
+        f"UX Issues: {summary['button_health_ux_issue_count']}",
+        f"Last Button Scan: {_observability_time(summary['button_health_last_scan_at'], user)}",
         "",
         "Recovery:",
         f"Backup Health: {summary['recovery_backup_health']}",
@@ -1125,22 +1134,34 @@ def render_ui_self_test_page(
 ) -> Screen:
     if run_now and actor is not None:
         run_ui_self_test(session, actor=actor)
+        run_button_issue_scan(session, actor=actor)
     latest = latest_ui_self_test_run(session)
+    button_health = button_health_summary(session)
+    recovery = recovery_risk_assessment(session)
+    recovery_issue_count = 0 if recovery.risk_level == "Low" else 1
     questions = recent_help_questions(session, limit=3)
     if latest is None:
         status = "Not Run Yet"
-        issues_found = 0
+        issues_found = button_health.open_issue_count + recovery_issue_count
         last_check = "Not run yet"
         summary = "Fortuna has not checked the Telegram screen renderers yet."
-        recommended_action = "Run the self-test now."
+        recommended_action = "Run the self-test now." if issues_found == 0 else "Review active recovery or button issues."
         systems_checked = 0
     else:
         failures = len(latest.failures_json or [])
         warnings = len(latest.warnings_json or [])
-        issues_found = failures + warnings
+        issues_found = failures + warnings + button_health.open_issue_count + recovery_issue_count
         systems_checked = latest.screens_checked
         last_check = format_user_datetime(actor, latest.created_at) if latest.created_at else "unknown time"
-        if failures:
+        if recovery.risk_level == "Critical":
+            status = "Critical"
+            summary = "Recovery needs setup before Fortuna can call the system fully safe."
+            recommended_action = recovery.next_best_move
+        elif button_health.open_issue_count:
+            status = "Needs Review"
+            summary = f"Fortuna found {button_health.open_issue_count} button or navigation issue(s)."
+            recommended_action = "Open Button Health."
+        elif failures:
             status = "Needs Attention"
             summary = f"Fortuna found {failures} screen failure{'s' if failures != 1 else ''}."
             recommended_action = "Open Technical Details and fix the first failed screen."
@@ -1154,7 +1175,7 @@ def render_ui_self_test_page(
             recommended_action = "No action needed."
 
     if not details:
-        marker = "🟢" if status == "Healthy" else "🟡" if status in {"Watch", "Not Run Yet"} else "🔴"
+        marker = "🟢" if status == "Healthy" else "🟡" if status in {"Watch", "Not Run Yet", "Needs Review"} else "🔴"
         return Screen(
             text="\n".join(
                 [
@@ -1211,6 +1232,21 @@ def render_ui_self_test_page(
             lines.append("")
             lines.append("Warnings:")
             lines.extend(f"- {item}" for item in latest.warnings_json[:5])
+    lines.extend(
+        [
+            "",
+            "Recovery Truth:",
+            f"Risk: {recovery.risk_score}/100 ({recovery.risk_level})",
+            f"Next: {recovery.next_best_move}",
+            "",
+            "Button and Navigation Health:",
+            f"Overall: {button_health.overall_label}",
+            f"Open Issues: {button_health.open_issue_count}",
+            f"Technical: {button_health.technical_issue_count}",
+            f"Navigation: {button_health.navigation_issue_count}",
+            f"UX: {button_health.ux_issue_count}",
+        ]
+    )
     lines.extend(["", "Recent Help Questions:"])
     if not questions:
         lines.append("- None yet")

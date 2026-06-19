@@ -33,6 +33,8 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_backup_run_page(session, user)
     if page == "recovery:history" and session is not None:
         return render_backup_history_page(session, user)
+    if page.startswith("recovery:storage"):
+        return render_backup_storage_page()
     if page == "recovery:restore:test" and session is not None:
         return render_restore_test_page(session, user)
     if page == "recovery:disaster_plan":
@@ -130,10 +132,24 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_performance_page(session, user)
     if page == "help":
         return render_help_center_page(user)
+    if page.startswith("help_from:"):
+        body = page.removeprefix("help_from:")
+        if ":topic:" in body:
+            source_page, topic = body.split(":topic:", 1)
+            return render_help_topic_page(topic, user, source_page=source_page)
+        return render_help_center_page(user, source_page=body)
     if page.startswith("help:"):
         return render_help_topic_page(page.split(":", 1)[1], user)
     if page == "help_copilot" and session is not None:
         return render_help_copilot_page(session, user)
+    if page.startswith("help_copilot_from:") and session is not None:
+        body = page.removeprefix("help_copilot_from:")
+        if ":question:" in body:
+            source_page, question = body.split(":question:", 1)
+            return render_help_copilot_page(session, user, question=question, source_page=source_page)
+        return render_help_copilot_page(session, user, source_page=body)
+    if page.startswith("help_copilot:question:") and session is not None:
+        return render_help_copilot_page(session, user, question=page.split(":question:", 1)[1])
     if page.startswith("help_copilot:") and session is not None:
         return render_help_copilot_page(session, user, question=page.split(":", 1)[1])
     if page == "notification_group_pilot" and session is not None:

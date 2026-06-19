@@ -66,7 +66,8 @@ def test_observability_does_not_show_storage_warning_when_truth_is_healthy(monke
         screen = render_production_observability_page(session, owner)
         details = render_production_observability_page(session, owner, details=True)
 
-        assert "Status:\nHealthy" in screen.text
+        assert "Production Status" in screen.text
+        assert "Recovery" in screen.text
         assert "PostgreSQL is durable" in screen.text
         assert "Redis is healthy" in screen.text
         assert "One bot instance is active" in screen.text
@@ -194,5 +195,5 @@ def test_historical_production_issue_does_not_appear_as_active_current_health(mo
         screen = render_production_observability_page(session, owner)
 
         assert "Production instability" not in screen.text
-        assert "Everything is running" in screen.text
+        assert "Operations are running" in screen.text
         assert session.query(IntelligenceSignal).one().status == "resolved"

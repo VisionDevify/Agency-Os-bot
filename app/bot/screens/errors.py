@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.bot.menu import callback_for, page_controls
 from app.bot.screens.formatting import Screen
 from app.models.user import User
+from app.services.button_health import button_health_summary, run_button_issue_scan
 from app.services.callbacks import callback_failure_review, latest_callback_error, run_callback_health_smoke_test
 from app.services.team_operations import format_user_datetime
 
@@ -126,33 +127,31 @@ def render_button_health_report_page(
 ) -> Screen:
     if user is None:
         return Screen(text="Button Health Report\n\nOwner access required.", reply_markup=page_controls_markup("settings"))
-    report = run_callback_health_smoke_test(session, actor=user)
+    health = run_button_issue_scan(session, actor=user) if run_now or not details else button_health_summary(session)
     review = callback_failure_review(session, limit=3)
     if not details:
-        issues_found = len(report.failing) + len(review.items)
-        if issues_found == 0:
-            status = "Healthy"
-            summary = "Fortuna did not find any critical button or screen issues."
-            recommended_action = "No action needed."
-        else:
-            status = "Needs Attention"
-            summary = f"Fortuna found {issues_found} screen or button issue{'s' if issues_found != 1 else ''}."
-            recommended_action = "Open Technical Details, then fix the highest-impact failure first."
+        title = "🟢 Button Health" if health.open_issue_count == 0 else "🟡 Button Health"
+        technical = "✅ No crashes found." if health.technical_issue_count == 0 else f"⚠ {health.technical_issue_count} technical issue(s)."
+        navigation = "✅ Navigation looks clear." if health.navigation_issue_count == 0 else f"⚠ {health.navigation_issue_count} path(s) need review."
+        ux = "✅ Button labels look clear." if health.ux_issue_count == 0 else f"⚠ {health.ux_issue_count} confusing button(s) found."
+        recommended_action = "No action needed." if health.open_issue_count == 0 else "Review button issues."
         last_check = format_user_datetime(user, datetime.now(UTC))
         return Screen(
             text="\n".join(
                 [
-                    "🟢 Fortuna Self-Test" if issues_found == 0 else "🟡 Fortuna Self-Test",
+                    title,
                     "",
-                    "Status:",
-                    status,
+                    "Technical:",
+                    technical,
                     "",
-                    f"Systems Checked: {len(report.working)}",
-                    f"Issues Found: {issues_found}",
+                    "Navigation:",
+                    navigation,
+                    "",
+                    "UX:",
+                    ux,
+                    "",
+                    f"Issues Found: {health.open_issue_count}",
                     f"Last Check: {last_check}",
-                    "",
-                    "Summary:",
-                    summary,
                     "",
                     "Recommended Action:",
                     recommended_action,
@@ -161,21 +160,35 @@ def render_button_health_report_page(
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
                     [InlineKeyboardButton(text="Run Again", callback_data=callback_for("button_health:run"))],
+                    [InlineKeyboardButton(text="View Issues", callback_data=callback_for("button_health:details"))],
                     [InlineKeyboardButton(text="Technical Details", callback_data=callback_for("button_health:details"))],
                     *page_controls(back_to="settings"),
                 ]
             ),
         )
+    report = run_callback_health_smoke_test(session, actor=user)
+    health = button_health_summary(session)
     lines = [
         "Fortuna Self-Test Technical Details",
         "",
         "Automatic callback smoke test for non-destructive screen renderers.",
+        "",
+        f"Overall Button Status: {health.overall_label}",
+        f"Open Button Issues: {health.open_issue_count}",
+        f"Technical Issues: {health.technical_issue_count}",
+        f"Navigation Issues: {health.navigation_issue_count}",
+        f"UX Issues: {health.ux_issue_count}",
         "",
         f"Health Score: {report.score}%",
         f"Working: {len(report.working)}",
         f"Failing: {len(report.failing)}",
         f"Untested: {len(report.untested)}",
     ]
+    if health.issues:
+        lines.extend(["", "Open Button Issues:"])
+        for issue in health.issues[:8]:
+            lines.append(f"- {issue.screen}: {issue.issue_type} ({issue.severity})")
+            lines.append(f"  Evidence: {issue.evidence_summary}")
     lines.extend(
         [
             "",

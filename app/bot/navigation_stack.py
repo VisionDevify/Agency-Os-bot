@@ -32,6 +32,14 @@ def parent_page_for(page: str | None) -> str:
     current = page or ROOT_SCREEN
     if current in ROOT_LEVEL_SCREENS:
         return ROOT_SCREEN
+    if current.startswith("help_from:"):
+        body = current.removeprefix("help_from:")
+        return body.split(":topic:", 1)[0] if body else "help"
+    if current.startswith("help_copilot_from:"):
+        body = current.removeprefix("help_copilot_from:")
+        return body.split(":question:", 1)[0] if body else "help"
+    if current.startswith("help:") or current.startswith("help_copilot:"):
+        return "help"
     if current in MORE_CHILDREN:
         return "owner_advanced"
     if current.startswith("intelligence:trends"):
@@ -80,6 +88,8 @@ def root_page_for(page: str | None) -> str:
         return "owner_advanced"
     if current.startswith(("proxy:", "proxies:")):
         return "proxies"
+    if current.startswith(("help_from:", "help_copilot_from:")):
+        return parent_page_for(current)
     if current.startswith(("setup:", "model:", "account:", "accounts:")):
         return "setup_progress"
     return ROOT_SCREEN

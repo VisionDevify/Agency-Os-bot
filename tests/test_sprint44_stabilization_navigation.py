@@ -92,7 +92,7 @@ def test_integrity_and_observability_lead_with_summary_not_database_rows() -> No
         assert "audit row" not in integrity.text.casefold()
         assert "Production Check Technical Details" in integrity_details.text
         assert "Checks:" in integrity_details.text
-        assert "Production Observability" in observability.text
+        assert "Production Status" in observability.text
         assert "Alembic" not in observability.text
         assert "Audit Rows" not in observability.text
 

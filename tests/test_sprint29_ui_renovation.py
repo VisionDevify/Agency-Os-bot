@@ -171,5 +171,5 @@ def test_help_brain_new_ui_answers_and_observability_time() -> None:
         assert advanced.next_action == "owner_advanced"
 
         observability = render_production_observability_page(session, owner)
-        assert "Production Observability" in observability.text
+        assert "Production Status" in observability.text
         assert re.search(r"\d{4}-\d{2}-\d{2}T", observability.text) is None

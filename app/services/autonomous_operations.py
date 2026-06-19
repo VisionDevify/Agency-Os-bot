@@ -14,6 +14,7 @@ from app.services.events import emit_event
 from app.services.permissions import RoleName
 from app.services.recommendations import generate_recommendations, upsert_recommendation
 from app.services.system_truth import reconcile_stale_system_warnings
+from app.services.button_health import run_button_issue_scan
 
 def _now() -> datetime:
     return datetime.now(UTC)
@@ -538,6 +539,7 @@ def run_daily_autonomous_cycle(session: Session, *, actor: User) -> OperationsWo
     )
     steps = [
         ("truth_reconciliation", lambda: reconcile_stale_system_warnings(session, actor=actor)),
+        ("button_navigation_scan", lambda: run_button_issue_scan(session, actor=actor)),
         ("readiness_scan", lambda: run_readiness_autopilot(session, actor=actor)),
         ("recommendation_refresh", lambda: generate_recommendations(session, actor=actor)),
     ]

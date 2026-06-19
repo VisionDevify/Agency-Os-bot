@@ -238,8 +238,10 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
     if (
         page == "help"
         or page.startswith("help:")
+        or page.startswith("help_from:")
         or page == "help_copilot"
         or page.startswith("help_copilot:")
+        or page.startswith("help_copilot_from:")
         or page.startswith("help_feedback:")
     ):
         return None
@@ -1369,7 +1371,9 @@ def screen_for_page(
             "notification_digest",
         }
         or normalized.startswith("help:")
+        or normalized.startswith("help_from:")
         or normalized.startswith("help_copilot:")
+        or normalized.startswith("help_copilot_from:")
         or normalized.startswith("help_feedback:")
         or normalized.startswith("team_qa:")
         or normalized.startswith("notification_digest:")

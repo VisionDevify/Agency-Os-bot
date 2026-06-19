@@ -16,10 +16,12 @@ def _recovery_menu(*, back_to: str = "owner_advanced") -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Run Backup", callback_data=callback_for("recovery:backup:run"))],
+            [InlineKeyboardButton(text="📦 Backup Storage", callback_data=callback_for("recovery:storage"))],
             [InlineKeyboardButton(text="📦 Backup History", callback_data=callback_for("recovery:history"))],
             [InlineKeyboardButton(text="🧪 Test Restore", callback_data=callback_for("recovery:restore:test"))],
             [InlineKeyboardButton(text="🚨 Disaster Plan", callback_data=callback_for("recovery:disaster_plan"))],
             [InlineKeyboardButton(text="🔎 Details", callback_data=callback_for("recovery:details"))],
+            [InlineKeyboardButton(text="❓ Help", callback_data=callback_for("help_from:recovery_center"))],
             *page_controls(back_to=back_to),
         ]
     )
@@ -90,18 +92,23 @@ def render_recovery_center_page(session: Session, user: User | None = None, *, d
 
 def render_backup_run_page(session: Session, user: User | None = None) -> Screen:
     run = run_backup(session, actor=user)
-    status = "✅ Backup recorded" if run.status == "succeeded" else "🟡 Backup needs attention"
+    status = "✅ Backup verified" if run.status in {"success", "succeeded"} else "🟡 Backup needs action"
+    next_step = (
+        "Run a restore test."
+        if run.status in {"success", "succeeded"}
+        else run.error_summary or run.result_summary or "Review backup storage and run a manual export."
+    )
     lines = [
         "🔄 Run Backup",
         "",
         status,
         "",
-        f"Status: {run.status.title()}",
+        f"Status: {run.status.replace('_', ' ').title()}",
         f"Encrypted: {'yes' if run.encrypted else 'no'}",
         f"Checksum: {'recorded' if run.checksum else 'not recorded'}",
         "",
         "Next:",
-        "Run a restore test." if run.status == "succeeded" else (run.error_summary or "Review backup configuration."),
+        next_step,
     ]
     return Screen("\n".join(lines), _recovery_menu(back_to="recovery_center"))
 
@@ -122,26 +129,62 @@ def render_backup_history_page(session: Session, user: User | None = None) -> Sc
 
 def render_restore_test_page(session: Session, user: User | None = None) -> Screen:
     test = run_restore_test(session, actor=user)
-    if test.status == "verified":
+    if test.status == "not_available":
+        title = "🧪 Restore Test"
+        summary = test.error_summary or "No backup is available yet."
+        next_step = "Run your first backup."
+    elif test.status == "verified_only":
         title = "🧪 Restore test readiness"
-        summary = "Fortuna verified the backup file metadata, but no test restore database is configured yet."
-    elif test.status == "succeeded":
+        summary = "Fortuna verified the backup file, but full restore testing needs a test database."
+        next_step = "Configure a restore-test database for a full restore drill."
+    elif test.status in {"passed", "succeeded"}:
         title = "✅ Restore tested"
         summary = test.result_summary or "Restore test completed."
+        next_step = "Nothing urgent."
     else:
         title = "🟡 Restore test needs attention"
         summary = test.error_summary or test.result_summary or "Restore readiness could not be verified."
+        next_step = "Review Recovery Center details."
     lines = [
         title,
         "",
-        f"Status: {test.status.title()}",
+        f"Status: {test.status.replace('_', ' ').title()}",
         "",
         summary,
         "",
         "Next:",
-        "Configure a restore-test database for a full restore drill." if test.status == "verified" else "Review Recovery Center details.",
+        next_step,
     ]
     return Screen("\n".join(lines), _recovery_menu(back_to="recovery_center"))
+
+
+def render_backup_storage_page() -> Screen:
+    lines = [
+        "📦 Backup Storage",
+        "",
+        "Status:",
+        "External storage is not connected yet.",
+        "",
+        "Why it matters:",
+        "If Railway breaks, external backups help restore Fortuna somewhere else.",
+        "",
+        "✨ Next Best Move",
+        "Choose a backup storage target.",
+        "",
+        "S3-Compatible and Backblaze B2 are prepared as placeholders until credentials are configured safely.",
+    ]
+    return Screen(
+        "\n".join(lines),
+        InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="☁️ S3-Compatible", callback_data=callback_for("recovery:storage:s3"))],
+                [InlineKeyboardButton(text="📦 Backblaze B2", callback_data=callback_for("recovery:storage:b2"))],
+                [InlineKeyboardButton(text="📁 Manual Export", callback_data=callback_for("recovery:storage:manual"))],
+                [InlineKeyboardButton(text="🔎 Details", callback_data=callback_for("recovery:details"))],
+                *page_controls(back_to="recovery_center"),
+            ]
+        ),
+    )
 
 
 def render_disaster_plan_page(*, details: bool = False) -> Screen:

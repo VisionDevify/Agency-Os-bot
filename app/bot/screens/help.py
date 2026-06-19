@@ -1,8 +1,15 @@
 from .formatting import *
 from app.services.help_brain import help_brain_answer, seed_help_knowledge_base
 
-def render_help_center_page(user: User | None = None) -> Screen:
-    buttons = [(label, f"nav:help:{topic}") for topic, label in help_topics_for_role(user)]
+def render_help_center_page(user: User | None = None, *, source_page: str | None = None) -> Screen:
+    if source_page:
+        buttons = [(label, f"nav:help_from:{source_page}:topic:{topic}") for topic, label in help_topics_for_role(user)]
+        back_to = source_page
+        ask_page = f"help_copilot_from:{source_page}"
+    else:
+        buttons = [(label, f"nav:help:{topic}") for topic, label in help_topics_for_role(user)]
+        back_to = "menu"
+        ask_page = "help_copilot"
     lines = [
         "\u2753 Ask Fortuna",
         "",
@@ -16,16 +23,22 @@ def render_help_center_page(user: User | None = None) -> Screen:
         "",
         "Fortuna will keep it short and point you to the next button.",
     ]
-    return Screen(text="\n".join(lines), reply_markup=help_center_menu(buttons))
+    return Screen(text="\n".join(lines), reply_markup=help_center_menu(buttons, back_to=back_to, ask_page=ask_page))
 
-def render_help_topic_page(topic: str, user: User | None = None) -> Screen:
+def render_help_topic_page(topic: str, user: User | None = None, *, source_page: str | None = None) -> Screen:
     title = dict(help_topics_for_role(user)).get(topic, topic.replace("_", " ").title())
     return Screen(
         text=f"{title}\n\n{help_text(topic, user)}",
-        reply_markup=page_menu(back_to="help"),
+        reply_markup=page_menu(back_to=source_page or "help"),
     )
 
-def render_help_copilot_page(session: Session, user: User | None = None, *, question: str | None = None) -> Screen:
+def render_help_copilot_page(
+    session: Session,
+    user: User | None = None,
+    *,
+    question: str | None = None,
+    source_page: str | None = None,
+) -> Screen:
     seed_help_knowledge_base(session)
     prompts = {
         "where_start": "Where do I start?",
@@ -68,7 +81,8 @@ def render_help_copilot_page(session: Session, user: User | None = None, *, ques
         "no_auto_posting": "Does Fortuna comment or follow automatically?",
     }
     if question:
-        result = help_brain_answer(session, user, question=prompts.get(question, question), current_page="help")
+        current_page = source_page or "help"
+        result = help_brain_answer(session, user, question=prompts.get(question, question), current_page=current_page)
         lines = [
             "\u2753 Ask Fortuna",
             "",
@@ -77,7 +91,14 @@ def render_help_copilot_page(session: Session, user: User | None = None, *, ques
             "Next Button",
             "Open Next Step",
         ]
-        return Screen(text="\n".join(lines), reply_markup=help_feedback_menu(result.log_id, next_action=result.next_action))
+        return Screen(
+            text="\n".join(lines),
+            reply_markup=help_feedback_menu(
+                result.log_id,
+                next_action=result.next_action,
+                back_to=f"help_copilot_from:{source_page}" if source_page else "help_copilot",
+            ),
+        )
     else:
         lines = [
             "\u2753 Ask Fortuna",
@@ -90,5 +111,11 @@ def render_help_copilot_page(session: Session, user: User | None = None, *, ques
             "",
             "Ready when you are.",
         ]
-    return Screen(text="\n".join(lines), reply_markup=help_copilot_menu())
+    return Screen(
+        text="\n".join(lines),
+        reply_markup=help_copilot_menu(
+            back_to=source_page or "help",
+            prefix=f"help_copilot_from:{source_page}" if source_page else "help_copilot",
+        ),
+    )
 
