@@ -206,3 +206,18 @@ def test_active_button_scan_detects_bad_back_target(monkeypatch) -> None:
 
         assert summary.navigation_issue_count > 0
         assert session.query(ButtonIssue).filter_by(issue_type="bad_back_target", status="open").count() > 0
+
+
+def test_button_scan_does_not_treat_callback_failure_as_back_button() -> None:
+    with session_scope() as session:
+        owner = _owner(session)
+        principal = _principal(owner)
+
+        settings = screen_for_page("settings", principal, session=session, user=owner)
+        summary = run_button_issue_scan(session, actor=owner)
+
+        assert _callback_for_label(settings, "Back") == "nav:owner_advanced"
+        assert _callback_for_label(settings, "Callback Failure Review") == "nav:callback_failure_review"
+        assert summary.technical_issue_count == 0
+        assert summary.navigation_issue_count == 0
+        assert summary.ux_issue_count == 0

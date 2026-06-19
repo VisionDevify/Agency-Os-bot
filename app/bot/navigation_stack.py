@@ -8,7 +8,6 @@ ROOT_LEVEL_SCREENS = {
     "start_here",
     "today_priorities",
     "setup_progress",
-    "first_workspace",
     "proxies",
     "opportunities",
     "help",
@@ -38,8 +37,20 @@ def parent_page_for(page: str | None) -> str:
     if current.startswith("help_copilot_from:"):
         body = current.removeprefix("help_copilot_from:")
         return body.split(":question:", 1)[0] if body else "help"
+    if current == "help_copilot":
+        return "help"
     if current.startswith("help:") or current.startswith("help_copilot:"):
         return "help"
+    if current in {"ui_self_test", "ui_self_test:run", "ui_self_test:details"}:
+        return "settings"
+    if current in {"callback_failure_review", "debug_last_error", "production_status"}:
+        return "settings"
+    if current in {"models:list", "models:dashboard", "models:search"}:
+        return "models"
+    if current == "first_workspace":
+        return "start_here"
+    if current == "coo:readiness":
+        return "agency_activation"
     if current in MORE_CHILDREN:
         return "owner_advanced"
     if current.startswith("intelligence:trends"):

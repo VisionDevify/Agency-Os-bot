@@ -963,7 +963,7 @@ def render_opportunity_list_page(session: Session) -> Screen:
         lines.append(f"   Platform: {opportunity.platform} | Score: {opportunity.score} | Status: {opportunity.status}")
         lines.append(f"   Niche: {opportunity.niche or 'not set'}")
         buttons.append((f"{opportunity.id}. {opportunity.title[:36]}", f"nav:opportunity:{opportunity.id}"))
-    return Screen(text="\n".join(lines), reply_markup=opportunities_menu(buttons))
+    return Screen(text="\n".join(lines), reply_markup=opportunities_menu(buttons, back_to="opportunities"))
 
 def render_opportunity_detail_page(session: Session, opportunity_id: int) -> Screen:
     opportunity = get_opportunity(session, opportunity_id)

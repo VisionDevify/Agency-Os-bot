@@ -196,7 +196,7 @@ def render_olympix_proxy_paste_page(session: Session | None = None) -> Screen:
                         "Open Production Observability, then /integrity and /botstatus.",
                     ]
                 ),
-                reply_markup=page_menu(back_to="proxies:add"),
+                reply_markup=page_menu(back_to="proxies"),
             )
     return Screen(
         text="\n".join(
@@ -220,7 +220,7 @@ def render_olympix_proxy_paste_page(session: Session | None = None) -> Screen:
                 "The password is encrypted immediately and never shown again.",
             ]
         ),
-        reply_markup=page_menu(back_to="proxies:add"),
+        reply_markup=page_menu(back_to="proxies"),
     )
 
 
@@ -240,7 +240,17 @@ def render_proxy_list_page(session: Session) -> Screen:
                 "host:port:username:password",
             ]
         )
-        return Screen(text="\n".join(lines), reply_markup=proxies_menu())
+        return Screen(
+            text="\n".join(lines),
+            reply_markup=choice_menu(
+                [
+                    ("Paste Proxy", "nav:proxies:olympix:paste"),
+                    ("How Rotation Works", "nav:proxies:rotation_help"),
+                    ("Help", "nav:help_copilot:add_proxy"),
+                ],
+                back_to="proxies",
+            ),
+        )
     lines.append(f"{len(proxies)} real {'proxy' if len(proxies) == 1 else 'proxies'} saved.")
     lines.extend(["", "Next:", "Assign a proxy to an account.", ""])
     for index, proxy in enumerate(proxies[:10], start=1):

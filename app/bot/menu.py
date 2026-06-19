@@ -1103,7 +1103,7 @@ def playbook_detail_menu(playbook_id: int) -> InlineKeyboardMarkup:
     )
 
 
-def opportunities_menu(opportunity_buttons: list[tuple[str, str]] | None = None) -> InlineKeyboardMarkup:
+def opportunities_menu(opportunity_buttons: list[tuple[str, str]] | None = None, *, back_to: str = "menu") -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(text=label, callback_data=callback)] for label, callback in (opportunity_buttons or [])]
     rows.extend(
         [
@@ -1129,7 +1129,7 @@ def opportunities_menu(opportunity_buttons: list[tuple[str, str]] | None = None)
             ],
         ]
     )
-    rows.extend(page_controls(back_to="menu"))
+    rows.extend(page_controls(back_to=back_to))
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

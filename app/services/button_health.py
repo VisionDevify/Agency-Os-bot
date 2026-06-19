@@ -75,13 +75,17 @@ def _callbacks_from_markup(markup) -> list[tuple[str, str]]:
 
 
 def _has_home(callbacks: Iterable[tuple[str, str]]) -> bool:
-    return any(label in {"Main Menu", "Home", "🏠 Home"} or callback_page(data) == "menu" for label, data in callbacks)
+    for label, data in callbacks:
+        normalized = label.strip().casefold()
+        if callback_page(data) == "menu" or normalized in {"main menu", "home"}:
+            return True
+    return False
 
 
 def _back_target(callbacks: Iterable[tuple[str, str]]) -> str | None:
     for label, data in callbacks:
-        normalized = label.lower()
-        if "back" in normalized or "🔙" in label:
+        normalized = label.strip().casefold()
+        if normalized == "back" or normalized.startswith("back "):
             return callback_page(data)
     return None
 
@@ -403,3 +407,4 @@ def run_button_issue_scan(session: Session, *, actor: User | None) -> ButtonHeal
         },
     )
     return summary
+
