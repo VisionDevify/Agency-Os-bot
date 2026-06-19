@@ -295,7 +295,7 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         return ("manage_reports", "manage_tasks", "manage_chatter_team")
     if page.startswith("creator:") or page.startswith("post:"):
         return ("manage_reports", "manage_tasks", "manage_chatter_team")
-    if page.startswith("opportunities") or page.startswith("opportunity:"):
+    if page.startswith("opportunities") or page.startswith("opportunity:") or page.startswith("social_score:"):
         return ("manage_reports", "manage_tasks", "view_chatter_dashboard", "view_dashboard")
     if (
         page.startswith("automations:")
@@ -711,8 +711,7 @@ def _perform_admin_action(
     if page == "opportunities:add":
         return None
     if page == "opportunities:score":
-        run_opportunity_scoring(session, actor=actor)
-        return "opportunities:list"
+        return None
     if len(parts) >= 3 and parts[0] == "opportunity" and parts[1].isdigit():
         opportunity = get_opportunity(session, int(parts[1]))
         if opportunity is None:
@@ -1269,6 +1268,7 @@ def screen_for_page(
         or normalized.startswith("playbook:")
         or normalized.startswith("opportunities")
         or normalized.startswith("opportunity:")
+        or normalized.startswith("social_score:")
         or normalized.startswith("creator:")
         or normalized.startswith("post:")
         or normalized.startswith("automations:")

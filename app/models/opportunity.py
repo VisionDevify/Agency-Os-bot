@@ -164,6 +164,10 @@ class CreatorWatch(TimestampMixin, Base):
             "assigned_group in ('hq', 'ops', 'alerts')",
             name="ck_creator_watches_assigned_group",
         ),
+        CheckConstraint(
+            "historical_score >= 0 and historical_score <= 100",
+            name="ck_creator_watches_historical_score",
+        ),
         Index("ix_creator_watches_platform", "platform"),
         Index("ix_creator_watches_creator_username", "creator_username"),
         Index("ix_creator_watches_niche", "niche"),
@@ -174,6 +178,8 @@ class CreatorWatch(TimestampMixin, Base):
         Index("ix_creator_watches_assigned_chatter_id", "assigned_chatter_id"),
         Index("ix_creator_watches_alert_enabled", "alert_enabled"),
         Index("ix_creator_watches_assigned_group", "assigned_group"),
+        Index("ix_creator_watches_historical_score", "historical_score"),
+        Index("ix_creator_watches_last_useful_post_at", "last_useful_post_at"),
         Index("ix_creator_watches_is_active", "is_active"),
         Index("ix_creator_watches_is_demo", "is_demo"),
     )
@@ -198,6 +204,9 @@ class CreatorWatch(TimestampMixin, Base):
     alert_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     alert_priority: Mapped[str] = mapped_column(String(40), default="normal", nullable=False)
     assigned_group: Mapped[str] = mapped_column(String(40), default="alerts", nullable=False)
+    watch_reason: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    historical_score: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_useful_post_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text(), nullable=True)
     status: Mapped[str] = mapped_column(String(40), default="active", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)

@@ -108,6 +108,13 @@ HELP_KB_SEEDS: tuple[dict[str, str], ...] = (
         "related_route": "opportunities:command",
     },
     {
+        "topic": "social_opportunity_intelligence",
+        "title": "Social Opportunity Intelligence",
+        "role_scope": "owner,admin,manager,chatter",
+        "content": "Use manual URLs, official APIs, approved exports, or approved captures only. Fortuna scores public opportunities and suggests angles; humans approve and post manually.",
+        "related_route": "opportunities:score",
+    },
+    {
         "topic": "tasks",
         "title": "Tasks",
         "role_scope": "all",
@@ -201,6 +208,10 @@ def detect_help_intent(question: str) -> str:
     text = question.casefold()
     if "creator alert" in text or ("creator" in text and "alert" in text):
         return "creator_alerts"
+    if "social" in text and ("opportunity" in text or "intelligence" in text):
+        return "social_opportunity_intelligence"
+    if "auto" in text and ("post" in text or "comment" in text):
+        return "no_auto_posting"
     if "explain this screen" in text or "what is this screen" in text:
         return "explain_screen"
     if "availability" in text:
@@ -526,6 +537,13 @@ def help_brain_answer(
         article = _article(session, "opportunity_workflow")
         answer = article.content if article else "Use opportunities from your role workspace and record the result."
         next_action = "my_opportunities" if "Chatter" in _role_names(user) else "opportunities:command"
+    elif intent == "social_opportunity_intelligence":
+        article = _article(session, "social_opportunity_intelligence")
+        answer = article.content if article else "Use compliant data only. Fortuna scores opportunities for human review and never posts automatically."
+        next_action = "opportunities:score"
+    elif intent == "no_auto_posting":
+        answer = "Fortuna does not auto-post, auto-comment, like, follow, evade limits, or scrape private data. It only prepares advisory work for human review."
+        next_action = "opportunities:score"
     elif intent == "complete_task":
         article = _article(session, "tasks")
         answer = article.content if article else "Open My Tasks, start the task, then complete it when done."

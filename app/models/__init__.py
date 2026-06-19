@@ -39,6 +39,13 @@ from app.models.reporting import (
     NotificationRoutingConfig,
     NotificationTarget,
 )
+from app.models.social import (
+    SocialOpportunityScore,
+    SocialPost,
+    SocialSignal,
+    SocialSource,
+    SocialSourcePerformance,
+)
 from app.models.system import SystemHeartbeat
 from app.models.task import Task
 from app.models.team_rollout import (
@@ -114,6 +121,11 @@ __all__ = [
     "RolePermission",
     "SystemHeartbeat",
     "SetupWizardState",
+    "SocialOpportunityScore",
+    "SocialPost",
+    "SocialSignal",
+    "SocialSource",
+    "SocialSourcePerformance",
     "Task",
     "TeamOnboardingChecklist",
     "TrendSnapshot",

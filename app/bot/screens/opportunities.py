@@ -1,9 +1,18 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from app.bot.menu import page_controls
+from app.bot.menu import callback_for, page_controls
 
 from .formatting import *
 from app.models.opportunity import CreatorPostAlert, OwnPostAlert
+from app.models.social import SocialOpportunityScore
+from app.services.social_intelligence import (
+    best_social_opportunities,
+    create_opportunity_from_social_score,
+    engagement_strategies_for_score,
+    official_api_adapter_status,
+    record_social_outcome,
+    social_notification_framework_status,
+)
 
 def render_opportunities_home(session: Session | None = None) -> Screen:
     opportunities = list_opportunities(session, limit=5) if session is not None else []
@@ -22,6 +31,140 @@ def render_opportunities_home(session: Session | None = None) -> Screen:
         lines.append(f"   Platform: {opportunity.platform} | Score: {opportunity.score} | Status: {opportunity.status}")
         buttons.append((f"{opportunity.id}. {opportunity.title[:36]}", f"nav:opportunity:{opportunity.id}"))
     return Screen(text="\n".join(lines), reply_markup=opportunities_menu(buttons))
+
+
+def _social_score_buttons(score: SocialOpportunityScore | None) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    if score is not None:
+        rows.extend(
+            [
+                [InlineKeyboardButton(text="Create Opportunity", callback_data=callback_for(f"social_score:{score.id}:create_opportunity"))],
+                [InlineKeyboardButton(text="Generate Comment Ideas", callback_data=callback_for(f"social_score:{score.id}:strategies"))],
+                [InlineKeyboardButton(text="Assign Chatter", callback_data=callback_for(f"social_score:{score.id}:assign"))],
+                [
+                    InlineKeyboardButton(text="Mark Skipped", callback_data=callback_for(f"social_score:{score.id}:skipped")),
+                    InlineKeyboardButton(text="Record Result", callback_data=callback_for(f"social_score:{score.id}:record_result")),
+                ],
+            ]
+        )
+    rows.extend(page_controls(back_to="opportunities"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def render_social_opportunity_intelligence_page(session: Session) -> Screen:
+    scores = best_social_opportunities(session, limit=5)
+    best = scores[0] if scores else None
+    framework = social_notification_framework_status(session)
+    adapter = official_api_adapter_status()
+    lines = [
+        "Social Opportunity Intelligence",
+        "",
+        f"Fortuna found {len(scores)} possible engagement opportunit{'y' if len(scores) == 1 else 'ies'}.",
+        "",
+    ]
+    if best is None:
+        lines.extend(
+            [
+                "Best Opportunity",
+                "Nothing scored yet.",
+                "",
+                "Next Best Move",
+                "Add a manual public URL/reference or import an approved export later.",
+                "",
+                "Compliance",
+                "Manual entry, official APIs, and approved exports only. No scraping or auto-posting.",
+            ]
+        )
+    else:
+        post = best.post
+        source = post.source
+        creator = f"@{source.creator_username}" if source else "Manual source"
+        lines.extend(
+            [
+                "Best Opportunity",
+                post.content_summary or post.post_reference,
+                "",
+                "Why it matters",
+                f"{creator} matched {post.niche or 'the selected niche'} with a score of {best.score}/100.",
+                "",
+                "Suggested angle",
+                best.suggested_engagement_angle or "curiosity",
+                "",
+                "Confidence",
+                best.confidence_summary or f"{best.confidence_score}/100",
+                "",
+                "Next Best Move",
+                "Assign for human review. Fortuna will not post.",
+            ]
+        )
+        if best.compliance_warning:
+            lines.extend(["", "Compliance warning", best.compliance_warning])
+    lines.extend(
+        [
+            "",
+            "Future data inputs",
+            f"- X official/API adapter: {adapter['x_official_api'].replace('_', ' ')}",
+            f"- Instagram official/API adapter: {adapter['instagram_official_api'].replace('_', ' ')}",
+            "- CSV/import: planned",
+            "- Approved manual capture: planned",
+            "",
+            "Notifications",
+            f"Social alert status: {framework['last_social_alert_status']}",
+        ]
+    )
+    return Screen("\n".join(lines), _social_score_buttons(best))
+
+
+def render_social_score_strategies_page(session: Session, score_id: int) -> Screen:
+    score = session.get(SocialOpportunityScore, score_id)
+    if score is None:
+        return Screen("Social opportunity not found.", page_menu(back_to="opportunities:score"))
+    strategies = engagement_strategies_for_score(score)
+    lines = [
+        "Comment Ideas",
+        "",
+        "Human review only. Fortuna will never post these automatically.",
+        "",
+    ]
+    for strategy in strategies:
+        lines.append(strategy.angle.title())
+        lines.append(strategy.sample)
+        lines.append(f"Why: {strategy.why}")
+        lines.append(f"Risk: {strategy.risk}")
+        lines.append("")
+    return Screen("\n".join(lines).strip(), page_menu(back_to="opportunities:score"))
+
+
+def render_social_score_action_page(session: Session, score_id: int, action: str, user: User | None = None) -> Screen:
+    score = session.get(SocialOpportunityScore, score_id)
+    if score is None:
+        return Screen("Social opportunity not found.", page_menu(back_to="opportunities:score"))
+    if action == "create_opportunity":
+        opportunity = create_opportunity_from_social_score(session, score, actor=user)
+        return render_opportunity_detail_page(session, opportunity.id)
+    if action == "strategies":
+        return render_social_score_strategies_page(session, score_id)
+    if action == "assign":
+        if score.opportunity_id is None:
+            return Screen(
+                "Create the opportunity first, then assign it to a chatter for human review.",
+                page_menu(back_to="opportunities:score"),
+            )
+        return render_opportunity_assignment_page(session, score.opportunity_id)
+    if action == "skipped":
+        record_social_outcome(session, score, actor=user, outcome="skipped", notes="Skipped from Telegram dashboard.")
+        return Screen(
+            "Skipped\n\nFortuna recorded this outcome and will learn from it.",
+            page_menu(back_to="opportunities:score"),
+        )
+    if action == "record_result":
+        if score.opportunity_id is None:
+            return Screen(
+                "Create the opportunity first, then record the result after human review.",
+                page_menu(back_to="opportunities:score"),
+            )
+        return render_opportunity_result_status_page(session, score.opportunity_id)
+    return render_social_opportunity_intelligence_page(session)
 
 def render_creator_intake_page(session: Session, page: str) -> Screen:
     parts = page.split(":")
@@ -200,6 +343,9 @@ def render_creator_watch_detail_page(session: Session, creator_id: int) -> Scree
         f"Assigned Model: {creator.assigned_model.display_name if creator.assigned_model else 'Unassigned'}",
         f"Assigned Chatter: {_identity(creator.assigned_chatter)}",
         f"Team ID: {creator.assigned_team_id or 'Unassigned'}",
+        f"Why Watch: {creator.watch_reason or 'Not set'}",
+        f"Historical Score: {creator.historical_score}/100",
+        f"Last Useful Post: {format_user_datetime(None, creator.last_useful_post_at) if creator.last_useful_post_at else 'Not yet'}",
         f"Status: {creator.status}",
         f"Active: {creator.is_active}",
         f"Created: {format_user_datetime(None, creator.created_at) if creator.created_at else 'Not set'}",

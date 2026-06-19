@@ -363,6 +363,8 @@ def create_creator_watch(
     alert_enabled: bool = True,
     alert_priority: str | None = None,
     assigned_group: str = "alerts",
+    watch_reason: str | None = None,
+    historical_score: int = 0,
     notes: str | None = None,
     is_demo: bool = False,
 ) -> CreatorWatch:
@@ -390,6 +392,8 @@ def create_creator_watch(
         alert_enabled=alert_enabled,
         alert_priority=effective_alert_priority,
         assigned_group=assigned_group,
+        watch_reason=watch_reason,
+        historical_score=_clamp_score(historical_score),
         notes=notes,
         status="active",
         is_active=True,
