@@ -1065,7 +1065,7 @@ def _perform_admin_action(
             chat_id=chat_id,
             chat_title=chat_title,
             target_type=target_type,
-            purpose="testing",
+            purpose="hq",
         )
         return f"notification_target:{target.id}"
     if len(parts) >= 3 and parts[0] == "notification_target" and parts[1].isdigit():

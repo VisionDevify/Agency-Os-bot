@@ -78,7 +78,7 @@ def test_register_current_chat_target_masks_chat_id_and_maps_purpose() -> None:
         assert target.target_type == "telegram_group"
         assert mask_target_chat_id(target).startswith("-1")
         assert "-100123456789" not in screen.text
-        assert "Testing Sandbox: Configured" in screen.text
+        assert "Fortuna HQ: Configured" in screen.text
 
 
 def test_notification_routing_smoke_test_records_sandbox_and_simulated_routes() -> None:
@@ -105,8 +105,8 @@ def test_notification_routing_smoke_test_records_sandbox_and_simulated_routes() 
         screen = render_notification_routing_test_page(session)
 
         attempts = session.query(NotificationDeliveryAttempt).order_by(NotificationDeliveryAttempt.id).all()
-        assert "Testing Sandbox" in result.actual_sends
-        assert any("Operations: simulated only" == item for item in result.skipped)
+        assert "Fortuna HQ" in result.actual_sends
+        assert any("Fortuna Ops: simulated only" == item for item in result.skipped)
         assert sorted(attempt.status for attempt in attempts) == ["pending", "skipped"]
         assert "HQ" in screen.text
         assert "Raw chat IDs are never shown" in screen.text
@@ -218,5 +218,5 @@ def test_notification_group_setup_callback_renders_for_owner() -> None:
         screen = screen_for_page("notification_group_setup", principal, session=session, user=owner)
 
         assert "Notification Group Setup" in screen.text
-        assert "Fortuna OS - HQ" in screen.text
-        assert notification_group_setup_status(session)[0].label == "HQ"
+        assert "Fortuna HQ" in screen.text
+        assert notification_group_setup_status(session)[0].label == "Fortuna HQ"

@@ -11,6 +11,8 @@ OPPORTUNITY_STATUSES = ("discovered", "reviewing", "approved", "assigned", "comp
 OPPORTUNITY_PRIORITIES = ("low", "normal", "high", "critical")
 OPPORTUNITY_SOURCE_TYPES = ("manual", "creator_watch", "own_post")
 OPPORTUNITY_RESULT_STATUSES = ("not_posted", "posted", "skipped", "failed", "rejected")
+ALERT_GROUPS = ("hq", "ops", "alerts")
+ALERT_STATUSES = ("new", "reviewed", "archived")
 CREATOR_WATCH_PLATFORMS = ("x", "instagram", "other")
 CREATOR_WATCH_PRIORITIES = ("low", "normal", "high", "critical")
 CREATOR_WATCH_STATUSES = ("active", "disabled", "archived")
@@ -154,6 +156,14 @@ class CreatorWatch(TimestampMixin, Base):
             "status in ('active', 'disabled', 'archived')",
             name="ck_creator_watches_status",
         ),
+        CheckConstraint(
+            "alert_priority in ('low', 'normal', 'high', 'critical')",
+            name="ck_creator_watches_alert_priority",
+        ),
+        CheckConstraint(
+            "assigned_group in ('hq', 'ops', 'alerts')",
+            name="ck_creator_watches_assigned_group",
+        ),
         Index("ix_creator_watches_platform", "platform"),
         Index("ix_creator_watches_creator_username", "creator_username"),
         Index("ix_creator_watches_niche", "niche"),
@@ -162,6 +172,8 @@ class CreatorWatch(TimestampMixin, Base):
         Index("ix_creator_watches_assigned_model_id", "assigned_model_id"),
         Index("ix_creator_watches_assigned_team_id", "assigned_team_id"),
         Index("ix_creator_watches_assigned_chatter_id", "assigned_chatter_id"),
+        Index("ix_creator_watches_alert_enabled", "alert_enabled"),
+        Index("ix_creator_watches_assigned_group", "assigned_group"),
         Index("ix_creator_watches_is_active", "is_active"),
         Index("ix_creator_watches_is_demo", "is_demo"),
     )
@@ -183,6 +195,9 @@ class CreatorWatch(TimestampMixin, Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
+    alert_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    alert_priority: Mapped[str] = mapped_column(String(40), default="normal", nullable=False)
+    assigned_group: Mapped[str] = mapped_column(String(40), default="alerts", nullable=False)
     notes: Mapped[str | None] = mapped_column(Text(), nullable=True)
     status: Mapped[str] = mapped_column(String(40), default="active", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -190,6 +205,7 @@ class CreatorWatch(TimestampMixin, Base):
 
     assigned_model: Mapped["ModelBrand | None"] = relationship("ModelBrand", lazy="selectin")
     assigned_chatter: Mapped["User | None"] = relationship("User", foreign_keys=[assigned_chatter_id], lazy="selectin")
+    post_alerts: Mapped[list["CreatorPostAlert"]] = relationship(back_populates="creator_watch", lazy="selectin")
 
 
 class PostWatch(TimestampMixin, Base):
@@ -211,11 +227,22 @@ class PostWatch(TimestampMixin, Base):
             "attention_level in ('monitor', 'engage', 'urgent')",
             name="ck_post_watches_attention_level",
         ),
+        CheckConstraint(
+            "priority in ('low', 'normal', 'high', 'critical')",
+            name="ck_post_watches_priority",
+        ),
+        CheckConstraint(
+            "assigned_group in ('hq', 'ops', 'alerts')",
+            name="ck_post_watches_assigned_group",
+        ),
         Index("ix_post_watches_model_brand_id", "model_brand_id"),
         Index("ix_post_watches_account_id", "account_id"),
         Index("ix_post_watches_platform", "platform"),
         Index("ix_post_watches_status", "status"),
         Index("ix_post_watches_attention_level", "attention_level"),
+        Index("ix_post_watches_priority", "priority"),
+        Index("ix_post_watches_alert_enabled", "alert_enabled"),
+        Index("ix_post_watches_assigned_group", "assigned_group"),
         Index("ix_post_watches_assigned_chatter_id", "assigned_chatter_id"),
         Index("ix_post_watches_assigned_team_id", "assigned_team_id"),
         Index("ix_post_watches_created_at", "created_at"),
@@ -230,6 +257,9 @@ class PostWatch(TimestampMixin, Base):
     post_type: Mapped[str] = mapped_column(String(80), nullable=False)
     status: Mapped[str] = mapped_column(String(40), default="recent", nullable=False)
     attention_level: Mapped[str] = mapped_column(String(40), default="monitor", nullable=False)
+    priority: Mapped[str] = mapped_column(String(40), default="normal", nullable=False)
+    alert_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    assigned_group: Mapped[str] = mapped_column(String(40), default="alerts", nullable=False)
     assigned_chatter_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
@@ -241,6 +271,105 @@ class PostWatch(TimestampMixin, Base):
     model_brand: Mapped["ModelBrand"] = relationship("ModelBrand", lazy="selectin")
     account: Mapped["Account | None"] = relationship("Account", lazy="selectin")
     assigned_chatter: Mapped["User | None"] = relationship("User", foreign_keys=[assigned_chatter_id], lazy="selectin")
+    alerts: Mapped[list["OwnPostAlert"]] = relationship(back_populates="post_watch", lazy="selectin")
+
+
+class CreatorPostAlert(TimestampMixin, Base):
+    __tablename__ = "creator_post_alerts"
+    __table_args__ = (
+        CheckConstraint(
+            "platform in ('x', 'instagram', 'other')",
+            name="ck_creator_post_alerts_platform",
+        ),
+        CheckConstraint(
+            "priority in ('low', 'normal', 'high', 'critical')",
+            name="ck_creator_post_alerts_priority",
+        ),
+        CheckConstraint(
+            "assigned_group in ('hq', 'ops', 'alerts')",
+            name="ck_creator_post_alerts_assigned_group",
+        ),
+        CheckConstraint(
+            "status in ('new', 'reviewed', 'archived')",
+            name="ck_creator_post_alerts_status",
+        ),
+        Index("ix_creator_post_alerts_creator_watch_id", "creator_watch_id"),
+        Index("ix_creator_post_alerts_opportunity_id", "opportunity_id"),
+        Index("ix_creator_post_alerts_assigned_group", "assigned_group"),
+        Index("ix_creator_post_alerts_priority", "priority"),
+        Index("ix_creator_post_alerts_status", "status"),
+        Index("ix_creator_post_alerts_created_at", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    creator_watch_id: Mapped[int] = mapped_column(ForeignKey("creator_watches.id", ondelete="CASCADE"), nullable=False)
+    opportunity_id: Mapped[int | None] = mapped_column(ForeignKey("opportunities.id", ondelete="SET NULL"), nullable=True)
+    platform: Mapped[str] = mapped_column(String(40), nullable=False)
+    post_reference: Mapped[str] = mapped_column(String(500), nullable=False)
+    priority: Mapped[str] = mapped_column(String(40), default="normal", nullable=False)
+    assigned_group: Mapped[str] = mapped_column(String(40), default="alerts", nullable=False)
+    assigned_chatter_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    status: Mapped[str] = mapped_column(String(40), default="new", nullable=False)
+    suggested_angle: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    acknowledged_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    creator_watch: Mapped[CreatorWatch] = relationship(back_populates="post_alerts", lazy="selectin")
+    opportunity: Mapped["Opportunity | None"] = relationship("Opportunity", lazy="selectin")
+    assigned_chatter: Mapped["User | None"] = relationship("User", foreign_keys=[assigned_chatter_id], lazy="selectin")
+    acknowledged_by: Mapped["User | None"] = relationship("User", foreign_keys=[acknowledged_by_user_id], lazy="selectin")
+
+
+class OwnPostAlert(TimestampMixin, Base):
+    __tablename__ = "own_post_alerts"
+    __table_args__ = (
+        CheckConstraint(
+            "platform in ('x', 'instagram', 'other')",
+            name="ck_own_post_alerts_platform",
+        ),
+        CheckConstraint(
+            "priority in ('low', 'normal', 'high', 'critical')",
+            name="ck_own_post_alerts_priority",
+        ),
+        CheckConstraint(
+            "assigned_group in ('hq', 'ops', 'alerts')",
+            name="ck_own_post_alerts_assigned_group",
+        ),
+        CheckConstraint(
+            "status in ('new', 'reviewed', 'archived')",
+            name="ck_own_post_alerts_status",
+        ),
+        Index("ix_own_post_alerts_post_watch_id", "post_watch_id"),
+        Index("ix_own_post_alerts_opportunity_id", "opportunity_id"),
+        Index("ix_own_post_alerts_follow_up_task_id", "follow_up_task_id"),
+        Index("ix_own_post_alerts_assigned_group", "assigned_group"),
+        Index("ix_own_post_alerts_priority", "priority"),
+        Index("ix_own_post_alerts_status", "status"),
+        Index("ix_own_post_alerts_created_at", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    post_watch_id: Mapped[int] = mapped_column(ForeignKey("post_watches.id", ondelete="CASCADE"), nullable=False)
+    opportunity_id: Mapped[int | None] = mapped_column(ForeignKey("opportunities.id", ondelete="SET NULL"), nullable=True)
+    follow_up_task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id", ondelete="SET NULL"), nullable=True)
+    model_brand_id: Mapped[int | None] = mapped_column(ForeignKey("model_brands.id", ondelete="SET NULL"), nullable=True)
+    platform: Mapped[str] = mapped_column(String(40), nullable=False)
+    post_reference: Mapped[str] = mapped_column(String(500), nullable=False)
+    priority: Mapped[str] = mapped_column(String(40), default="normal", nullable=False)
+    assigned_group: Mapped[str] = mapped_column(String(40), default="alerts", nullable=False)
+    assigned_chatter_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    status: Mapped[str] = mapped_column(String(40), default="new", nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    acknowledged_by_user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    post_watch: Mapped[PostWatch] = relationship(back_populates="alerts", lazy="selectin")
+    opportunity: Mapped["Opportunity | None"] = relationship("Opportunity", lazy="selectin")
+    follow_up_task: Mapped["Task | None"] = relationship("Task", lazy="selectin")
+    model_brand: Mapped["ModelBrand | None"] = relationship("ModelBrand", lazy="selectin")
+    assigned_chatter: Mapped["User | None"] = relationship("User", foreign_keys=[assigned_chatter_id], lazy="selectin")
+    acknowledged_by: Mapped["User | None"] = relationship("User", foreign_keys=[acknowledged_by_user_id], lazy="selectin")
 
 
 class CommentStrategy(TimestampMixin, Base):

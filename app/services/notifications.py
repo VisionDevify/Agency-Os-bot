@@ -20,39 +20,50 @@ from app.services.permissions import RoleName
 from app.services.recommendations import upsert_recommendation
 
 NOTIFICATION_ROUTING_RULES: dict[str, tuple[str, ...]] = {
-    "briefing.generated": ("owner", "operations"),
-    "digest.generated": ("owner", "operations"),
-    "digest.sent": ("owner", "operations"),
-    "digest.failed": ("owner", "operations"),
-    "accountability.generated": ("operations",),
-    "incident.created.critical": ("owner", "incidents"),
-    "incident.escalated": ("owner", "incidents"),
-    "incident.resolved": ("operations",),
-    "task.assigned": ("operations",),
-    "task.escalated": ("operations", "owner"),
-    "task.overdue_detected": ("operations",),
-    "proxy.repair.failed": ("incidents", "automation_logs"),
-    "proxy.repair.succeeded": ("automation_logs",),
-    "deployment.event": ("testing", "owner"),
-    "automation.simulated": ("automation_logs",),
-    "intelligence.signal.critical": ("owner", "incidents", "operations"),
-    "creator_watch.created": ("operations",),
-    "creator.created": ("operations",),
-    "creator.assigned": ("operations",),
-    "opportunity.assigned": ("operations",),
-    "opportunity.high_priority": ("owner", "operations"),
-    "opportunity.created": ("operations",),
-    "opportunity.result_recorded": ("operations",),
-    "post_watch.created": ("operations",),
-    "opportunity.digest": ("operations",),
+    "briefing.generated": ("hq", "ops"),
+    "digest.generated": ("hq", "ops"),
+    "digest.sent": ("hq", "ops"),
+    "digest.failed": ("hq", "ops"),
+    "accountability.generated": ("ops",),
+    "incident.created.critical": ("hq", "ops"),
+    "incident.escalated": ("hq", "ops"),
+    "incident.resolved": ("ops",),
+    "task.assigned": ("ops",),
+    "task.escalated": ("ops", "hq"),
+    "task.overdue_detected": ("ops",),
+    "proxy.repair.failed": ("hq", "ops"),
+    "proxy.repair.succeeded": ("ops",),
+    "deployment.event": ("hq",),
+    "automation.simulated": ("ops",),
+    "intelligence.signal.critical": ("hq", "ops"),
+    "creator_watch.created": ("ops",),
+    "creator.created": ("ops",),
+    "creator.assigned": ("ops",),
+    "creator.post_alert": ("alerts",),
+    "own_post.alert": ("alerts",),
+    "opportunity.assigned": ("ops",),
+    "opportunity.high_priority": ("alerts", "hq"),
+    "opportunity.created": ("ops",),
+    "opportunity.result_recorded": ("ops",),
+    "post_watch.created": ("ops",),
+    "opportunity.digest": ("ops",),
 }
 
 PURPOSE_LABELS: dict[str, str] = {
-    "owner": "HQ",
-    "operations": "Operations",
-    "incidents": "Incidents",
-    "automation_logs": "Automation Logs",
-    "testing": "Testing Sandbox",
+    "hq": "Fortuna HQ",
+    "ops": "Fortuna Ops",
+    "alerts": "Fortuna Alerts",
+}
+
+PURPOSE_ALIASES: dict[str, tuple[str, ...]] = {
+    "hq": ("hq", "owner", "incidents", "testing"),
+    "ops": ("ops", "operations", "automation_logs"),
+    "alerts": ("alerts",),
+    "owner": ("hq", "owner"),
+    "operations": ("ops", "operations"),
+    "incidents": ("hq", "incidents"),
+    "automation_logs": ("ops", "automation_logs"),
+    "testing": ("hq", "testing"),
 }
 
 
@@ -120,6 +131,31 @@ def mask_target_chat_id(target: NotificationTarget) -> str:
     return mask_chat_id(decrypt_target_chat_id(target))
 
 
+def canonical_purpose(purpose: str) -> str:
+    if purpose in {"hq", "ops", "alerts"}:
+        return purpose
+    return {
+        "owner": "hq",
+        "incidents": "hq",
+        "testing": "hq",
+        "operations": "ops",
+        "automation_logs": "ops",
+    }.get(purpose, purpose)
+
+
+def purpose_aliases(purpose: str) -> tuple[str, ...]:
+    return PURPOSE_ALIASES.get(purpose, (purpose,))
+
+
+def expanded_purpose_set(purposes: tuple[str, ...] | list[str]) -> tuple[str, ...]:
+    expanded: list[str] = []
+    for purpose in purposes:
+        for alias in purpose_aliases(purpose):
+            if alias not in expanded:
+                expanded.append(alias)
+    return tuple(expanded)
+
+
 def list_notification_targets(session: Session, *, include_inactive: bool = True) -> list[NotificationTarget]:
     statement = select(NotificationTarget).order_by(NotificationTarget.id)
     if not include_inactive:
@@ -179,7 +215,7 @@ def create_placeholder_notification_target(session: Session, *, actor: User) -> 
         actor=actor,
         name=f"Notification Target {next_number + 1}",
         target_type="telegram_user",
-        purpose="testing",
+        purpose="hq",
         telegram_chat_id=None,
     )
 
@@ -191,7 +227,7 @@ def add_current_chat_as_target(
     chat_id: int,
     chat_title: str | None = None,
     target_type: str = "telegram_user",
-    purpose: str = "testing",
+    purpose: str = "hq",
 ) -> NotificationTarget:
     label = chat_title or f"Current Chat {str(chat_id)[-4:]}"
     return create_notification_target(
@@ -436,6 +472,20 @@ def target_purposes_for_event(event_type: str, *, severity: str | None = None) -
     return NOTIFICATION_ROUTING_RULES.get(event_type, ())
 
 
+def active_targets_for_purposes(session: Session, purposes: tuple[str, ...] | list[str]) -> list[NotificationTarget]:
+    expanded = expanded_purpose_set(tuple(purposes))
+    if not expanded:
+        return []
+    return list(
+        session.scalars(
+            select(NotificationTarget).where(
+                NotificationTarget.is_active.is_(True),
+                NotificationTarget.purpose.in_(expanded),
+            )
+        ).all()
+    )
+
+
 def active_targets_for_event(
     session: Session,
     event_type: str,
@@ -445,14 +495,7 @@ def active_targets_for_event(
     purposes = target_purposes_for_event(event_type, severity=severity)
     if not purposes:
         return []
-    return list(
-        session.scalars(
-            select(NotificationTarget).where(
-                NotificationTarget.is_active.is_(True),
-                NotificationTarget.purpose.in_(purposes),
-            )
-        ).all()
-    )
+    return active_targets_for_purposes(session, purposes)
 
 
 def build_notification_text(event_type: str, *, title: str | None = None, body: str | None = None) -> str:
@@ -482,18 +525,19 @@ def record_notification_routed(
 def notification_group_setup_status(session: Session) -> list[NotificationPurposeStatus]:
     rows: list[NotificationPurposeStatus] = []
     for purpose, label in PURPOSE_LABELS.items():
+        aliases = purpose_aliases(purpose)
         targets = list(
             session.scalars(
                 select(NotificationTarget).where(
                     NotificationTarget.is_active.is_(True),
-                    NotificationTarget.purpose == purpose,
+                    NotificationTarget.purpose.in_(aliases),
                 )
             ).all()
         )
         latest = session.scalar(
             select(NotificationDeliveryAttempt)
             .join(NotificationTarget)
-            .where(NotificationTarget.purpose == purpose)
+            .where(NotificationTarget.purpose.in_(aliases))
             .order_by(desc(NotificationDeliveryAttempt.attempted_at), desc(NotificationDeliveryAttempt.id))
             .limit(1)
         )
@@ -523,11 +567,12 @@ def run_notification_routing_smoke_test(
     failures: list[str] = []
 
     for purpose, label in PURPOSE_LABELS.items():
+        aliases = purpose_aliases(purpose)
         targets = list(
             session.scalars(
                 select(NotificationTarget).where(
                     NotificationTarget.is_active.is_(True),
-                    NotificationTarget.purpose == purpose,
+                    NotificationTarget.purpose.in_(aliases),
                 )
             ).all()
         )
@@ -536,14 +581,14 @@ def run_notification_routing_smoke_test(
             continue
         would_send.append(label)
         for target in targets:
-            if purpose == "testing" and send_testing:
+            if target.purpose == "testing" and send_testing:
                 create_delivery_attempt(
                     session,
                     target,
                     event_type="notification.routing_smoke_test",
                     actor=actor,
                     status="pending",
-                    metadata={"purpose": purpose, "smoke_test": True},
+                    metadata={"purpose": purpose, "target_purpose": target.purpose, "smoke_test": True},
                 )
                 actual_sends.append(label)
             else:
@@ -553,8 +598,8 @@ def run_notification_routing_smoke_test(
                     event_type="notification.routing_smoke_test",
                     actor=actor,
                     status="skipped",
-                    error_message="simulation only; no send outside Testing Sandbox",
-                    metadata={"purpose": purpose, "smoke_test": True, "simulated": True},
+                    error_message="simulation only; no send without owner confirmation",
+                    metadata={"purpose": purpose, "target_purpose": target.purpose, "smoke_test": True, "simulated": True},
                 )
                 skipped.append(f"{label}: simulated only")
 

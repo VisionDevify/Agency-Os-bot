@@ -261,8 +261,8 @@ def test_opportunity_notification_routing_records_delivery_attempts() -> None:
             severity="warning",
         )
 
-        assert len(attempts) == 2
-        assert session.query(NotificationDeliveryAttempt).count() == 2
+        assert len(attempts) == 1
+        assert session.query(NotificationDeliveryAttempt).count() == 1
         assert all(attempt.status == "pending" for attempt in attempts)
 
 

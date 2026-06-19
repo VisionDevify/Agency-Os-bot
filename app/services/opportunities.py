@@ -9,6 +9,7 @@ from app.models.account import Account
 from app.models.learning import OutcomeMemory
 from app.models.model_brand import ModelBrand, ModelBrandMember
 from app.models.opportunity import (
+    ALERT_GROUPS,
     CREATOR_WATCH_PLATFORMS,
     CREATOR_WATCH_PRIORITIES,
     CREATOR_WATCH_STATUSES,
@@ -18,6 +19,7 @@ from app.models.opportunity import (
     POST_WATCH_STATUSES,
     POST_WATCH_TYPES,
     CommentStrategy,
+    CreatorPostAlert,
     CreatorWatch,
     OPPORTUNITY_PLATFORMS,
     OPPORTUNITY_RESULT_STATUSES,
@@ -26,6 +28,7 @@ from app.models.opportunity import (
     Opportunity,
     OpportunityResult,
     OpportunitySource,
+    OwnPostAlert,
     PostWatch,
 )
 from app.models.reporting import NotificationDeliveryAttempt
@@ -35,7 +38,7 @@ from app.models.user import User
 from app.services.audit import sanitize_details
 from app.services.auth import USER_STATUS_ACTIVE, audit_action, user_has_permission
 from app.services.events import emit_event
-from app.services.notifications import active_targets_for_event, create_delivery_attempt
+from app.services.notifications import active_targets_for_event, active_targets_for_purposes, create_delivery_attempt
 from app.services.team_operations import get_or_create_availability
 
 
@@ -356,6 +359,9 @@ def create_creator_watch(
     assigned_model_id: int | None = None,
     assigned_team_id: int | None = None,
     assigned_chatter_id: int | None = None,
+    alert_enabled: bool = True,
+    alert_priority: str | None = None,
+    assigned_group: str = "alerts",
     notes: str | None = None,
     is_demo: bool = False,
 ) -> CreatorWatch:
@@ -364,6 +370,11 @@ def create_creator_watch(
         raise ValueError(f"Invalid creator platform: {platform}")
     if priority not in CREATOR_WATCH_PRIORITIES:
         raise ValueError(f"Invalid creator priority: {priority}")
+    effective_alert_priority = alert_priority or priority
+    if effective_alert_priority not in CREATOR_WATCH_PRIORITIES:
+        raise ValueError(f"Invalid creator alert priority: {effective_alert_priority}")
+    if assigned_group not in ALERT_GROUPS:
+        raise ValueError(f"Invalid alert group: {assigned_group}")
     creator = CreatorWatch(
         platform=platform,
         creator_name=creator_name.strip() or "Creator",
@@ -375,6 +386,9 @@ def create_creator_watch(
         assigned_model_id=assigned_model_id,
         assigned_team_id=assigned_team_id,
         assigned_chatter_id=assigned_chatter_id,
+        alert_enabled=alert_enabled,
+        alert_priority=effective_alert_priority,
+        assigned_group=assigned_group,
         notes=notes,
         status="active",
         is_active=True,
@@ -647,6 +661,9 @@ def create_post_watch(
     account_id: int | None = None,
     status: str = "recent",
     attention_level: str = "monitor",
+    priority: str | None = None,
+    alert_enabled: bool = True,
+    assigned_group: str = "alerts",
     assigned_chatter_id: int | None = None,
     assigned_team_id: int | None = None,
     notes: str | None = None,
@@ -661,6 +678,11 @@ def create_post_watch(
         raise ValueError(f"Invalid post watch type: {post_type}")
     if attention_level not in POST_WATCH_ATTENTION_LEVELS:
         raise ValueError(f"Invalid post attention level: {attention_level}")
+    effective_priority = priority or ("critical" if attention_level == "urgent" else "high" if attention_level == "engage" else "normal")
+    if effective_priority not in OPPORTUNITY_PRIORITIES:
+        raise ValueError(f"Invalid post priority: {effective_priority}")
+    if assigned_group not in ALERT_GROUPS:
+        raise ValueError(f"Invalid alert group: {assigned_group}")
     if assigned_chatter_id is not None:
         assignee = session.get(User, assigned_chatter_id)
         if assignee is None or assignee.status != USER_STATUS_ACTIVE or not assignee.is_active:
@@ -673,6 +695,9 @@ def create_post_watch(
         post_type=post_type.strip() or "other",
         status=status,
         attention_level=attention_level,
+        priority=effective_priority,
+        alert_enabled=alert_enabled,
+        assigned_group=assigned_group,
         assigned_chatter_id=assigned_chatter_id,
         assigned_team_id=assigned_team_id,
         notes=notes,
@@ -1218,6 +1243,390 @@ def create_opportunity_from_post(
     return opportunity
 
 
+def _alert_group(value: str | None, default: str = "alerts") -> str:
+    group = (value or default).lower()
+    return group if group in ALERT_GROUPS else default
+
+
+def _priority_from_alert(value: str | None, fallback: str = "normal") -> str:
+    priority = (value or fallback).lower()
+    return priority if priority in OPPORTUNITY_PRIORITIES else fallback
+
+
+def alert_message_preview(
+    *,
+    creator_name: str | None,
+    platform: str,
+    niche: str | None,
+    priority: str,
+    suggested_angle: str | None,
+) -> str:
+    name = creator_name or "Creator"
+    return "\n".join(
+        [
+            "Creator Alert",
+            "",
+            f"Creator: @{name.lstrip('@')}",
+            f"Platform: {platform.upper() if platform == 'x' else platform.title()}",
+            f"Niche: {niche or 'Not set'}",
+            f"Priority: {priority.title()}",
+            "",
+            "Why it matters:",
+            "High-value comment opportunity.",
+            "",
+            "Suggested angle:",
+            suggested_angle or "Curiosity / relatable reply",
+            "",
+            "Next move:",
+            "Assigned chatter should review and post manually.",
+        ]
+    )
+
+
+def route_alert_notification(
+    session: Session,
+    *,
+    actor: User | None,
+    event_type: str,
+    assigned_group: str,
+    title: str,
+    body: str,
+    severity: str | None = None,
+    metadata: dict | None = None,
+) -> list[NotificationDeliveryAttempt]:
+    targets = active_targets_for_purposes(session, (_alert_group(assigned_group),))
+    attempts: list[NotificationDeliveryAttempt] = []
+    for target in targets:
+        attempts.append(
+            create_delivery_attempt(
+                session,
+                target,
+                event_type=event_type,
+                actor=actor,
+                status="pending",
+                metadata=sanitize_details(
+                    {
+                        "title": title,
+                        "body": body,
+                        "severity": severity,
+                        "assigned_group": _alert_group(assigned_group),
+                        **(metadata or {}),
+                    }
+                ),
+            )
+        )
+    emit_event(
+        session,
+        actor=actor,
+        event_name=f"{event_type}.routed",
+        resource_type="notification",
+        resource_id=event_type,
+        payload={"target_count": len(attempts), "assigned_group": _alert_group(assigned_group)},
+    )
+    return attempts
+
+
+def create_creator_post_alert(
+    session: Session,
+    creator: CreatorWatch,
+    *,
+    actor: User | None,
+    post_reference: str,
+    notes: str | None = None,
+) -> CreatorPostAlert:
+    _require_opportunity_manage(session, actor)
+    reference = post_reference.strip()
+    if not reference:
+        raise ValueError("Post reference is required")
+    priority = _priority_from_alert(creator.alert_priority, creator.priority)
+    suggested_angle = "Curiosity / relatable reply"
+    opportunity = create_opportunity_from_creator(
+        session,
+        creator,
+        actor=actor,
+        title=f"Creator alert: @{creator.creator_username}",
+        url=reference if reference.startswith(("http://", "https://")) else None,
+        assigned_to_user_id=creator.assigned_chatter_id,
+    )
+    opportunity.priority = priority
+    opportunity.reason = "Created from a manually entered creator post alert. Human review only."
+    opportunity.suggested_angle = suggested_angle
+    score_opportunity(session, opportunity, actor=actor)
+    comment_strategies_for_opportunity(session, opportunity, actor=actor)
+    alert = CreatorPostAlert(
+        creator_watch_id=creator.id,
+        opportunity_id=opportunity.id,
+        platform=creator.platform,
+        post_reference=reference,
+        priority=priority,
+        assigned_group=_alert_group(creator.assigned_group),
+        assigned_chatter_id=creator.assigned_chatter_id,
+        status="new",
+        suggested_angle=suggested_angle,
+        notes=notes,
+    )
+    session.add(alert)
+    session.flush()
+    message = alert_message_preview(
+        creator_name=creator.creator_username,
+        platform=creator.platform,
+        niche=creator.niche,
+        priority=priority,
+        suggested_angle=suggested_angle,
+    )
+    route_alert_notification(
+        session,
+        actor=actor,
+        event_type="creator.post_alert",
+        assigned_group=alert.assigned_group,
+        title="Creator Alert",
+        body=message,
+        severity=priority,
+        metadata={
+            "creator_watch_id": creator.id,
+            "creator_post_alert_id": alert.id,
+            "opportunity_id": opportunity.id,
+            "assigned_chatter_id": alert.assigned_chatter_id,
+            "posting": "manual_only",
+        },
+    )
+    audit_action(
+        session,
+        actor=actor,
+        action="creator.post_alert_created",
+        resource_type="creator_post_alert",
+        resource_id=str(alert.id),
+        details={
+            "creator_watch_id": creator.id,
+            "opportunity_id": opportunity.id,
+            "assigned_group": alert.assigned_group,
+            "priority": alert.priority,
+            "posting": "manual_only",
+        },
+    )
+    emit_event(
+        session,
+        actor=actor,
+        event_name="creator.post_alert",
+        resource_type="creator_post_alert",
+        resource_id=str(alert.id),
+        payload={
+            "creator_watch_id": creator.id,
+            "opportunity_id": opportunity.id,
+            "assigned_group": alert.assigned_group,
+            "priority": alert.priority,
+            "posting": "manual_only",
+        },
+    )
+    from app.services.learning import create_learning_event
+
+    create_learning_event(
+        session,
+        actor=actor,
+        event_type="creator.post_alert_created",
+        source_type="opportunity",
+        source_id=opportunity.id,
+        entity_type="creator_watch",
+        entity_id=creator.id,
+        outcome="unknown",
+        severity="warning" if priority in {"high", "critical"} else "info",
+        summary=f"Creator post alert created for @{creator.creator_username}.",
+        details={
+            "platform": creator.platform,
+            "priority": priority,
+            "assigned_group": alert.assigned_group,
+            "posting": "manual_only",
+        },
+        confidence_score=70,
+    )
+    return alert
+
+
+def create_own_post_alert(
+    session: Session,
+    post: PostWatch,
+    *,
+    actor: User | None,
+    post_reference: str | None = None,
+    notes: str | None = None,
+    create_opportunity: bool = True,
+) -> OwnPostAlert:
+    _require_opportunity_manage(session, actor)
+    reference = (post_reference or post.post_reference).strip()
+    if not reference:
+        raise ValueError("Post reference is required")
+    priority = _priority_from_alert(post.priority, "normal")
+    opportunity: Opportunity | None = None
+    if create_opportunity:
+        opportunity = create_opportunity_from_post(
+            session,
+            post,
+            actor=actor,
+            title=f"Own post alert: {reference[:80]}",
+            assigned_to_user_id=post.assigned_chatter_id,
+        )
+        opportunity.priority = priority
+        opportunity.reason = "Created from a manually entered own-post alert. Human review only."
+        opportunity.suggested_angle = "Review timing and decide whether a manual team reply or boost is useful."
+        score_opportunity(session, opportunity, actor=actor)
+        comment_strategies_for_opportunity(session, opportunity, actor=actor)
+    task: Task | None = None
+    if actor is not None:
+        from app.services.tasks import create_task
+
+        task = create_task(
+            session,
+            actor=actor,
+            title=f"Review own post alert: {reference[:90]}",
+            description="Review this own-post alert manually, decide the next action, and record the result in Fortuna.",
+            priority="high" if priority == "critical" else priority,
+            model_brand=post.model_brand,
+            assigned_to=post.assigned_chatter,
+        )
+    alert = OwnPostAlert(
+        post_watch_id=post.id,
+        opportunity_id=opportunity.id if opportunity else None,
+        follow_up_task_id=task.id if task else None,
+        model_brand_id=post.model_brand_id,
+        platform=post.platform,
+        post_reference=reference,
+        priority=priority,
+        assigned_group=_alert_group(post.assigned_group),
+        assigned_chatter_id=post.assigned_chatter_id,
+        status="new",
+        notes=notes,
+    )
+    session.add(alert)
+    session.flush()
+    route_alert_notification(
+        session,
+        actor=actor,
+        event_type="own_post.alert",
+        assigned_group=alert.assigned_group,
+        title="Own Post Alert",
+        body=f"{reference} needs human review. No platform action was automated.",
+        severity=priority,
+        metadata={
+            "own_post_alert_id": alert.id,
+            "post_watch_id": post.id,
+            "opportunity_id": alert.opportunity_id,
+            "task_id": alert.follow_up_task_id,
+            "posting": "manual_only",
+        },
+    )
+    audit_action(
+        session,
+        actor=actor,
+        action="own_post.alert_created",
+        resource_type="own_post_alert",
+        resource_id=str(alert.id),
+        details={
+            "post_watch_id": post.id,
+            "opportunity_id": alert.opportunity_id,
+            "task_id": alert.follow_up_task_id,
+            "assigned_group": alert.assigned_group,
+            "priority": alert.priority,
+            "posting": "manual_only",
+        },
+    )
+    emit_event(
+        session,
+        actor=actor,
+        event_name="own_post.alert",
+        resource_type="own_post_alert",
+        resource_id=str(alert.id),
+        payload={
+            "post_watch_id": post.id,
+            "opportunity_id": alert.opportunity_id,
+            "assigned_group": alert.assigned_group,
+            "priority": alert.priority,
+            "posting": "manual_only",
+        },
+    )
+    from app.services.learning import create_learning_event
+
+    create_learning_event(
+        session,
+        actor=actor,
+        event_type="own_post.alert_created",
+        source_type="opportunity",
+        source_id=alert.opportunity_id,
+        entity_type="post_watch",
+        entity_id=post.id,
+        outcome="unknown",
+        severity="warning" if priority in {"high", "critical"} else "info",
+        summary=f"Own post alert created for {reference[:120]}.",
+        details={
+            "platform": post.platform,
+            "priority": priority,
+            "assigned_group": alert.assigned_group,
+            "posting": "manual_only",
+        },
+        confidence_score=70,
+    )
+    return alert
+
+
+def mark_creator_post_alert_reviewed(
+    session: Session,
+    alert: CreatorPostAlert,
+    *,
+    actor: User | None,
+) -> CreatorPostAlert:
+    _require_opportunity_manage(session, actor)
+    alert.status = "reviewed"
+    alert.acknowledged_by_user_id = actor.id if actor else None
+    alert.acknowledged_at = _now()
+    session.flush()
+    audit_action(
+        session,
+        actor=actor,
+        action="creator.post_alert_reviewed",
+        resource_type="creator_post_alert",
+        resource_id=str(alert.id),
+        details={"status": alert.status},
+    )
+    emit_event(
+        session,
+        actor=actor,
+        event_name="creator.post_alert_reviewed",
+        resource_type="creator_post_alert",
+        resource_id=str(alert.id),
+        payload={"status": alert.status},
+    )
+    return alert
+
+
+def mark_own_post_alert_reviewed(
+    session: Session,
+    alert: OwnPostAlert,
+    *,
+    actor: User | None,
+) -> OwnPostAlert:
+    _require_opportunity_manage(session, actor)
+    alert.status = "reviewed"
+    alert.acknowledged_by_user_id = actor.id if actor else None
+    alert.acknowledged_at = _now()
+    session.flush()
+    audit_action(
+        session,
+        actor=actor,
+        action="own_post.alert_reviewed",
+        resource_type="own_post_alert",
+        resource_id=str(alert.id),
+        details={"status": alert.status},
+    )
+    emit_event(
+        session,
+        actor=actor,
+        event_name="own_post.alert_reviewed",
+        resource_type="own_post_alert",
+        resource_id=str(alert.id),
+        payload={"status": alert.status},
+    )
+    return alert
+
+
 def create_task_from_opportunity(
     session: Session,
     opportunity: Opportunity,
@@ -1346,7 +1755,24 @@ def help_copilot_answer(
 ) -> dict:
     role_names = {role.name for role in user.roles} if user is not None else set()
     question_text = question.lower()
-    if (
+    if "creator alert" in question_text or ("creator" in question_text and "alert" in question_text):
+        answer = (
+            "Open Opportunities -> Creator Watchlist -> choose a creator -> New Post Alert. "
+            "Paste the post URL/reference. Fortuna creates an opportunity, suggests comments for human review, and routes it to Fortuna Alerts."
+        )
+        next_action = "opportunities:creators"
+    elif "own post" in question_text and "alert" in question_text:
+        answer = (
+            "Open Opportunities -> Own Post Watch -> choose a post -> New Own Post Alert. "
+            "Fortuna routes it to Ops or Alerts, creates a follow-up task, and keeps every platform action manual."
+        )
+        next_action = "opportunities:posts"
+    elif "notification" in question_text and ("group" in question_text or "route" in question_text):
+        answer = (
+            "Use three groups: Fortuna HQ for owner alerts, Fortuna Ops for team work, and Fortuna Alerts for creator and own-post action alerts."
+        )
+        next_action = "notification_group_setup"
+    elif (
         "stopping" in question_text
         or "readiness" in question_text
         or "finish setup" in question_text

@@ -128,9 +128,9 @@ def test_notification_readiness_card_tracks_required_targets() -> None:
         readiness = notification_target_readiness(session)
         by_purpose = {item["purpose"]: item for item in readiness}
 
-        assert by_purpose["owner"]["configured"] is True
-        assert by_purpose["operations"]["configured"] is False
-        assert len(readiness) == 5
+        assert by_purpose["hq"]["configured"] is True
+        assert by_purpose["ops"]["configured"] is False
+        assert len(readiness) == 3
 
 
 def test_proxy_screens_label_simulated_health_and_hide_secrets() -> None:

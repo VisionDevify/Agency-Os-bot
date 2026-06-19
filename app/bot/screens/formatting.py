@@ -452,11 +452,14 @@ def _incident_button(incident: Incident) -> tuple[str, str]:
 
 def _notification_purpose_label(purpose: str) -> str:
     purpose_labels = {
-        "owner": "HQ",
-        "operations": "Operations",
-        "incidents": "Incidents",
-        "automation_logs": "Automation Logs",
-        "testing": "Testing Sandbox",
+        "hq": "Fortuna HQ",
+        "ops": "Fortuna Ops",
+        "alerts": "Fortuna Alerts",
+        "owner": "Fortuna HQ",
+        "operations": "Fortuna Ops",
+        "incidents": "Fortuna HQ",
+        "automation_logs": "Fortuna Ops",
+        "testing": "Fortuna HQ",
     }
     return purpose_labels.get(purpose, purpose)
 

@@ -210,8 +210,8 @@ def test_notification_digest_events_and_delivery_attempts() -> None:
             body="Human result recorded.",
         )
 
-        assert "operations" in target_purposes_for_event("creator.created")
-        assert "operations" in target_purposes_for_event("post_watch.created")
+        assert "ops" in target_purposes_for_event("creator.created")
+        assert "ops" in target_purposes_for_event("post_watch.created")
         assert len(attempts) == 1
         assert session.query(NotificationDeliveryAttempt).count() == 1
 

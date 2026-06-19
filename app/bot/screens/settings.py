@@ -613,7 +613,7 @@ def render_notification_targets_page(session: Session) -> Screen:
     ]
     buttons: list[tuple[str, str]] = []
     if not targets:
-        lines.append("No notification targets yet. Start with Testing Sandbox, then add HQ, Operations, Incidents, and Automation Logs.")
+        lines.append("No notification targets yet. Start with Fortuna HQ, then add Fortuna Ops and Fortuna Alerts when the groups are ready.")
     for target in targets[:15]:
         status = "active" if target.is_active else "disabled"
         lines.append(f"{target.id}. {target.name}")
@@ -634,11 +634,9 @@ def render_notification_group_setup_page(session: Session) -> Screen:
         "Notification Group Setup",
         "",
         "Required Fortuna spaces:",
-        "- Fortuna OS - HQ",
-        "- Fortuna OS - Operations",
-        "- Fortuna OS - Incidents",
-        "- Fortuna OS - Automation Logs",
-        "- Fortuna OS - Testing Sandbox",
+        "- Fortuna HQ",
+        "- Fortuna Ops",
+        "- Fortuna Alerts",
         "",
         "Readiness:",
     ]
@@ -656,7 +654,7 @@ def render_notification_group_setup_page(session: Session) -> Screen:
             "2. Add @FortunaSolstice_Bot if it is not already there.",
             "3. Tap Register Current Chat as Fortuna Target.",
             "4. Choose the matching purpose.",
-            "5. Send real test messages only to Testing Sandbox by default.",
+            "5. Use Preview Routing before sending real group alerts.",
             "",
             f"Latest Delivery Attempt: {latest_line}",
         ]
@@ -671,8 +669,8 @@ def render_notification_group_pilot_page(session: Session) -> Screen:
     lines = [
         "Notification Group Pilot",
         "",
-        "Pilot goal: register the five Fortuna Telegram spaces without spamming real groups.",
-        "Only Testing Sandbox should receive real test messages by default.",
+        "Pilot goal: register the three Fortuna Telegram spaces without spamming real groups.",
+        "Routing tests preview where alerts would go unless the owner explicitly sends a real test.",
         "",
         f"Configured: {status['configured']}/{status['required']}",
         f"Last Delivery Status: {status['latest_status']} at {latest_at}",
@@ -682,7 +680,7 @@ def render_notification_group_pilot_page(session: Session) -> Screen:
     for item in rows:
         marker = "Configured" if item.configured else "Missing"
         last = format_user_datetime(None, item.last_delivery_at) if item.last_delivery_at else "never"
-        lines.append(f"- Fortuna OS - {item.label}: {marker} | Last test: {item.last_delivery_status} at {last}")
+        lines.append(f"- {item.label}: {marker} | Last test: {item.last_delivery_status} at {last}")
     lines.extend(
         [
             "",
@@ -692,7 +690,7 @@ def render_notification_group_pilot_page(session: Session) -> Screen:
             "3. Open that group/channel.",
             "4. Tap Register This Chat.",
             "5. Choose its purpose.",
-            "6. Test only Testing Sandbox first.",
+            "6. Preview routing before sending real alerts.",
         ]
     )
     return Screen(text="\n".join(lines), reply_markup=notification_group_pilot_menu())
@@ -710,8 +708,8 @@ def render_notification_routing_test_page(session: Session) -> Screen:
         "Notification Routing Test",
         "",
         "Safe behavior:",
-        "- Testing Sandbox gets one real test message if configured.",
-        "- HQ, Operations, Incidents, and Automation Logs are simulated only.",
+        "- HQ, Ops, and Alerts are previewed by default.",
+        "- Real sends require an explicit owner-approved target action.",
         "- Raw chat IDs are never shown.",
         "",
         "Would Send To:",
@@ -875,7 +873,7 @@ def render_notification_target_purpose_page(session: Session, target_id: int) ->
         "Set Notification Purpose",
         "",
         f"Target: {target.name}",
-        f"Current Purpose: {target.purpose}",
+        f"Current Purpose: {_notification_purpose_label(target.purpose)}",
     ]
     return Screen(text="\n".join(lines), reply_markup=notification_target_purpose_menu(target.id))
 

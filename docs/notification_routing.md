@@ -1,6 +1,6 @@
 ﻿# Notification Routing
 
-Sprint 9 introduces safe notification routing without spamming real groups or exposing Telegram chat IDs. Sprint 10 adds durable delivery-attempt records for actual send attempts. Sprint 11 adds availability-aware routing and Daily Digest delivery attempts. Sprint 12 adds critical intelligence signal routing through the same safe delivery-attempt path. Sprint 16 adds Notification Digest Mode for bundling low-priority updates. Sprint 17 adds opportunity and creator-watch routing keys. Sprint 18 adds digestable creator, own-post, assignment, high-priority opportunity, and result-recorded events. Sprint 27 adds Notification Group Setup and a safe routing smoke test.
+Sprint 9 introduces safe notification routing without spamming real groups or exposing Telegram chat IDs. Sprint 10 adds durable delivery-attempt records for actual send attempts. Sprint 11 adds availability-aware routing and Daily Digest delivery attempts. Sprint 12 adds critical intelligence signal routing through the same safe delivery-attempt path. Sprint 16 adds Notification Digest Mode for bundling low-priority updates. Sprint 17 adds opportunity and creator-watch routing keys. Sprint 18 adds digestable creator, own-post, assignment, high-priority opportunity, and result-recorded events. Sprint 27 adds Notification Group Setup and a safe routing smoke test. Sprint 38 simplifies owner-facing routing to three groups and adds manual creator/own-post alert routing.
 
 ## Goals
 
@@ -11,35 +11,40 @@ Sprint 9 introduces safe notification routing without spamming real groups or ex
 
 ## Target Purposes
 
-- `owner`: owner and executive alerts.
-- `operations`: daily operations, accountability, and task/report summaries.
-- `incidents`: critical incidents, account/proxy failures, and escalations.
-- `automation_logs`: simulation results, repair attempts, and system automation events.
-- `testing`: safe sandbox for test sends and deployment checks.
+- `hq`: Fortuna HQ, for owner alerts, production status, approvals, critical issues, and daily executive summaries.
+- `ops`: Fortuna Ops, for tasks, assignments, setup reminders, opportunities assigned to team, and daily operations summaries.
+- `alerts`: Fortuna Alerts, for big creator post alerts, own-post alerts, high-priority opportunity alerts, and urgent timing alerts.
+
+Legacy purposes remain valid internally:
+
+- `owner`, `incidents`, and `testing` map to `hq`.
+- `operations` and `automation_logs` map to `ops`.
 
 ## Routing Rules
 
-- Daily Briefing -> owner + operations.
-- Accountability Report -> operations.
-- Critical Incident -> owner + incidents.
-- Proxy Repair Failed -> incidents + automation logs.
-- Proxy Repair Succeeded -> automation logs.
-- Deployment Event -> testing + owner.
-- Automation Simulation -> automation logs.
+- Daily Briefing -> hq + ops.
+- Accountability Report -> ops.
+- Critical Incident -> hq + ops.
+- Proxy Repair Failed -> hq + ops.
+- Proxy Repair Succeeded -> ops.
+- Deployment Event -> hq.
+- Automation Simulation -> ops.
 - Daily Digest -> owner/HQ + operations, depending on the requested purpose.
 - Task Assigned -> assigned user when available; otherwise operations.
 - Overdue Task -> operations.
 - Escalated Task -> operations + owner.
 - Escalated Incident -> owner + incidents.
-- Critical Intelligence Signal -> owner + incidents + operations.
-- Creator Watch Created -> operations.
-- Creator Assigned -> operations.
-- Own Post Added -> operations.
-- Opportunity Created -> operations.
-- Opportunity Assigned -> operations.
-- High Priority Opportunity -> owner + operations.
-- Opportunity Result Recorded -> operations.
-- Opportunity Digest -> operations.
+- Critical Intelligence Signal -> hq + ops.
+- Creator Watch Created -> ops.
+- Creator Assigned -> ops.
+- New Creator Post Alert -> alerts.
+- New Own Post Alert -> alerts by default, or ops if configured for that post.
+- Own Post Added -> ops.
+- Opportunity Created -> ops.
+- Opportunity Assigned -> ops.
+- High Priority Opportunity -> alerts + hq.
+- Opportunity Result Recorded -> ops.
+- Opportunity Digest -> ops.
 - Low-priority updates -> notification digest bundle when immediate delivery is not required.
 
 ## Smart Routing Inputs
@@ -72,7 +77,7 @@ Settings -> Notification Targets supports:
 
 Settings -> Notification Group Setup supports:
 
-- Required target readiness for HQ, Operations, Incidents, Automation Logs, and Testing Sandbox.
+- Required target readiness for Fortuna HQ, Fortuna Ops, and Fortuna Alerts.
 - Register Current Chat as Fortuna Target from the Telegram group/channel being registered.
 - Run Routing Test.
 - Last delivery status per purpose.
@@ -82,21 +87,17 @@ Settings -> Notification Group Setup supports:
 
 Fortuna OS notification groups/channels are not auto-created by the app. Create and register them manually:
 
-1. Create `Fortuna OS - HQ`.
-2. Create `Fortuna OS - Operations`.
-3. Create `Fortuna OS - Incidents`.
-4. Create `Fortuna OS - Automation Logs`.
-5. Create `Fortuna OS - Testing Sandbox`.
-6. Add `@FortunaSolstice_Bot`.
-7. Open each group/channel.
-8. Use Settings -> Notification Targets -> Register Current Chat as Fortuna Target.
-9. Set purpose:
-   - HQ -> `owner`.
-   - Operations -> `operations`.
-   - Incidents -> `incidents`.
-   - Automation Logs -> `automation_logs`.
-   - Testing Sandbox -> `testing`.
-10. Send test notifications only to the Testing Sandbox target until the owner approves broader delivery.
+1. Create `Fortuna HQ`.
+2. Create `Fortuna Ops`.
+3. Create `Fortuna Alerts`.
+4. Add `@FortunaSolstice_Bot`.
+5. Open each group/channel.
+6. Use Settings -> Notification Targets -> Register Current Chat as Fortuna Target.
+7. Set purpose:
+   - Fortuna HQ -> `hq`.
+   - Fortuna Ops -> `ops`.
+   - Fortuna Alerts -> `alerts`.
+8. Use routing preview before sending real group alerts.
 
 ## Production Readiness Card
 
@@ -104,11 +105,9 @@ Sprint 26 adds a notification readiness card to Settings -> Production Observabi
 
 It checks whether active targets exist for:
 
-- HQ
-- Operations
-- Incidents
-- Automation Logs
-- Testing Sandbox
+- Fortuna HQ
+- Fortuna Ops
+- Fortuna Alerts
 
 The card never shows raw Telegram chat IDs. Use Settings -> Notification Targets for target details and masked identifiers.
 
@@ -118,28 +117,25 @@ Do not register unrelated Telegram chats. Do not expose raw chat IDs in screensh
 
 Settings -> Notification Group Setup -> Run Routing Test creates durable delivery-attempt records:
 
-- Testing Sandbox: one real safe test message if configured.
-- HQ, Operations, Incidents, Automation Logs: simulated/skipped delivery attempts only.
+- HQ, Ops, and Alerts: previewed as delivery attempts by default.
+- Legacy Testing Sandbox targets can still receive a safe test if one exists.
 - Missing targets: shown as skipped/missing.
 
 Every attempt is audited and event-logged. Raw chat IDs remain encrypted at rest and masked in Telegram.
 
 ## Sprint 28 Notification Group Pilot
 
-Settings -> Notification Group Pilot gives the owner a single readiness view for the five required Fortuna spaces:
+Settings -> Notification Group Pilot gives the owner a single readiness view for the three required Fortuna spaces:
 
-- HQ
-- Operations
-- Incidents
-- Automation Logs
-- Testing Sandbox
+- Fortuna HQ
+- Fortuna Ops
+- Fortuna Alerts
 
 It shows configured/missing status, last delivery state, and the manual activation checklist. The Register This Chat button must be used from inside the Telegram group or channel being registered.
 
 The pilot keeps real delivery conservative:
 
-- Testing Sandbox can be tested.
-- Other purposes are simulated during routing tests unless the owner explicitly expands delivery later.
+- Routing tests are simulated unless the owner explicitly sends a real test to an approved target.
 - Raw chat IDs remain hidden.
 
 ## Safety Rules
@@ -147,8 +143,8 @@ The pilot keeps real delivery conservative:
 - Only Owner/Admin can manage targets.
 - Raw chat IDs are encrypted at rest.
 - Telegram UI shows masked chat IDs only.
-- Test sends are limited to active `testing` targets.
-- Do not send to real operations/incidents channels until the owner approves routing activation.
+- Real sends require an explicit owner-approved target action.
+- Do not send to real operations or alerts channels until the owner approves routing activation.
 - Respect availability and quiet hours for non-critical user-targeted notifications.
 - Audit/event metadata must never contain tokens, raw chat IDs, credentials, proxy passwords, or verification codes.
 

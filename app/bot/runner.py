@@ -16,6 +16,7 @@ from app.bot.screens import (
     render_access_pending,
     render_account_detail_page,
     render_creator_watch_detail_page,
+    render_creator_post_alert_detail_page,
     render_denied,
     render_disabled,
     render_main_menu,
@@ -23,6 +24,7 @@ from app.bot.screens import (
     render_onboarding_page,
     render_opportunity_detail_page,
     render_post_watch_detail_page,
+    render_own_post_alert_detail_page,
     render_proxy_detail_page,
     render_proxy_import_success_page,
     render_problem_report_saved_page,
@@ -58,7 +60,9 @@ from app.services.accounts import (
 )
 from app.services.opportunities import (
     create_creator_watch,
+    create_creator_post_alert,
     create_manual_opportunity,
+    create_own_post_alert,
     create_post_watch,
     comment_strategies_for_opportunity,
     get_opportunity,
@@ -112,8 +116,10 @@ CURRENT_BOT_INSTANCE_ID = bot_instance_id()
 PENDING_ACCOUNT_CREATES: dict[int, dict[str, int | str]] = {}
 PENDING_AUTH_CODES: dict[int, int] = {}
 PENDING_CREATOR_INTAKES: dict[int, dict[str, int | str | None]] = {}
+PENDING_CREATOR_ALERTS: dict[int, dict[str, int | str | None]] = {}
 PENDING_OPPORTUNITY_INTAKES: dict[int, dict[str, int | str | None]] = {}
 PENDING_POST_INTAKES: dict[int, dict[str, int | str | None]] = {}
+PENDING_OWN_POST_ALERTS: dict[int, dict[str, int | str | None]] = {}
 PENDING_RESULT_INTAKES: dict[int, dict[str, int | str | None]] = {}
 PENDING_SETUP_WIZARDS: dict[int, dict[str, int | str | None]] = {}
 PENDING_MODEL_EDITS: dict[int, dict[str, int | str | None]] = {}
@@ -252,6 +258,8 @@ def _set_pending_callback_state(telegram_id: int, page: str, session, user: User
     PENDING_ACCOUNT_CREATES.pop(telegram_id, None)
     PENDING_AUTH_CODES.pop(telegram_id, None)
     PENDING_PROBLEM_REPORTS.pop(telegram_id, None)
+    PENDING_CREATOR_ALERTS.pop(telegram_id, None)
+    PENDING_OWN_POST_ALERTS.pop(telegram_id, None)
     parts = page.split(":")
     if page == "settings:report_problem:start":
         PENDING_PROBLEM_REPORTS[telegram_id] = {"mode": "manual"}
@@ -375,6 +383,10 @@ def _set_pending_callback_state(telegram_id: int, page: str, session, user: User
         }
     if len(parts) >= 3 and parts[0] == "creator" and parts[1].isdigit() and parts[2] == "niche":
         PENDING_CREATOR_INTAKES[telegram_id] = {"step": "edit_niche", "creator_id": int(parts[1])}
+    if len(parts) >= 3 and parts[0] == "creator" and parts[1].isdigit() and parts[2] == "alert":
+        PENDING_CREATOR_ALERTS[telegram_id] = {"creator_id": int(parts[1])}
+    if len(parts) >= 3 and parts[0] == "post" and parts[1].isdigit() and parts[2] == "alert":
+        PENDING_OWN_POST_ALERTS[telegram_id] = {"post_id": int(parts[1])}
 
 
 def _notification_target_id_for_send_test(page: str) -> int | None:
@@ -1081,6 +1093,65 @@ async def text_input(message: Message) -> None:
             except (PermissionError, ValueError):
                 submitted_code = ""
                 await message.answer("Unable to submit verification code.")
+            session.commit()
+            return
+
+        pending_creator_alert = PENDING_CREATOR_ALERTS.pop(telegram_id, None)
+        if pending_creator_alert is not None:
+            creator = session.get(CreatorWatch, int(pending_creator_alert["creator_id"]))
+            reference, notes = _parse_pipe_parts(message.text, 2)
+            if creator is None:
+                await message.answer("Creator not found.")
+                session.commit()
+                return
+            if not reference:
+                PENDING_CREATOR_ALERTS[telegram_id] = pending_creator_alert
+                await message.answer("Please send the creator post URL or reference.")
+                session.commit()
+                return
+            try:
+                alert = create_creator_post_alert(
+                    session,
+                    creator,
+                    actor=user,
+                    post_reference=reference,
+                    notes=notes,
+                )
+            except (PermissionError, ValueError):
+                await message.answer("Unable to create creator alert.")
+                session.commit()
+                return
+            screen = render_creator_post_alert_detail_page(session, alert.id)
+            await message.answer("Creator alert created. Fortuna routed it for human review.")
+            await message.answer(screen.text, reply_markup=screen.reply_markup)
+            session.commit()
+            return
+
+        pending_own_post_alert = PENDING_OWN_POST_ALERTS.pop(telegram_id, None)
+        if pending_own_post_alert is not None:
+            post = session.get(PostWatch, int(pending_own_post_alert["post_id"]))
+            reference, notes = _parse_pipe_parts(message.text, 2)
+            if post is None:
+                await message.answer("Post watch item not found.")
+                session.commit()
+                return
+            if not reference or reference.lower() == "same":
+                reference = post.post_reference
+            try:
+                alert = create_own_post_alert(
+                    session,
+                    post,
+                    actor=user,
+                    post_reference=reference,
+                    notes=notes,
+                )
+            except (PermissionError, ValueError):
+                await message.answer("Unable to create own post alert.")
+                session.commit()
+                return
+            screen = render_own_post_alert_detail_page(session, alert.id)
+            await message.answer("Own post alert created. Fortuna routed it for human review.")
+            await message.answer(screen.text, reply_markup=screen.reply_markup)
             session.commit()
             return
 

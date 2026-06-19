@@ -1143,6 +1143,7 @@ def creator_watch_detail_menu(creator_id: int) -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="Assign Model", callback_data=f"nav:creator:{creator_id}:assign_model"),
                 InlineKeyboardButton(text="Assign Chatter", callback_data=f"nav:creator:{creator_id}:assign_chatter"),
             ],
+            [InlineKeyboardButton(text="New Post Alert", callback_data=f"nav:creator:{creator_id}:alert")],
             [InlineKeyboardButton(text="Create Opportunity", callback_data=f"nav:creator:{creator_id}:opportunity")],
             [
                 InlineKeyboardButton(text="Disable", callback_data=f"nav:creator:{creator_id}:disable"),
@@ -1171,6 +1172,7 @@ def post_watch_detail_menu(post_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="Create Opportunity From Post", callback_data=f"nav:post:{post_id}:opportunity")],
+            [InlineKeyboardButton(text="New Own Post Alert", callback_data=f"nav:post:{post_id}:alert")],
             [InlineKeyboardButton(text="Assign Chatter", callback_data=f"nav:post:{post_id}:assign_chatter")],
             [InlineKeyboardButton(text="Mark Monitored", callback_data=f"nav:post:{post_id}:status:recent")],
             [InlineKeyboardButton(text="Record Result", callback_data=f"nav:post:{post_id}:record_result")],
@@ -1746,7 +1748,7 @@ def notification_group_pilot_menu() -> InlineKeyboardMarkup:
                     callback_data=callback_for("notification_targets:add_current"),
                 )
             ],
-            [InlineKeyboardButton(text="Test Sandbox", callback_data=callback_for("notification_targets:routing_test"))],
+            [InlineKeyboardButton(text="Preview Routing", callback_data=callback_for("notification_targets:routing_test"))],
             [InlineKeyboardButton(text="Simulate Routing", callback_data=callback_for("notification_targets:routing_test"))],
             [InlineKeyboardButton(text="Activation Checklist", callback_data=callback_for("notification_group_pilot"))],
             [InlineKeyboardButton(text="Ask Fortuna", callback_data=callback_for("help_copilot:notification_groups"))],
@@ -1772,16 +1774,9 @@ def notification_target_detail_menu(target_id: int) -> InlineKeyboardMarkup:
 def notification_target_purpose_menu(target_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="HQ", callback_data=f"nav:notification_target:{target_id}:purpose:owner")],
-            [InlineKeyboardButton(text="Operations", callback_data=f"nav:notification_target:{target_id}:purpose:operations")],
-            [InlineKeyboardButton(text="Incidents", callback_data=f"nav:notification_target:{target_id}:purpose:incidents")],
-            [
-                InlineKeyboardButton(
-                    text="Automation Logs",
-                    callback_data=f"nav:notification_target:{target_id}:purpose:automation_logs",
-                )
-            ],
-            [InlineKeyboardButton(text="Testing Sandbox", callback_data=f"nav:notification_target:{target_id}:purpose:testing")],
+            [InlineKeyboardButton(text="Fortuna HQ", callback_data=f"nav:notification_target:{target_id}:purpose:hq")],
+            [InlineKeyboardButton(text="Fortuna Ops", callback_data=f"nav:notification_target:{target_id}:purpose:ops")],
+            [InlineKeyboardButton(text="Fortuna Alerts", callback_data=f"nav:notification_target:{target_id}:purpose:alerts")],
             *page_controls(back_to=f"notification_target:{target_id}"),
         ]
     )
@@ -1815,7 +1810,7 @@ def production_observability_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="How to Register Groups", callback_data=callback_for("help:notification_groups")),
                 InlineKeyboardButton(text="Add Current Chat as Target", callback_data=callback_for("notification_targets:add_current")),
             ],
-            [InlineKeyboardButton(text="Test Sandbox Target", callback_data=callback_for("notification_targets"))],
+            [InlineKeyboardButton(text="Preview Routing", callback_data=callback_for("notification_targets:routing_test"))],
             *page_controls(back_to="settings"),
         ]
     )

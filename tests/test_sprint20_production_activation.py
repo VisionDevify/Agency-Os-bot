@@ -78,4 +78,4 @@ def test_activation_docs_include_invites_and_manual_notification_groups() -> Non
     assert "Fortuna OS - HQ" in production_doc
     assert "Fortuna OS - Testing Sandbox" in production_doc
     assert "Add Current Chat As Target" in routing_doc
-    assert "Testing Sandbox -> `testing`" in routing_doc
+    assert "Fortuna Alerts -> `alerts`" in routing_doc

@@ -89,8 +89,15 @@ HELP_KB_SEEDS: tuple[dict[str, str], ...] = (
         "topic": "notification_group_setup",
         "title": "Notification Group Setup",
         "role_scope": "owner,admin",
-        "content": "Create the five Fortuna groups, add the bot, open each group, then register the current chat with the matching purpose.",
+        "content": "Use three simple targets: Fortuna HQ for owner alerts, Fortuna Ops for team operations, and Fortuna Alerts for creator/own-post action alerts.",
         "related_route": "notification_group_pilot",
+    },
+    {
+        "topic": "creator_alerts",
+        "title": "Creator Alerts",
+        "role_scope": "owner,admin,manager,chatter",
+        "content": "Creator alerts are manually entered post references. Fortuna creates an opportunity, suggests comment strategies, and routes the alert for human review only.",
+        "related_route": "opportunities:creators",
     },
     {
         "topic": "opportunity_workflow",
@@ -191,6 +198,10 @@ def help_article_count(session: Session) -> int:
 
 def detect_help_intent(question: str) -> str:
     text = question.casefold()
+    if "creator alert" in text or ("creator" in text and "alert" in text):
+        return "creator_alerts"
+    if "own post" in text and "alert" in text:
+        return "own_post_alerts"
     if "postgres" in text or "durable" in text or "persistence" in text:
         return "postgres_explained"
     if "broken" in text or "bot down" in text or "not working" in text:
@@ -320,12 +331,12 @@ def _notification_answer(session: Session, user: User | None) -> tuple[str, str]
     if missing:
         missing_text = ", ".join(missing)
         answer = (
-            "To register notification groups, create the Fortuna groups, add @FortunaSolstice_Bot, open each group, "
+            "To register notification groups, create Fortuna HQ, Fortuna Ops, and Fortuna Alerts, add @FortunaSolstice_Bot, open each group, "
             "then tap Register This Chat. Missing right now: "
             f"{missing_text}."
         )
     else:
-        answer = "All notification purposes have an active target. Use Test Sandbox before sending real group alerts."
+        answer = "HQ, Ops, and Alerts are configured. Use routing simulation before sending real group alerts beyond the approved target."
     return answer, "notification_group_pilot"
 
 
@@ -444,6 +455,13 @@ def help_brain_answer(
         next_action = "accounts:attention"
     elif intent == "notification_groups":
         answer, next_action = _notification_answer(session, user)
+    elif intent == "creator_alerts":
+        article = _article(session, "creator_alerts")
+        answer = article.content if article else "Open Creator Watchlist, choose a creator, then tap New Post Alert. Fortuna creates an opportunity and human review strategies; it never posts automatically."
+        next_action = "opportunities:creators"
+    elif intent == "own_post_alerts":
+        answer = "Open Own Post Watch, choose or add a post, then tap New Own Post Alert. Fortuna routes it to Ops or Alerts, creates a follow-up task, and keeps all platform action manual."
+        next_action = "opportunities:posts"
     elif intent == "proxy_setup":
         answer, next_action = _proxy_answer(session, user)
     elif intent == "what_fortuna_did":

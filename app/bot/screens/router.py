@@ -16,6 +16,8 @@ from .team import *
 from .coo import *
 from .help import *
 from .errors import *
+from app.models.opportunity import CreatorPostAlert, OwnPostAlert
+from app.services.opportunities import mark_creator_post_alert_reviewed, mark_own_post_alert_reviewed
 
 def render_page(page: str, session: Session | None = None, user: User | None = None) -> Screen:
     if page == "owner_advanced":
@@ -528,13 +530,31 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
                 return render_creator_priority_page(session, int(parts[1]))
             if len(parts) >= 3 and parts[2] == "niche":
                 return Screen("Edit Niche\n\nSend the new niche in chat.", page_menu(back_to=f"creator:{parts[1]}"))
+            if len(parts) >= 3 and parts[2] == "alert":
+                return render_creator_post_alert_prompt_page(session, int(parts[1]))
             return render_creator_watch_detail_page(session, int(parts[1]))
+    if page.startswith("creator_alert:") and session is not None:
+        parts = page.split(":")
+        if len(parts) >= 2 and parts[1].isdigit():
+            alert = session.get(CreatorPostAlert, int(parts[1]))
+            if alert is not None and len(parts) >= 3 and parts[2] == "reviewed":
+                mark_creator_post_alert_reviewed(session, alert, actor=user)
+            return render_creator_post_alert_detail_page(session, int(parts[1]))
     if page.startswith("post:") and session is not None:
         parts = page.split(":")
         if len(parts) >= 2 and parts[1].isdigit():
             if len(parts) >= 3 and parts[2] == "assign_chatter":
                 return render_post_chatter_assignment_page(session, int(parts[1]))
+            if len(parts) >= 3 and parts[2] == "alert":
+                return render_own_post_alert_prompt_page(session, int(parts[1]))
             return render_post_watch_detail_page(session, int(parts[1]))
+    if page.startswith("own_post_alert:") and session is not None:
+        parts = page.split(":")
+        if len(parts) >= 2 and parts[1].isdigit():
+            alert = session.get(OwnPostAlert, int(parts[1]))
+            if alert is not None and len(parts) >= 3 and parts[2] == "reviewed":
+                mark_own_post_alert_reviewed(session, alert, actor=user)
+            return render_own_post_alert_detail_page(session, int(parts[1]))
     if page.startswith("opportunity:") and session is not None:
         parts = page.split(":")
         if len(parts) >= 2 and parts[1].isdigit():

@@ -7,7 +7,16 @@ from app.db.base import Base
 from app.models.mixins import TimestampMixin
 
 NOTIFICATION_TARGET_TYPES = ("telegram_user", "telegram_group", "telegram_channel")
-NOTIFICATION_TARGET_PURPOSES = ("owner", "operations", "incidents", "automation_logs", "testing")
+NOTIFICATION_TARGET_PURPOSES = (
+    "hq",
+    "ops",
+    "alerts",
+    "owner",
+    "operations",
+    "incidents",
+    "automation_logs",
+    "testing",
+)
 NOTIFICATION_DELIVERY_STATUSES = ("pending", "sent", "failed", "skipped")
 
 
@@ -68,7 +77,7 @@ class NotificationTarget(TimestampMixin, Base):
             name="ck_notification_targets_target_type",
         ),
         CheckConstraint(
-            "purpose in ('owner', 'operations', 'incidents', 'automation_logs', 'testing')",
+            "purpose in ('hq', 'ops', 'alerts', 'owner', 'operations', 'incidents', 'automation_logs', 'testing')",
             name="ck_notification_targets_purpose",
         ),
         Index("ix_notification_targets_name", "name"),

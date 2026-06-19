@@ -1,4 +1,9 @@
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+from app.bot.menu import page_controls
+
 from .formatting import *
+from app.models.opportunity import CreatorPostAlert, OwnPostAlert
 
 def render_opportunities_home(session: Session | None = None) -> Screen:
     opportunities = list_opportunities(session, limit=5) if session is not None else []
@@ -188,6 +193,8 @@ def render_creator_watch_detail_page(session: Session, creator_id: int) -> Scree
         f"Username: @{creator.creator_username}",
         f"Platform: {creator.platform}",
         f"Priority: {creator.priority}",
+        f"Alerts: {'On' if creator.alert_enabled else 'Off'}",
+        f"Alert Route: {_notification_purpose_label(creator.assigned_group)}",
         f"Niche: {creator.niche or 'Not set'}",
         f"Profile: {creator.profile_url or 'Not set'}",
         f"Assigned Model: {creator.assigned_model.display_name if creator.assigned_model else 'Unassigned'}",
@@ -202,6 +209,71 @@ def render_creator_watch_detail_page(session: Session, creator_id: int) -> Scree
         "Use this to focus human attention. No platform actions are automated.",
     ]
     return Screen(text="\n".join(lines), reply_markup=creator_watch_detail_menu(creator.id))
+
+def render_creator_post_alert_prompt_page(session: Session, creator_id: int) -> Screen:
+    creator = get_creator_watch(session, creator_id)
+    if creator is None:
+        return Screen(text="Creator watch item not found.", reply_markup=page_menu(back_to="opportunities:creators"))
+    return Screen(
+        text="\n".join(
+            [
+                "New Creator Post Alert",
+                "",
+                f"Creator: @{creator.creator_username}",
+                f"Route: {_notification_purpose_label(creator.assigned_group)}",
+                "",
+                "Send the post URL or reference in chat.",
+                "Optional: add notes after a pipe.",
+                "",
+                "Example:",
+                "https://x.com/name/status/123 | fast timing window",
+                "",
+                "Fortuna will create an opportunity, generate comment strategies, and route the alert for human review only.",
+            ]
+        ),
+        reply_markup=page_menu(back_to=f"creator:{creator.id}"),
+    )
+
+def render_creator_post_alert_detail_page(session: Session, alert_id: int) -> Screen:
+    alert = session.get(CreatorPostAlert, alert_id)
+    if alert is None:
+        return Screen(text="Creator alert not found.", reply_markup=page_menu(back_to="opportunities:creators"))
+    creator = alert.creator_watch
+    opportunity = alert.opportunity
+    lines = [
+        "Creator Alert",
+        "",
+        f"Creator: @{creator.creator_username if creator else 'unknown'}",
+        f"Platform: {alert.platform.upper() if alert.platform == 'x' else alert.platform.title()}",
+        f"Priority: {alert.priority.title()}",
+        f"Route: {_notification_purpose_label(alert.assigned_group)}",
+        f"Status: {alert.status.title()}",
+        f"Reference: {alert.post_reference}",
+        f"Assigned Chatter: {_identity(alert.assigned_chatter)}",
+        f"Opportunity: {opportunity.title if opportunity else 'Not created'}",
+        "",
+        "Why it matters:",
+        "High-value comment opportunity.",
+        "",
+        "Suggested angle:",
+        alert.suggested_angle or "Curiosity / relatable reply",
+        "",
+        "Next move:",
+        "Review the opportunity and post manually if it makes sense. Fortuna will not post for you.",
+    ]
+    markup = InlineKeyboardMarkup(
+        inline_keyboard=[
+            *(
+                [[InlineKeyboardButton(text="Open Opportunity", callback_data=f"nav:opportunity:{opportunity.id}")]]
+                if opportunity
+                else []
+            ),
+            [InlineKeyboardButton(text="Generate Comments", callback_data=f"nav:opportunity:{opportunity.id}:strategies" if opportunity else "nav:opportunities")],
+            [InlineKeyboardButton(text="Mark Reviewed", callback_data=f"nav:creator_alert:{alert.id}:reviewed")],
+            *page_controls(back_to=f"creator:{alert.creator_watch_id}"),
+        ]
+    )
+    return Screen(text="\n".join(lines), reply_markup=markup)
 
 def render_post_watch_page(session: Session, *, status: str | None = None) -> Screen:
     posts = list_post_watches(session, status=status, limit=20)
@@ -230,6 +302,9 @@ def render_post_watch_detail_page(session: Session, post_id: int) -> Screen:
         f"Type: {post.post_type}",
         f"Status: {post.status}",
         f"Attention: {post.attention_level}",
+        f"Priority: {post.priority.title()}",
+        f"Alerts: {'On' if post.alert_enabled else 'Off'}",
+        f"Alert Route: {_notification_purpose_label(post.assigned_group)}",
         f"Model/Brand: {post.model_brand.display_name if post.model_brand else 'Unknown'}",
         f"Account ID: {post.account_id or 'None'}",
         f"Assigned Chatter: {_identity(post.assigned_chatter)}",
@@ -237,6 +312,66 @@ def render_post_watch_detail_page(session: Session, post_id: int) -> Screen:
         f"Notes: {post.notes or 'None'}",
     ]
     return Screen(text="\n".join(lines), reply_markup=post_watch_detail_menu(post.id))
+
+def render_own_post_alert_prompt_page(session: Session, post_id: int) -> Screen:
+    post = get_post_watch(session, post_id)
+    if post is None:
+        return Screen(text="Post watch item not found.", reply_markup=page_menu(back_to="opportunities:posts"))
+    return Screen(
+        text="\n".join(
+            [
+                "New Own Post Alert",
+                "",
+                f"Post: {post.post_reference}",
+                f"Route: {_notification_purpose_label(post.assigned_group)}",
+                "",
+                "Send a post URL/reference, or type same to use the saved reference.",
+                "Optional: add notes after a pipe.",
+                "",
+                "Example:",
+                "same | needs quick team review",
+                "",
+                "Fortuna will route the alert, create a follow-up task, and keep all platform action manual.",
+            ]
+        ),
+        reply_markup=page_menu(back_to=f"post:{post.id}"),
+    )
+
+def render_own_post_alert_detail_page(session: Session, alert_id: int) -> Screen:
+    alert = session.get(OwnPostAlert, alert_id)
+    if alert is None:
+        return Screen(text="Own post alert not found.", reply_markup=page_menu(back_to="opportunities:posts"))
+    opportunity = alert.opportunity
+    lines = [
+        "Own Post Alert",
+        "",
+        f"Post: {alert.post_reference}",
+        f"Platform: {alert.platform.upper() if alert.platform == 'x' else alert.platform.title()}",
+        f"Priority: {alert.priority.title()}",
+        f"Route: {_notification_purpose_label(alert.assigned_group)}",
+        f"Status: {alert.status.title()}",
+        f"Assigned Chatter: {_identity(alert.assigned_chatter)}",
+        f"Opportunity: {opportunity.title if opportunity else 'Not created'}",
+        f"Follow-up Task: {alert.follow_up_task_id or 'Not created'}",
+        "",
+        "Safety:",
+        "All platform action manual. Fortuna does not post for you.",
+        "",
+        "Next move:",
+        "Team should review timing and act manually if useful.",
+    ]
+    markup = InlineKeyboardMarkup(
+        inline_keyboard=[
+            *(
+                [[InlineKeyboardButton(text="Open Opportunity", callback_data=f"nav:opportunity:{opportunity.id}")]]
+                if opportunity
+                else []
+            ),
+            [InlineKeyboardButton(text="Mark Reviewed", callback_data=f"nav:own_post_alert:{alert.id}:reviewed")],
+            *page_controls(back_to=f"post:{alert.post_watch_id}"),
+        ]
+    )
+    return Screen(text="\n".join(lines), reply_markup=markup)
 
 def render_opportunity_list_page(session: Session) -> Screen:
     opportunities = list_opportunities(session, limit=20)

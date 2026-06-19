@@ -112,9 +112,9 @@ def test_notification_group_pilot_checklist_and_routing_test() -> None:
         screen = render_notification_group_pilot_page(session)
 
         assert status["configured"] == 1
-        assert "Testing Sandbox" in result.actual_sends
+        assert "Fortuna HQ" in result.actual_sends
         assert session.query(NotificationDeliveryAttempt).count() == 1
-        assert "Only Testing Sandbox should receive real test messages" in screen.text
+        assert "register the three Fortuna Telegram spaces" in screen.text
         assert "-100123456789" not in screen.text
 
 

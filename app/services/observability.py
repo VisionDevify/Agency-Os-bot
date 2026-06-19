@@ -23,13 +23,12 @@ from app.services.help_brain import help_questions_today, notification_pilot_sta
 from app.services.heartbeats import list_heartbeats, system_status_summary
 from app.services.bot_instances import bot_instance_diagnostics
 from app.services.persistence import storage_status
+from app.services.notifications import purpose_aliases
 
 REQUIRED_NOTIFICATION_PURPOSES: tuple[tuple[str, str], ...] = (
-    ("owner", "HQ"),
-    ("operations", "Operations"),
-    ("incidents", "Incidents"),
-    ("automation_logs", "Automation Logs"),
-    ("testing", "Testing Sandbox"),
+    ("hq", "Fortuna HQ"),
+    ("ops", "Fortuna Ops"),
+    ("alerts", "Fortuna Alerts"),
 )
 
 
@@ -80,8 +79,9 @@ def notification_target_readiness(session: Session) -> list[dict[str, object]]:
     active_targets = session.scalars(select(NotificationTarget).where(NotificationTarget.is_active.is_(True))).all()
     active_by_purpose = {purpose: 0 for purpose, _label in REQUIRED_NOTIFICATION_PURPOSES}
     for target in active_targets:
-        if target.purpose in active_by_purpose:
-            active_by_purpose[target.purpose] += 1
+        for purpose in active_by_purpose:
+            if target.purpose in purpose_aliases(purpose):
+                active_by_purpose[purpose] += 1
     return [
         {
             "purpose": purpose,

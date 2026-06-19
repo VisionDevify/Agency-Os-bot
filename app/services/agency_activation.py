@@ -13,11 +13,12 @@ from app.models.team_rollout import ActivationBlockerDecision, AgencyActivationS
 from app.models.user import User
 from app.services.auth import USER_STATUS_ACTIVE, audit_action, user_has_permission
 from app.services.events import emit_event
+from app.services.notifications import canonical_purpose
 from app.services.recommendations import upsert_recommendation
 from app.services.tasks import create_task
 
 
-EXPECTED_NOTIFICATION_PURPOSES = ("owner", "operations", "incidents", "automation_logs", "testing")
+EXPECTED_NOTIFICATION_PURPOSES = ("hq", "ops", "alerts")
 ACTIVE_TASK_STATUSES = ("open", "in_progress", "blocked")
 TEAM_RELATIONSHIP_TYPES = ("manager", "chatter_manager", "senior_chatter", "chatter", "va", "viewer")
 CHATTER_RELATIONSHIP_TYPES = ("chatter_manager", "senior_chatter", "chatter")
@@ -450,7 +451,7 @@ def _build_notification_gaps(active_purposes: set[str]) -> list[ActivationGap]:
         ActivationGap(
             code="notifications.missing_targets",
             title="Notification targets missing",
-            description="Add Fortuna HQ, Fortuna Operations, Incidents, Automation Logs, and Testing targets when the groups are ready.",
+            description="Add Fortuna HQ, Fortuna Ops, and Fortuna Alerts when the groups are ready.",
             severity="warning",
             section="notifications",
             action_page="notification_targets",
@@ -487,9 +488,10 @@ def build_activation_report(session: Session) -> dict:
     accounts = _active_accounts(session)
     creators = _active_creators(session)
     opportunities = _active_opportunities(session)
-    active_notification_purposes = set(
-        session.scalars(select(NotificationTarget.purpose).where(NotificationTarget.is_active.is_(True))).all()
-    )
+    active_notification_purposes = {
+        canonical_purpose(purpose)
+        for purpose in session.scalars(select(NotificationTarget.purpose).where(NotificationTarget.is_active.is_(True))).all()
+    }
 
     raw_gaps = [
         *_build_model_gaps(models, accounts, creators, opportunities),
