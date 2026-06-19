@@ -344,7 +344,12 @@ class RedisIdempotencyStore:
         return f"action_result:{_hash_part(action_type)}:{_hash_part(action_id)}"
 
 
-def callback_fingerprint(callback_query: Any, *, active_navigation_version: str | None = None) -> str:
+def callback_fingerprint(
+    callback_query: Any,
+    *,
+    active_navigation_version: str | None = None,
+    include_callback_query_id: bool = False,
+) -> str:
     message = getattr(callback_query, "message", None)
     chat = getattr(message, "chat", None)
     from_user = getattr(callback_query, "from_user", None)
@@ -355,6 +360,8 @@ def callback_fingerprint(callback_query: Any, *, active_navigation_version: str 
         str(getattr(callback_query, "data", "")),
         active_navigation_version or "",
     ]
+    if include_callback_query_id:
+        parts.append(str(getattr(callback_query, "id", "")))
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
 
 

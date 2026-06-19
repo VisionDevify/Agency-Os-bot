@@ -121,6 +121,7 @@ from app.services.chat_cleanup import (
     chat_cleanup_enabled,
     classify_delete_exception,
     complete_cleanup_run,
+    current_active_navigation_message,
     is_stale_navigation_callback,
     mark_cleanup_started,
     mark_message_delete_failed,
@@ -140,6 +141,7 @@ dp = Dispatcher()
 CURRENT_BOT_INSTANCE_ID = bot_instance_id()
 CALLBACK_LOCKS = CallbackLockManager(settings.redis_url)
 CALLBACK_IDEMPOTENCY = RedisIdempotencyStore(settings.redis_url)
+NAVIGATION_IDEMPOTENCY_TTL_SECONDS = 2
 
 PENDING_ACCOUNT_CREATES: dict[int, dict[str, int | str]] = {}
 PENDING_AUTH_CODES: dict[int, int] = {}
@@ -149,6 +151,36 @@ PENDING_OPPORTUNITY_INTAKES: dict[int, dict[str, int | str | None]] = {}
 PENDING_POST_INTAKES: dict[int, dict[str, int | str | None]] = {}
 PENDING_OWN_POST_ALERTS: dict[int, dict[str, int | str | None]] = {}
 PENDING_RESULT_INTAKES: dict[int, dict[str, int | str | None]] = {}
+
+
+def _bypass_navigation_duplicate_guard(page: str) -> bool:
+    normalized = (page or "menu").strip()
+    if normalized in {"menu", "home", "help", "help_copilot"}:
+        return True
+    if normalized.startswith(("help:", "help_from:", "help_copilot:", "help_copilot_from:")):
+        return True
+    if "refresh" in normalized:
+        return True
+    return False
+
+
+async def _mark_navigation_callback_if_new(
+    callback: CallbackQuery,
+    *,
+    session,
+    user: User,
+    chat_id: int,
+    page: str,
+) -> bool:
+    if _bypass_navigation_duplicate_guard(page):
+        return True
+    current = current_active_navigation_message(session, chat_id=chat_id, user=user)
+    active_navigation_version = str(current.navigation_version) if current is not None else ""
+    fingerprint = callback_fingerprint(callback, active_navigation_version=active_navigation_version)
+    return await CALLBACK_IDEMPOTENCY.mark_callback_seen(
+        fingerprint=fingerprint,
+        ttl_seconds=NAVIGATION_IDEMPOTENCY_TTL_SECONDS,
+    )
 PENDING_SETUP_WIZARDS: dict[int, dict[str, int | str | None]] = {}
 PENDING_MODEL_EDITS: dict[int, dict[str, int | str | None]] = {}
 PENDING_PROXY_WIZARDS: dict[int, dict[str, str]] = {}
@@ -1785,10 +1817,6 @@ async def navigate(callback: CallbackQuery) -> None:
         await _safe_callback_answer(callback, "One moment - Fortuna is already opening that.")
         return
     try:
-        fingerprint = callback_fingerprint(callback)
-        if not await CALLBACK_IDEMPOTENCY.mark_callback_seen(fingerprint=fingerprint, ttl_seconds=90):
-            await _safe_callback_answer(callback, "Already handled.")
-            return
         await _navigate_locked(callback, page)
     finally:
         await CALLBACK_LOCKS.release(callback_lock)
@@ -1920,6 +1948,16 @@ async def _navigate_locked(callback: CallbackQuery, page: str) -> None:
                         recommended_fix="Inspect Telegram send permissions and stale callback handling.",
                     )
                 await _safe_callback_answer(callback, "That menu is old. I opened a fresh Home for you.")
+                session.commit()
+                return
+            if not await _mark_navigation_callback_if_new(
+                callback,
+                session=session,
+                user=user,
+                chat_id=chat_id,
+                page=page,
+            ):
+                await _safe_callback_answer(callback, "One moment.")
                 session.commit()
                 return
             chat_title = getattr(callback.message.chat, "title", None)
