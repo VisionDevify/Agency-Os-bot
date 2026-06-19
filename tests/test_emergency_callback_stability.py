@@ -97,12 +97,19 @@ def test_button_health_report_route_renders() -> None:
 
         screen = screen_for_page("button_health", principal, session=session, user=owner)
 
-        assert "Button Health Report" in screen.text
-        assert "Working:" in screen.text
-        assert "Failing:" in screen.text
-        assert "Recent Production Failure Logs:" in screen.text
+        assert "Fortuna Self-Test" in screen.text
+        assert "Status:" in screen.text
+        assert "Recommended Action:" in screen.text
+        assert "Working:" not in screen.text
         assert "nav:button_health:run" in _callbacks(screen.reply_markup)
-        assert "nav:callback_failure_review" in _callbacks(screen.reply_markup)
+        assert "nav:button_health:details" in _callbacks(screen.reply_markup)
+
+        details = screen_for_page("button_health:details", principal, session=session, user=owner)
+        assert "Fortuna Self-Test Technical Details" in details.text
+        assert "Working:" in details.text
+        assert "Failing:" in details.text
+        assert "Recent Production Failure Logs:" in details.text
+        assert "nav:callback_failure_review" in _callbacks(details.reply_markup)
 
 
 def test_callback_failure_review_renders_empty_state() -> None:
@@ -148,7 +155,7 @@ def test_button_health_report_includes_recent_failure_counts() -> None:
             affected_screen="reports",
         )
 
-        screen = render_button_health_report_page(session, owner)
+        screen = render_button_health_report_page(session, owner, details=True)
 
         assert "Callback errors: 1" in screen.text
         assert "Callback recommendations: 1" in screen.text

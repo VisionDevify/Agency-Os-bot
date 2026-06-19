@@ -75,16 +75,21 @@ def test_production_observability_renders_safe_metadata_and_owner_gate() -> None
             metadata={"source": "polling_loop", "last_polling_loop_at": "2026-06-18T00:01:00Z"},
         )
         screen = render_production_observability_page(session)
+        details = render_production_observability_page(session, details=True)
 
         assert "Production Observability" in screen.text
-        assert "App: Fortuna OS" in screen.text
-        assert "Alembic:" in screen.text
-        assert "Bot Started: 2026-06-18T00:00:00Z" in screen.text
-        assert "Last Polling Loop: 2026-06-18T00:01:00Z" in screen.text
-        assert "Railway logs must be viewed in Railway dashboard." in screen.text
-        assert "TELEGRAM_BOT_TOKEN" not in screen.text
-        assert "DATABASE_URL" not in screen.text
-        assert "secret" not in screen.text
+        assert "Status:" in screen.text
+        assert "Recommended Action:" in screen.text
+        assert "App: Fortuna OS" not in screen.text
+        assert "Production Observability Technical Details" in details.text
+        assert "App: Fortuna OS" in details.text
+        assert "Alembic:" in details.text
+        assert "Bot Started: 2026-06-18T00:00:00Z" in details.text
+        assert "Last Polling Loop: 2026-06-18T00:01:00Z" in details.text
+        assert "Railway logs must be viewed in Railway dashboard." in details.text
+        assert "TELEGRAM_BOT_TOKEN" not in details.text
+        assert "DATABASE_URL" not in details.text
+        assert "secret" not in details.text
 
         user = get_or_create_telegram_user(
             session,

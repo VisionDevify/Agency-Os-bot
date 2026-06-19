@@ -2,9 +2,25 @@ from .formatting import *
 
 def render_learning_center_page(session: Session) -> Screen:
     metrics = learning_center_metrics(session)
+    repeated_failures = metrics["repeated_failures"][:3]
+    status = "Learning" if metrics["total_learning_events"] else "Waiting for Outcomes"
+    if repeated_failures:
+        status = "Needs Attention"
+    next_action = (
+        "Review the repeated failures first."
+        if repeated_failures
+        else "Keep completing tasks, resolving incidents, and recording results so Fortuna can learn."
+    )
     lines = [
         "Learning Center",
         "",
+        f"Status: {status}",
+        f"Issues Found: {len(repeated_failures)}",
+        "",
+        "Recommended Action:",
+        next_action,
+        "",
+        "Technical Details:",
         f"Total Learning Events: {metrics['total_learning_events']}",
         f"Active Playbooks: {metrics['active_playbooks']}",
         f"Outcome Memories: {metrics['outcome_memories']}",
@@ -16,7 +32,7 @@ def render_learning_center_page(session: Session) -> Screen:
     if not metrics["highest_confidence_playbooks"]:
         lines.append("- None yet")
     lines.extend(["", "Repeated Failures:"])
-    for memory in metrics["repeated_failures"][:3]:
+    for memory in repeated_failures:
         lines.append(f"- {memory.summary}")
     if not metrics["repeated_failures"]:
         lines.append("- None recorded")

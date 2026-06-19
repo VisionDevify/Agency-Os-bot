@@ -202,10 +202,13 @@ def test_observability_shows_notification_and_proxy_status() -> None:
         proxy = _proxy(session, owner)
         run_simulated_proxy_check(session, proxy, actor=owner)
         screen = render_production_observability_page(session)
+        details = render_production_observability_page(session, details=True)
 
-        assert "Notification Targets Configured: 1" in screen.text
-        assert "Proxy Health Reality:" in screen.text
-        assert "Real Health Checks: no" in screen.text
+        assert "Status:" in screen.text
+        assert "Recommended Action:" in screen.text
+        assert "Notification Targets Configured: 1" in details.text
+        assert "Proxy Health Reality:" in details.text
+        assert "Real Health Checks: no" in details.text
 
 
 def test_notification_group_setup_callback_renders_for_owner() -> None:

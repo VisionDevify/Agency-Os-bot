@@ -198,9 +198,26 @@ def render_automation_step_detail_page(session: Session, step_id: int) -> Screen
 
 def render_automation_health_page(session: Session) -> Screen:
     metrics = automation_metrics(session)
+    issues = metrics["failed_automations"] + metrics["pending_approvals"]
+    if metrics["failed_automations"]:
+        status = "Needs Attention"
+        next_action = "Review failed automations before enabling anything new."
+    elif metrics["pending_approvals"]:
+        status = "Waiting on Approval"
+        next_action = "Review pending approvals."
+    else:
+        status = "Healthy"
+        next_action = "No action needed."
     lines = [
         "Automation Health",
         "",
+        f"Status: {status}",
+        f"Issues Found: {issues}",
+        "",
+        "Recommended Action:",
+        next_action,
+        "",
+        "Technical Details:",
         f"Total Rules: {metrics['total_rules']}",
         f"Active: {metrics['active_automations']}",
         f"Failed: {metrics['failed_automations']}",

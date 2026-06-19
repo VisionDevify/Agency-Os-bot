@@ -357,7 +357,8 @@ def render_recommendations_page(session: Session, user: User | None = None) -> S
     lines = [
         "Fortuna Recommendations",
         "",
-        "Fortuna recommends focusing on one clear fix at a time.",
+        f"Status: {'Healthy' if not recommendations else 'Needs Attention'}",
+        f"Issues Found: {len(recommendations)}",
         "",
         "Recommended Next Move:",
     ]

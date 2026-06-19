@@ -155,10 +155,13 @@ def test_ui_self_test_and_observability_surface_help_and_pilot_status() -> None:
         help_brain_answer(session, owner, question="How do I register notification groups?")
 
         selftest = render_ui_self_test_page(session, owner, run_now=True)
-        observability = render_production_observability_page(session)
+        selftest_details = render_ui_self_test_page(session, owner, details=True)
+        observability = render_production_observability_page(session, details=True)
 
         assert session.query(UISelfTestRun).count() == 1
-        assert "UI Self-Test" in selftest.text
+        assert "Fortuna Self-Test" in selftest.text
+        assert "Recommended Action:" in selftest.text
+        assert "UI Self-Test Technical Details" in selftest_details.text
         assert "Help Questions Today:" in observability.text
         assert "Notification Pilot:" in observability.text
         assert "Proxy Pilot:" in observability.text

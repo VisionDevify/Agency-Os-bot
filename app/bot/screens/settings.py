@@ -1,4 +1,9 @@
+from datetime import UTC, datetime
+
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
 from .formatting import *
+from app.bot.menu import callback_for, page_controls
 from app.services.integrity import run_integrity_check
 from app.services.bot_instances import bot_instance_diagnostics
 from app.services.observability import production_observability_summary
@@ -177,14 +182,47 @@ def render_disabled() -> Screen:
 def render_denied() -> Screen:
     return Screen(text="Access denied.", reply_markup=main_menu())
 
-def render_bot_status_page(session: Session, user: User | None = None) -> Screen:
+def render_bot_status_page(session: Session, user: User | None = None, *, details: bool = False) -> Screen:
     summary = system_status_summary(session)
     heartbeats = list_heartbeats(session)
     last_heartbeat = format_user_datetime(user, summary["last_heartbeat_at"]) if summary["last_heartbeat_at"] else "not seen yet"
     last_delivery_at = format_user_datetime(user, summary["last_delivery_attempted_at"]) if summary["last_delivery_attempted_at"] else "not attempted"
     deployment_time = summary["last_deployment_time"] or "not available"
+    issues: list[str] = []
+    for label, key in [("API", "api_status"), ("Bot", "bot_status"), ("DB", "db_status"), ("Redis", "redis_status")]:
+        if str(summary[key]).lower() not in {"healthy", "ok"}:
+            issues.append(f"{label} is {summary[key]}.")
+    if summary["failed_notification_count"]:
+        issues.append("Notification deliveries have failures.")
+    if not details:
+        return Screen(
+            text="\n".join(
+                [
+                    "🟢 Bot Status" if not issues else "🟡 Bot Status",
+                    "",
+                    "Status:",
+                    "Healthy" if not issues else "Needs Attention",
+                    "",
+                    f"Issues Found: {len(issues)}",
+                    f"Last Heartbeat: {last_heartbeat}",
+                    "",
+                    "Summary:",
+                    "Fortuna checked the API, bot worker, database, Redis, deployments, and notifications.",
+                    "",
+                    "Recommended Action:",
+                    "No action needed." if not issues else issues[0],
+                ]
+            ),
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="Refresh", callback_data=callback_for("bot_status"))],
+                    [InlineKeyboardButton(text="Technical Details", callback_data=callback_for("bot_status:details"))],
+                    *page_controls(back_to="settings"),
+                ]
+            ),
+        )
     lines = [
-        "Bot Status",
+        "Bot Status Technical Details",
         "",
         f"Environment: {summary['environment']}",
         f"Production Status: {summary['production_status']}",
@@ -205,7 +243,16 @@ def render_bot_status_page(session: Session, user: User | None = None) -> Screen
     for heartbeat in heartbeats:
         seen = format_user_datetime(user, heartbeat.last_seen_at) if heartbeat.last_seen_at else "not seen yet"
         lines.append(f"- {heartbeat.service_name}: {heartbeat.status} at {seen}")
-    return Screen(text="\n".join(lines), reply_markup=bot_status_menu())
+    return Screen(
+        text="\n".join(lines),
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="Executive Summary", callback_data=callback_for("bot_status"))],
+                [InlineKeyboardButton(text="Production Observability", callback_data=callback_for("production_observability"))],
+                *page_controls(back_to="settings"),
+            ]
+        ),
+    )
 
 def _observability_time(value, user: User | None = None) -> str:
     return format_user_datetime(user, value) if value else "Unknown"
@@ -213,7 +260,34 @@ def _observability_time(value, user: User | None = None) -> str:
 def _yes_no(value) -> str:
     return "yes" if value else "no"
 
-def render_production_observability_page(session: Session, user: User | None = None) -> Screen:
+def _observability_summary_markup() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Refresh", callback_data=callback_for("production_observability"))],
+            [InlineKeyboardButton(text="Technical Details", callback_data=callback_for("production_observability:details"))],
+            [InlineKeyboardButton(text="Run Integrity Check", callback_data=callback_for("integrity"))],
+            *page_controls(back_to="settings"),
+        ]
+    )
+
+
+def _observability_details_markup(back_to: str = "production_observability") -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Executive Summary", callback_data=callback_for(back_to))],
+            [InlineKeyboardButton(text="Run Integrity Check", callback_data=callback_for("integrity"))],
+            [InlineKeyboardButton(text="Bot Instance Diagnostics", callback_data=callback_for("bot_instance_status"))],
+            *page_controls(back_to="settings"),
+        ]
+    )
+
+
+def render_production_observability_page(
+    session: Session,
+    user: User | None = None,
+    *,
+    details: bool = False,
+) -> Screen:
     summary = production_observability_summary(session)
     migration_status = summary["alembic_status"]
     migration_line = (
@@ -226,8 +300,45 @@ def render_production_observability_page(session: Session, user: User | None = N
         marker = "Configured" if item["configured"] else "Missing"
         notification_lines.append(f"- {item['label']}: {marker} ({item['active_count']} active)")
 
+    issues: list[str] = []
+    if summary["storage_risk"] != "ready" or not summary["storage_durable"]:
+        issues.append("Storage is not production-ready.")
+    if summary["redis_status"] != "healthy" or not summary["redis_connected"]:
+        issues.append("Redis is not healthy.")
+    if migration_status == "Mismatch":
+        issues.append("Database revision needs attention.")
+    if not summary["bot_polling_allowed"] or summary["duplicate_bot_instance_count"]:
+        issues.append("Bot polling safety needs attention.")
+    if summary["failed_notification_count"]:
+        issues.append("Notification delivery failures exist.")
+    status = "Healthy" if not issues else "Needs Attention"
+    recommended_action = "No action needed." if not issues else issues[0]
+    if not details:
+        return Screen(
+            text="\n".join(
+                [
+                    "🟢 Production Observability" if not issues else "🟡 Production Observability",
+                    "",
+                    "Status:",
+                    status,
+                    "",
+                    f"Issues Found: {len(issues)}",
+                    f"Last Check: {format_user_datetime(user, datetime.now(UTC))}",
+                    "",
+                    "Summary:",
+                    (
+                        "Fortuna checked the API, bot, database, Redis, migrations, notifications, and proxy monitoring."
+                    ),
+                    "",
+                    "Recommended Action:",
+                    recommended_action,
+                ]
+            ),
+            reply_markup=_observability_summary_markup(),
+        )
+
     lines = [
-        "Production Observability",
+        "Production Observability Technical Details",
         "",
         "Safe build metadata:",
         f"App: {summary['app_display_name']}",
@@ -304,7 +415,7 @@ def render_production_observability_page(session: Session, user: User | None = N
         "Logs:",
         summary["railway_note"],
     ]
-    return Screen(text="\n".join(lines), reply_markup=production_observability_menu())
+    return Screen(text="\n".join(lines), reply_markup=_observability_details_markup())
 
 def render_integrity_page(session: Session, user: User | None = None) -> Screen:
     result = run_integrity_check(session, actor=user)
@@ -337,7 +448,13 @@ def render_integrity_page(session: Session, user: User | None = None) -> Screen:
     return Screen(text="\n".join(lines), reply_markup=production_observability_menu())
 
 
-def render_botstatus_page(session: Session, user: User | None = None, *, current_instance_id: str | None = None) -> Screen:
+def render_botstatus_page(
+    session: Session,
+    user: User | None = None,
+    *,
+    current_instance_id: str | None = None,
+    details: bool = False,
+) -> Screen:
     diagnostics = bot_instance_diagnostics(session, current_instance_id=current_instance_id)
     warning = "None"
     if not diagnostics["preflight_allowed"]:
@@ -347,8 +464,39 @@ def render_botstatus_page(session: Session, user: User | None = None, *, current
     elif diagnostics["risk"] != "ready":
         warning = str(diagnostics["risk"])
 
+    issue_count = 0 if warning == "None" else 1
+    if not details:
+        status = "Healthy" if issue_count == 0 else "Needs Attention"
+        recommended_action = "No action needed." if issue_count == 0 else warning
+        return Screen(
+            text="\n".join(
+                [
+                    "🟢 Fortuna Bot Status" if issue_count == 0 else "🟡 Fortuna Bot Status",
+                    "",
+                    "Status:",
+                    status,
+                    "",
+                    f"Issues Found: {issue_count}",
+                    f"Last Check: {format_user_datetime(user, datetime.now(UTC))}",
+                    "",
+                    "Summary:",
+                    "Fortuna checked polling, Redis guardrails, database durability, and duplicate bot instances.",
+                    "",
+                    "Recommended Action:",
+                    recommended_action,
+                ]
+            ),
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="Refresh", callback_data=callback_for("bot_instance_status"))],
+                    [InlineKeyboardButton(text="Technical Details", callback_data=callback_for("bot_instance_status:details"))],
+                    *page_controls(back_to="production_observability"),
+                ]
+            ),
+        )
+
     lines = [
-        "Fortuna Bot Status",
+        "Fortuna Bot Status Technical Details",
         "",
         f"Instance: {diagnostics['instance_id_masked']}",
         f"Primary Polling: {_yes_no(diagnostics['primary_polling_enabled'])}",
@@ -367,7 +515,7 @@ def render_botstatus_page(session: Session, user: User | None = None, *, current
         "",
         "No tokens, raw URLs, proxy passwords, or chat IDs are shown here.",
     ]
-    return Screen(text="\n".join(lines), reply_markup=production_observability_menu())
+    return Screen(text="\n".join(lines), reply_markup=_observability_details_markup("bot_instance_status"))
 
 
 def render_availability_page(session: Session, user: User) -> Screen:
@@ -577,13 +725,75 @@ def render_notification_routing_test_page(session: Session) -> Screen:
     return Screen(text="\n".join(lines), reply_markup=notification_group_setup_menu())
 
 
-def render_ui_self_test_page(session: Session, actor: User | None = None, *, run_now: bool = False) -> Screen:
+def render_ui_self_test_page(
+    session: Session,
+    actor: User | None = None,
+    *,
+    run_now: bool = False,
+    details: bool = False,
+) -> Screen:
     if run_now and actor is not None:
         run_ui_self_test(session, actor=actor)
     latest = latest_ui_self_test_run(session)
     questions = recent_help_questions(session, limit=3)
+    if latest is None:
+        status = "Not Run Yet"
+        issues_found = 0
+        last_check = "Not run yet"
+        summary = "Fortuna has not checked the Telegram screen renderers yet."
+        recommended_action = "Run the self-test now."
+        systems_checked = 0
+    else:
+        failures = len(latest.failures_json or [])
+        warnings = len(latest.warnings_json or [])
+        issues_found = failures + warnings
+        systems_checked = latest.screens_checked
+        last_check = format_user_datetime(actor, latest.created_at) if latest.created_at else "unknown time"
+        if failures:
+            status = "Needs Attention"
+            summary = f"Fortuna found {failures} screen failure{'s' if failures != 1 else ''}."
+            recommended_action = "Open Technical Details and fix the first failed screen."
+        elif warnings:
+            status = "Watch"
+            summary = f"Fortuna found {warnings} warning{'s' if warnings != 1 else ''}, but no critical screen failures."
+            recommended_action = "Review Technical Details when convenient."
+        else:
+            status = "Healthy"
+            summary = "Fortuna did not find any critical issues."
+            recommended_action = "No action needed."
+
+    if not details:
+        marker = "🟢" if status == "Healthy" else "🟡" if status in {"Watch", "Not Run Yet"} else "🔴"
+        return Screen(
+            text="\n".join(
+                [
+                    f"{marker} Fortuna Self-Test",
+                    "",
+                    "Status:",
+                    status,
+                    "",
+                    f"Systems Checked: {systems_checked}",
+                    f"Issues Found: {issues_found}",
+                    f"Last Check: {last_check}",
+                    "",
+                    "Summary:",
+                    summary,
+                    "",
+                    "Recommended Action:",
+                    recommended_action,
+                ]
+            ),
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="Run Again", callback_data=callback_for("ui_self_test:run"))],
+                    [InlineKeyboardButton(text="Technical Details", callback_data=callback_for("ui_self_test:details"))],
+                    *page_controls(back_to="settings"),
+                ]
+            ),
+        )
+
     lines = [
-        "UI Self-Test",
+        "UI Self-Test Technical Details",
         "",
         "Owner-only internal renderer check for important Telegram screens.",
         "This verifies screen text/buttons without relying on Telegram Web callback clicks.",
@@ -592,7 +802,7 @@ def render_ui_self_test_page(session: Session, actor: User | None = None, *, run
     if latest is None:
         lines.append("No self-test has run yet.")
     else:
-        when = format_user_datetime(None, latest.created_at) if latest.created_at else "unknown time"
+        when = format_user_datetime(actor, latest.created_at) if latest.created_at else "unknown time"
         lines.extend(
             [
                 f"Last Result: {latest.status}",
@@ -615,7 +825,17 @@ def render_ui_self_test_page(session: Session, actor: User | None = None, *, run
         lines.append("- None yet")
     for question in questions:
         lines.append(f"- {question.detected_intent}: {question.feedback or 'no feedback'}")
-    return Screen(text="\n".join(lines), reply_markup=ui_self_test_menu())
+    return Screen(
+        text="\n".join(lines),
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="Run Again", callback_data=callback_for("ui_self_test:run"))],
+                [InlineKeyboardButton(text="Executive Summary", callback_data=callback_for("ui_self_test"))],
+                [InlineKeyboardButton(text="Button Health Report", callback_data=callback_for("button_health"))],
+                *page_controls(back_to="settings"),
+            ]
+        ),
+    )
 
 def render_notification_target_detail_page(session: Session, target_id: int) -> Screen:
     target = session.get(NotificationTarget, target_id)

@@ -119,8 +119,12 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_ui_self_test_page(session, user)
     if page == "ui_self_test:run" and session is not None:
         return render_ui_self_test_page(session, user, run_now=True)
+    if page == "ui_self_test:details" and session is not None:
+        return render_ui_self_test_page(session, user, details=True)
     if page in {"button_health", "button_health:run"} and session is not None:
         return render_button_health_report_page(session, user, run_now=page.endswith(":run"))
+    if page == "button_health:details" and session is not None:
+        return render_button_health_report_page(session, user, details=True)
     if page == "callback_failure_review" and session is not None:
         return render_callback_failure_review_page(session, user)
     if page == "debug_last_error" and session is not None:
@@ -617,10 +621,16 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_audit_logs_page(session, user)
     if page in {"bot_status", "production_status"} and session is not None:
         return render_bot_status_page(session, user)
+    if page == "bot_status:details" and session is not None:
+        return render_bot_status_page(session, user, details=True)
     if page == "production_observability" and session is not None:
         return render_production_observability_page(session, user)
+    if page == "production_observability:details" and session is not None:
+        return render_production_observability_page(session, user, details=True)
     if page == "bot_instance_status" and session is not None:
         return render_botstatus_page(session, user)
+    if page == "bot_instance_status:details" and session is not None:
+        return render_botstatus_page(session, user, details=True)
     if page == "integrity" and session is not None:
         return render_integrity_page(session, user)
     if page == "settings:report_problem":

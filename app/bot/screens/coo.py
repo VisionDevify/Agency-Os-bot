@@ -40,10 +40,22 @@ def render_today_top5_page(session: Session, user: User | None = None) -> Screen
 
 def render_readiness_v2_page(session: Session) -> Screen:
     readiness = readiness_score_v2(session)
+    blockers = readiness["biggest_blockers"][:5]
+    status = "Healthy" if readiness["readiness_score"] >= 80 else "Needs Setup" if readiness["readiness_score"] >= 40 else "Blocked"
+    next_action = (
+        readiness["fastest_path"][0]["title"]
+        if readiness["fastest_path"]
+        else "No urgent setup action. Keep running the daily cycle."
+    )
     lines = [
         "Readiness Score V2",
         "",
+        f"Status: {status}",
         f"Agency Readiness: {readiness['readiness_score']}%",
+        f"Issues Found: {len(blockers)}",
+        "",
+        "Recommended Action:",
+        next_action,
         "",
         "Why the score is low:",
     ]
@@ -63,7 +75,7 @@ def render_readiness_v2_page(session: Session) -> Screen:
         lines.append("- Nothing urgent. Keep running the daily cycle.")
     lines.append("")
     lines.append("Biggest blockers:")
-    for item in readiness["biggest_blockers"][:5]:
+    for item in blockers:
         lines.append(f"- {item['title']} ({item['severity']})")
     return Screen("\n".join(lines), readiness_v2_menu(buttons))
 
@@ -108,10 +120,17 @@ def render_my_work_page(session: Session, user: User) -> Screen:
 
 def render_coo_briefing_page(session: Session, user: User | None = None) -> Screen:
     briefing = coo_briefing(session, actor=user)
+    issues_found = len(briefing["needs_attention"]) + len(briefing["blocked"])
+    next_action = briefing["next_actions"][0] if briefing["next_actions"] else "Nothing urgent. Run a COO scan after new changes."
     lines = [
         "Fortuna COO Briefing",
         "",
+        f"Status: {'Healthy' if issues_found == 0 else 'Needs Attention'}",
         f"Readiness: {briefing['readiness_score']}%",
+        f"Issues Found: {issues_found}",
+        "",
+        "Recommended Action:",
+        next_action,
         "",
         "What changed?",
     ]

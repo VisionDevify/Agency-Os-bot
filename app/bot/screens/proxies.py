@@ -566,9 +566,29 @@ def render_proxy_simulation_page(session: Session) -> Screen:
 
 def render_infrastructure_dashboard_page(session: Session) -> Screen:
     stats = infrastructure_stats(session)
+    issues = stats.warning_proxies + stats.critical_proxies + stats.accounts_missing_proxy
+    if stats.critical_proxies:
+        status = "Needs Attention"
+        next_action = "Review critical proxies first."
+    elif stats.accounts_missing_proxy:
+        status = "Needs Setup"
+        next_action = "Assign proxies to accounts missing one."
+    elif stats.warning_proxies:
+        status = "Watch"
+        next_action = "Review warning proxies when convenient."
+    else:
+        status = "Healthy"
+        next_action = "No action needed."
     lines = [
         "Infrastructure Dashboard",
         "",
+        f"Status: {status}",
+        f"Issues Found: {issues}",
+        "",
+        "Recommended Action:",
+        next_action,
+        "",
+        "Technical Details:",
         f"Total Proxies: {stats.total_proxies}",
         f"Healthy: {stats.healthy_proxies}",
         f"Warning: {stats.warning_proxies}",

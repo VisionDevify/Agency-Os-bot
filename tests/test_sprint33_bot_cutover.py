@@ -142,10 +142,16 @@ def test_botstatus_renders_safe_instance_diagnostics(monkeypatch) -> None:
         )
 
         screen = render_botstatus_page(session, owner, current_instance_id="bot-secret-instance")
+        details = render_botstatus_page(session, owner, current_instance_id="bot-secret-instance", details=True)
 
         assert "Fortuna Bot Status" in screen.text
-        assert "Primary Polling: yes" in screen.text
-        assert "Redis Lock: held" in screen.text
+        assert "Status:" in screen.text
+        assert "Recommended Action:" in screen.text
+        assert "Fortuna Bot Status Technical Details" in details.text
+        assert "Primary Polling: yes" in details.text
+        assert "Redis Lock: held" in details.text
         assert "bot-secret-instance" not in screen.text
+        assert "bot-secret-instance" not in details.text
         for marker in SECRET_MARKERS:
             assert marker not in screen.text
+            assert marker not in details.text

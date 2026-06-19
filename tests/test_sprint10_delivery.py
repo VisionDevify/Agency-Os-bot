@@ -119,14 +119,17 @@ def test_production_status_screen_metrics() -> None:
 
         summary = system_status_summary(session)
         screen = render_bot_status_page(session)
+        details = render_bot_status_page(session, details=True)
 
         assert summary["failed_notification_count"] == 1
         assert failed_delivery_count(session) == 1
-        assert "Environment:" in screen.text
-        assert "DB: healthy" in screen.text
-        assert "Redis: healthy" in screen.text
-        assert "Failed Notification Count: 1" in screen.text
-        assert "Last Delivery Attempt: notification.test / failed" in screen.text
+        assert "Status:" in screen.text
+        assert "Recommended Action:" in screen.text
+        assert "Environment:" in details.text
+        assert "DB: healthy" in details.text
+        assert "Redis: healthy" in details.text
+        assert "Failed Notification Count: 1" in details.text
+        assert "Last Delivery Attempt: notification.test / failed" in details.text
 
 
 def test_railway_config_and_smoke_doc_presence() -> None:

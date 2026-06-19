@@ -333,7 +333,12 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         return None
     if page.startswith("settings:report_problem"):
         return ("manage_roles",)
-    if page in {"bot_status", "production_status"}:
+    if (
+        page.startswith("bot_status")
+        or page == "production_status"
+        or page.startswith("production_observability")
+        or page.startswith("bot_instance_status")
+    ):
         return ("view_dashboard", "manage_reports", "manage_roles")
     permission = PAGE_PERMISSIONS.get(page)
     return (permission,) if permission else None

@@ -517,8 +517,33 @@ def render_team_onboarding_activation_page(session: Session) -> Screen:
 
 def render_fortuna_action_log_page(session: Session, window: str = "today") -> Screen:
     log = autonomous_action_log(session, window=window)
+    did_something = any(
+        log[key]
+        for key in [
+            "actions_created",
+            "tasks_created",
+            "recommendations_created",
+            "followups_created",
+            "automations_run",
+        ]
+    )
+    if log["errors_detected"]:
+        status = "Needs Attention"
+        next_action = "Review the recent errors first."
+    elif did_something:
+        status = "Active"
+        next_action = "Review the recent actions, then continue the top setup step."
+    else:
+        status = "Quiet"
+        next_action = "Nothing urgent. Run the daily cycle when you want a fresh scan."
     lines = [
         "What Fortuna Did",
+        "",
+        f"Status: {status}",
+        f"Issues Found: {log['errors_detected']}",
+        "",
+        "Recommended Action:",
+        next_action,
         "",
         f"Window: {log['window']}",
         f"Actions Created: {log['actions_created']}",

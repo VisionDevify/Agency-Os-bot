@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy.orm import Session
 
@@ -115,12 +117,57 @@ def render_debug_last_error_page(session: Session, user: User | None = None) -> 
     return Screen(text=text, reply_markup=page_controls_markup("settings"))
 
 
-def render_button_health_report_page(session: Session, user: User | None = None, *, run_now: bool = False) -> Screen:
+def render_button_health_report_page(
+    session: Session,
+    user: User | None = None,
+    *,
+    run_now: bool = False,
+    details: bool = False,
+) -> Screen:
     if user is None:
         return Screen(text="Button Health Report\n\nOwner access required.", reply_markup=page_controls_markup("settings"))
     report = run_callback_health_smoke_test(session, actor=user)
+    review = callback_failure_review(session, limit=3)
+    if not details:
+        issues_found = len(report.failing) + len(review.items)
+        if issues_found == 0:
+            status = "Healthy"
+            summary = "Fortuna did not find any critical button or screen issues."
+            recommended_action = "No action needed."
+        else:
+            status = "Needs Attention"
+            summary = f"Fortuna found {issues_found} screen or button issue{'s' if issues_found != 1 else ''}."
+            recommended_action = "Open Technical Details, then fix the highest-impact failure first."
+        last_check = format_user_datetime(user, datetime.now(UTC))
+        return Screen(
+            text="\n".join(
+                [
+                    "🟢 Fortuna Self-Test" if issues_found == 0 else "🟡 Fortuna Self-Test",
+                    "",
+                    "Status:",
+                    status,
+                    "",
+                    f"Systems Checked: {len(report.working)}",
+                    f"Issues Found: {issues_found}",
+                    f"Last Check: {last_check}",
+                    "",
+                    "Summary:",
+                    summary,
+                    "",
+                    "Recommended Action:",
+                    recommended_action,
+                ]
+            ),
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="Run Again", callback_data=callback_for("button_health:run"))],
+                    [InlineKeyboardButton(text="Technical Details", callback_data=callback_for("button_health:details"))],
+                    *page_controls(back_to="settings"),
+                ]
+            ),
+        )
     lines = [
-        "Button Health Report",
+        "Fortuna Self-Test Technical Details",
         "",
         "Automatic callback smoke test for non-destructive screen renderers.",
         "",
@@ -129,7 +176,6 @@ def render_button_health_report_page(session: Session, user: User | None = None,
         f"Failing: {len(report.failing)}",
         f"Untested: {len(report.untested)}",
     ]
-    review = callback_failure_review(session, limit=3)
     lines.extend(
         [
             "",
@@ -161,6 +207,7 @@ def render_button_health_report_page(session: Session, user: User | None = None,
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [InlineKeyboardButton(text="Run Again", callback_data=callback_for("button_health:run"))],
+                [InlineKeyboardButton(text="Executive Summary", callback_data=callback_for("button_health"))],
                 [InlineKeyboardButton(text="Callback Failure Review", callback_data=callback_for("callback_failure_review"))],
                 [InlineKeyboardButton(text="Last Error", callback_data=callback_for("debug_last_error"))],
                 *page_controls(back_to="settings"),
