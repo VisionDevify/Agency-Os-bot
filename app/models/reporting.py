@@ -18,6 +18,7 @@ NOTIFICATION_TARGET_PURPOSES = (
     "testing",
 )
 NOTIFICATION_DELIVERY_STATUSES = ("pending", "sent", "failed", "skipped")
+NOTIFICATION_ROUTING_MODES = ("2_group", "3_group")
 
 
 class DailyBriefing(Base):
@@ -130,3 +131,18 @@ class NotificationDeliveryAttempt(Base):
     metadata_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
 
     target: Mapped[NotificationTarget] = relationship(back_populates="delivery_attempts")
+
+
+class NotificationRoutingConfig(TimestampMixin, Base):
+    __tablename__ = "notification_routing_configs"
+    __table_args__ = (
+        CheckConstraint(
+            "mode in ('2_group', '3_group')",
+            name="ck_notification_routing_configs_mode",
+        ),
+        Index("ix_notification_routing_configs_mode", "mode"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    mode: Mapped[str] = mapped_column(String(40), default="3_group", nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text(), nullable=True)

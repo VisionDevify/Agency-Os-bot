@@ -671,6 +671,8 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_notification_targets_page(session)
     if page == "notification_group_setup" and session is not None:
         return render_notification_group_setup_page(session)
+    if page == "notification_routing" and session is not None:
+        return render_notification_routing_page(session)
     if page == "notification_targets:routing_test" and session is not None:
         return render_notification_routing_test_page(session)
     if page.startswith("notification_target:") and session is not None:

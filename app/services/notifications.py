@@ -6,9 +6,11 @@ from sqlalchemy.orm import Session
 
 from app.models.reporting import (
     NOTIFICATION_DELIVERY_STATUSES,
+    NOTIFICATION_ROUTING_MODES,
     NOTIFICATION_TARGET_PURPOSES,
     NOTIFICATION_TARGET_TYPES,
     NotificationDeliveryAttempt,
+    NotificationRoutingConfig,
     NotificationTarget,
 )
 from app.models.user import User
@@ -85,6 +87,18 @@ class RoutingSmokeTestResult:
     failures: tuple[str, ...]
 
 
+@dataclass(frozen=True)
+class NotificationRoutingModeSummary:
+    mode: str
+    label: str
+    hq_configured: bool
+    ops_configured: bool
+    alerts_configured: bool
+    combined_ops_alerts: bool
+    last_delivery_status: str
+    last_delivery_at: datetime | None
+
+
 def _now() -> datetime:
     return datetime.now(UTC)
 
@@ -145,6 +159,64 @@ def canonical_purpose(purpose: str) -> str:
 
 def purpose_aliases(purpose: str) -> tuple[str, ...]:
     return PURPOSE_ALIASES.get(purpose, (purpose,))
+
+
+def get_or_create_routing_config(session: Session) -> NotificationRoutingConfig:
+    config = session.scalar(select(NotificationRoutingConfig).order_by(NotificationRoutingConfig.id).limit(1))
+    if config is None:
+        config = NotificationRoutingConfig(mode="3_group", notes="Default Fortuna HQ/Ops/Alerts routing.")
+        session.add(config)
+        session.flush()
+    return config
+
+
+def notification_routing_mode(session: Session) -> str:
+    config = get_or_create_routing_config(session)
+    return config.mode if config.mode in NOTIFICATION_ROUTING_MODES else "3_group"
+
+
+def set_notification_routing_mode(session: Session, *, actor: User, mode: str) -> NotificationRoutingConfig:
+    _require_notification_admin(session, actor)
+    if mode not in NOTIFICATION_ROUTING_MODES:
+        raise ValueError(f"Invalid notification routing mode: {mode}")
+    config = get_or_create_routing_config(session)
+    old_mode = config.mode
+    config.mode = mode
+    config.notes = (
+        "HQ plus combined Ops/Alerts routing."
+        if mode == "2_group"
+        else "Separate Fortuna HQ, Fortuna Ops, and Fortuna Alerts routing."
+    )
+    session.flush()
+    audit_action(
+        session,
+        actor=actor,
+        action="notification.routing_mode_updated",
+        resource_type="notification_routing_config",
+        resource_id=str(config.id),
+        details={"from": old_mode, "to": mode},
+    )
+    emit_event(
+        session,
+        actor=actor,
+        event_name="notification.routing_mode_updated",
+        resource_type="notification_routing_config",
+        resource_id=str(config.id),
+        payload={"from": old_mode, "to": mode},
+    )
+    return config
+
+
+def effective_route_purposes(session: Session, purposes: tuple[str, ...] | list[str]) -> tuple[str, ...]:
+    canonical: list[str] = []
+    mode = notification_routing_mode(session)
+    for purpose in purposes:
+        normalized = canonical_purpose(purpose)
+        if mode == "2_group" and normalized == "ops":
+            normalized = "alerts"
+        if normalized not in canonical:
+            canonical.append(normalized)
+    return tuple(canonical)
 
 
 def expanded_purpose_set(purposes: tuple[str, ...] | list[str]) -> tuple[str, ...]:
@@ -473,7 +545,7 @@ def target_purposes_for_event(event_type: str, *, severity: str | None = None) -
 
 
 def active_targets_for_purposes(session: Session, purposes: tuple[str, ...] | list[str]) -> list[NotificationTarget]:
-    expanded = expanded_purpose_set(tuple(purposes))
+    expanded = expanded_purpose_set(effective_route_purposes(session, tuple(purposes)))
     if not expanded:
         return []
     return list(
@@ -554,6 +626,22 @@ def notification_group_setup_status(session: Session) -> list[NotificationPurpos
     return rows
 
 
+def notification_routing_mode_summary(session: Session) -> NotificationRoutingModeSummary:
+    mode = notification_routing_mode(session)
+    statuses = {status.purpose: status for status in notification_group_setup_status(session)}
+    latest = latest_delivery_attempt(session)
+    return NotificationRoutingModeSummary(
+        mode=mode,
+        label="2-group mode" if mode == "2_group" else "3-group mode",
+        hq_configured=statuses["hq"].configured,
+        ops_configured=statuses["ops"].configured,
+        alerts_configured=statuses["alerts"].configured,
+        combined_ops_alerts=mode == "2_group",
+        last_delivery_status=latest.status if latest else "none",
+        last_delivery_at=latest.attempted_at if latest else None,
+    )
+
+
 def run_notification_routing_smoke_test(
     session: Session,
     *,
@@ -567,19 +655,22 @@ def run_notification_routing_smoke_test(
     failures: list[str] = []
 
     for purpose, label in PURPOSE_LABELS.items():
+        effective_purpose = effective_route_purposes(session, (purpose,))[0]
+        effective_label = PURPOSE_LABELS.get(effective_purpose, label)
         aliases = purpose_aliases(purpose)
         targets = list(
             session.scalars(
                 select(NotificationTarget).where(
                     NotificationTarget.is_active.is_(True),
-                    NotificationTarget.purpose.in_(aliases),
+                    NotificationTarget.purpose.in_(expanded_purpose_set((effective_purpose,))),
                 )
             ).all()
         )
         if not targets:
             skipped.append(f"{label}: no active target")
             continue
-        would_send.append(label)
+        if effective_label not in would_send:
+            would_send.append(effective_label)
         for target in targets:
             if target.purpose == "testing" and send_testing:
                 create_delivery_attempt(
@@ -590,7 +681,7 @@ def run_notification_routing_smoke_test(
                     status="pending",
                     metadata={"purpose": purpose, "target_purpose": target.purpose, "smoke_test": True},
                 )
-                actual_sends.append(label)
+                actual_sends.append(effective_label)
             else:
                 create_delivery_attempt(
                     session,
@@ -601,7 +692,7 @@ def run_notification_routing_smoke_test(
                     error_message="simulation only; no send without owner confirmation",
                     metadata={"purpose": purpose, "target_purpose": target.purpose, "smoke_test": True, "simulated": True},
                 )
-                skipped.append(f"{label}: simulated only")
+                skipped.append(f"{effective_label}: simulated only")
 
     emit_event(
         session,
@@ -622,3 +713,67 @@ def run_notification_routing_smoke_test(
         skipped=tuple(skipped),
         failures=tuple(failures),
     )
+
+
+def run_notification_purpose_test(
+    session: Session,
+    *,
+    actor: User,
+    purpose: str,
+) -> RoutingSmokeTestResult:
+    _require_notification_admin(session, actor)
+    canonical = canonical_purpose(purpose)
+    if canonical not in PURPOSE_LABELS:
+        raise ValueError(f"Invalid notification purpose: {purpose}")
+    effective = effective_route_purposes(session, (canonical,))[0]
+    label = PURPOSE_LABELS[canonical]
+    effective_label = PURPOSE_LABELS[effective]
+    targets = active_targets_for_purposes(session, (canonical,))
+    if not targets:
+        upsert_recommendation(
+            session,
+            actor=actor,
+            recommendation_type=f"notification_target_missing_{canonical}",
+            title=f"Register {label} Target",
+            description=f"{label} is not registered yet. Add the bot to that future chat, then use Register Current Chat.",
+            severity="warning",
+            entity_type="notification_target",
+            entity_id=None,
+            metadata={"purpose": canonical, "routing_mode": notification_routing_mode(session)},
+        )
+        emit_event(
+            session,
+            actor=actor,
+            event_name="notification.purpose_test.skipped",
+            resource_type="notification",
+            resource_id=canonical,
+            payload={"reason": "missing_target", "effective_purpose": effective},
+        )
+        return RoutingSmokeTestResult((), (), (f"{label}: no active target",), ())
+
+    skipped: list[str] = []
+    for target in targets:
+        create_delivery_attempt(
+            session,
+            target,
+            event_type=f"notification.test.{canonical}",
+            actor=actor,
+            status="skipped",
+            error_message="simulation only; no send without owner confirmation",
+            metadata={
+                "purpose": canonical,
+                "effective_purpose": effective,
+                "routing_mode": notification_routing_mode(session),
+                "simulated": True,
+            },
+        )
+        skipped.append(f"{effective_label}: simulated only")
+    emit_event(
+        session,
+        actor=actor,
+        event_name="notification.purpose_test.simulated",
+        resource_type="notification",
+        resource_id=canonical,
+        payload={"target_count": len(targets), "effective_purpose": effective},
+    )
+    return RoutingSmokeTestResult((effective_label,), (), tuple(skipped), ())

@@ -1,6 +1,6 @@
 ﻿# Notification Routing
 
-Sprint 9 introduces safe notification routing without spamming real groups or exposing Telegram chat IDs. Sprint 10 adds durable delivery-attempt records for actual send attempts. Sprint 11 adds availability-aware routing and Daily Digest delivery attempts. Sprint 12 adds critical intelligence signal routing through the same safe delivery-attempt path. Sprint 16 adds Notification Digest Mode for bundling low-priority updates. Sprint 17 adds opportunity and creator-watch routing keys. Sprint 18 adds digestable creator, own-post, assignment, high-priority opportunity, and result-recorded events. Sprint 27 adds Notification Group Setup and a safe routing smoke test. Sprint 38 simplifies owner-facing routing to three groups and adds manual creator/own-post alert routing.
+Sprint 9 introduces safe notification routing without spamming real groups or exposing Telegram chat IDs. Sprint 10 adds durable delivery-attempt records for actual send attempts. Sprint 11 adds availability-aware routing and Daily Digest delivery attempts. Sprint 12 adds critical intelligence signal routing through the same safe delivery-attempt path. Sprint 16 adds Notification Digest Mode for bundling low-priority updates. Sprint 17 adds opportunity and creator-watch routing keys. Sprint 18 adds digestable creator, own-post, assignment, high-priority opportunity, and result-recorded events. Sprint 27 adds Notification Group Setup and a safe routing smoke test. Sprint 38 simplifies owner-facing routing to three groups and adds manual creator/own-post alert routing. Sprint 39 adds persistent 2-group/3-group routing mode and safe creator/own-post alert pilots.
 
 ## Goals
 
@@ -19,6 +19,15 @@ Legacy purposes remain valid internally:
 
 - `owner`, `incidents`, and `testing` map to `hq`.
 - `operations` and `automation_logs` map to `ops`.
+
+## Routing Mode
+
+Fortuna supports two owner-facing modes:
+
+- `3_group`: separate Fortuna HQ, Fortuna Ops, and Fortuna Alerts targets.
+- `2_group`: Fortuna HQ stays private, while Ops-style and Alerts-style traffic are routed to the combined Alerts/team-action target.
+
+The routing mode is stored in `notification_routing_configs`. It can be changed from Settings -> Notification Routing. Changing modes does not require new code or new migrations.
 
 ## Routing Rules
 
@@ -83,13 +92,24 @@ Settings -> Notification Group Setup supports:
 - Last delivery status per purpose.
 - Direct link to the manual group-registration help.
 
+Settings -> Notification Routing supports:
+
+- Current routing mode.
+- HQ/Ops/Alerts configured status.
+- Combined Ops/Alerts indicator for 2-group mode.
+- Register Current Chat.
+- Set Routing Mode.
+- Test HQ, Ops, and Alerts safely.
+- Simulate Alert Routing.
+- Delivery History.
+
 ## Manual Group Registration
 
 Fortuna OS notification groups/channels are not auto-created by the app. Create and register them manually:
 
 1. Create `Fortuna HQ`.
-2. Create `Fortuna Ops`.
-3. Create `Fortuna Alerts`.
+2. Create `Fortuna Ops` if using 3-group mode.
+3. Create `Fortuna Alerts`, or use it as the combined Ops/Alerts group in 2-group mode.
 4. Add `@FortunaSolstice_Bot`.
 5. Open each group/channel.
 6. Use Settings -> Notification Targets -> Register Current Chat as Fortuna Target.
@@ -137,6 +157,15 @@ The pilot keeps real delivery conservative:
 
 - Routing tests are simulated unless the owner explicitly sends a real test to an approved target.
 - Raw chat IDs remain hidden.
+
+## Sprint 39 Alert Pilots
+
+Settings -> Notification Group Pilot can run safe internal pilots:
+
+- Creator Alert Pilot: creates a demo creator, demo creator-post alert, opportunity, strategies, learning event, and notification routing result.
+- Own Post Alert Pilot: creates a demo own-post alert, opportunity, follow-up task, learning event, and notification routing result.
+
+If no Telegram target is configured, the pilot does not crash or spam. It creates a recommendation such as "Register Fortuna Alerts Target" and records a safe routing event. If a target is configured, delivery attempts are created as pending/skipped/sent according to the explicit test path.
 
 ## Safety Rules
 

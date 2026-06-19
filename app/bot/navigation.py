@@ -85,10 +85,13 @@ from app.services.notifications import (
     create_placeholder_notification_target,
     disable_notification_target,
     get_notification_target,
+    run_notification_purpose_test,
     run_notification_routing_smoke_test,
+    set_notification_routing_mode,
     set_notification_target_purpose,
     test_notification_target,
 )
+from app.services.opportunities import run_creator_alert_pilot, run_own_post_alert_pilot
 from app.services.automations import (
     activate_automation_rule,
     approve_automation,
@@ -318,6 +321,8 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
     if (
         page == "notification_group_setup"
         or page == "notification_group_pilot"
+        or page == "notification_routing"
+        or page.startswith("notification_pilot:")
         or page.startswith("notification_targets")
         or page.startswith("notification_target:")
     ):
@@ -1057,6 +1062,20 @@ def _perform_admin_action(
     if page == "notification_targets:routing_test":
         run_notification_routing_smoke_test(session, actor=actor, send_testing=True)
         return "notification_targets:routing_test"
+    if page.startswith("notification_routing:mode:"):
+        mode = page.rsplit(":", 1)[-1]
+        set_notification_routing_mode(session, actor=actor, mode=mode)
+        return "notification_routing"
+    if page.startswith("notification_targets:test:"):
+        purpose = page.rsplit(":", 1)[-1]
+        run_notification_purpose_test(session, actor=actor, purpose=purpose)
+        return "notification_routing"
+    if page == "notification_pilot:creator_alert":
+        run_creator_alert_pilot(session, actor=actor)
+        return "notification_group_pilot"
+    if page == "notification_pilot:own_post_alert":
+        run_own_post_alert_pilot(session, actor=actor)
+        return "notification_group_pilot"
     if page == "notification_targets:add_current" and chat_id is not None:
         target_type = "telegram_group" if chat_title else "telegram_user"
         target = add_current_chat_as_target(
@@ -1067,7 +1086,7 @@ def _perform_admin_action(
             target_type=target_type,
             purpose="hq",
         )
-        return f"notification_target:{target.id}"
+        return f"notification_target:{target.id}:purpose"
     if len(parts) >= 3 and parts[0] == "notification_target" and parts[1].isdigit():
         target = get_notification_target(session, int(parts[1]))
         if target is None:
@@ -1264,6 +1283,8 @@ def screen_for_page(
         or normalized.startswith("notification_target:")
         or normalized == "notification_group_setup"
         or normalized == "notification_group_pilot"
+        or normalized == "notification_routing"
+        or normalized.startswith("notification_pilot:")
         or normalized == "bot_status"
         or normalized == "bot_instance_status"
         or normalized == "production_status"

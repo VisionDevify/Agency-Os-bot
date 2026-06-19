@@ -406,6 +406,11 @@ def render_production_observability_page(
         f"Proxy Pilot: {summary['proxy_pilot_status']}",
         "",
         "Notification Group Readiness:",
+        f"Routing Mode: {summary['notification_routing_label']}",
+        f"HQ Configured: {_yes_no(summary['notification_hq_configured'])}",
+        f"Ops Configured: {_yes_no(summary['notification_ops_configured'])}",
+        f"Alerts Configured: {_yes_no(summary['notification_alerts_configured'])}",
+        f"Ops/Alerts Combined: {_yes_no(summary['notification_ops_alerts_combined'])}",
         *notification_lines,
         f"Notification Pilot: {summary['notification_pilot_status']}",
         "",
@@ -694,6 +699,45 @@ def render_notification_group_pilot_page(session: Session) -> Screen:
         ]
     )
     return Screen(text="\n".join(lines), reply_markup=notification_group_pilot_menu())
+
+
+def render_notification_routing_page(session: Session) -> Screen:
+    summary = notification_routing_mode_summary(session)
+    latest_at = format_user_datetime(None, summary.last_delivery_at) if summary.last_delivery_at else "never"
+    mode_note = (
+        "HQ stays private. Ops and Alerts are combined into one team/action channel."
+        if summary.combined_ops_alerts
+        else "HQ, Ops, and Alerts are routed as separate Fortuna spaces."
+    )
+    lines = [
+        "Notification Routing",
+        "",
+        f"Mode: {summary.label}",
+        mode_note,
+        "",
+        "Current Targets:",
+        f"- HQ: {'Configured' if summary.hq_configured else 'Not registered yet'}",
+        f"- Ops: {'Configured' if summary.ops_configured else 'Not registered yet'}",
+        f"- Alerts: {'Configured' if summary.alerts_configured else 'Not registered yet'}",
+        "",
+    ]
+    if summary.combined_ops_alerts:
+        lines.append(
+            "Combined Ops/Alerts: Fortuna will route team operations and fast-action alerts to the Alerts target when Ops is not separate."
+        )
+    else:
+        lines.append("Combined Ops/Alerts: Off")
+    lines.extend(
+        [
+            "",
+            f"Last Delivery: {summary.last_delivery_status} at {latest_at}",
+            "",
+            "Next step:",
+            "When the owner creates a Telegram group/chat, open it and tap Register Current Chat.",
+            "Test buttons preview safely if a target is missing.",
+        ]
+    )
+    return Screen(text="\n".join(lines), reply_markup=notification_routing_menu())
 
 
 def render_notification_routing_test_page(session: Session) -> Screen:

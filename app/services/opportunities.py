@@ -39,6 +39,7 @@ from app.services.audit import sanitize_details
 from app.services.auth import USER_STATUS_ACTIVE, audit_action, user_has_permission
 from app.services.events import emit_event
 from app.services.notifications import active_targets_for_event, active_targets_for_purposes, create_delivery_attempt
+from app.services.recommendations import upsert_recommendation
 from app.services.team_operations import get_or_create_availability
 
 
@@ -828,6 +829,103 @@ def create_default_post_watch(session: Session, *, actor: User | None) -> PostWa
     )
 
 
+def _get_or_create_alert_pilot_model(session: Session) -> ModelBrand:
+    model = session.scalar(
+        select(ModelBrand)
+        .where(ModelBrand.display_name == "Fortuna Alert Pilot Model", ModelBrand.is_demo.is_(True))
+        .order_by(ModelBrand.id)
+        .limit(1)
+    )
+    if model is None:
+        model = ModelBrand(
+            display_name="Fortuna Alert Pilot Model",
+            stage_name="Alert Pilot",
+            status="active",
+            country="United States",
+            timezone="America/New_York",
+            primary_platform="x",
+            internal_notes="Demo model created for safe notification alert pilot validation.",
+            is_demo=True,
+        )
+        session.add(model)
+        session.flush()
+    return model
+
+
+def run_creator_alert_pilot(session: Session, *, actor: User | None) -> dict:
+    creator = create_creator_watch(
+        session,
+        actor=actor,
+        platform="x",
+        creator_name="Test Creator",
+        display_name="Test Creator",
+        creator_username="test_creator",
+        niche="test",
+        priority="normal",
+        assigned_model_id=_get_or_create_alert_pilot_model(session).id,
+        assigned_chatter_id=actor.id if actor else None,
+        assigned_group="alerts",
+        notes="Demo creator for safe Creator Alert pilot. No platform action is automated.",
+        is_demo=True,
+    )
+    before = session.scalar(select(func.count(NotificationDeliveryAttempt.id))) or 0
+    alert = create_creator_post_alert(
+        session,
+        creator,
+        actor=actor,
+        post_reference="https://example.com/fortuna-demo-creator-post",
+        notes="Demo Creator Alert pilot. Human review only.",
+    )
+    after = session.scalar(select(func.count(NotificationDeliveryAttempt.id))) or 0
+    attempts_created = max(0, after - before)
+    return {
+        "creator_id": creator.id,
+        "alert_id": alert.id,
+        "opportunity_id": alert.opportunity_id,
+        "attempts_created": attempts_created,
+        "simulated": attempts_created == 0,
+        "assigned_group": alert.assigned_group,
+    }
+
+
+def run_own_post_alert_pilot(session: Session, *, actor: User | None) -> dict:
+    model = _get_or_create_alert_pilot_model(session)
+    post = create_post_watch(
+        session,
+        actor=actor,
+        model_brand=model,
+        platform="x",
+        post_reference="https://example.com/fortuna-demo-own-post",
+        post_type="text",
+        attention_level="engage",
+        priority="normal",
+        assigned_group="alerts",
+        assigned_chatter_id=actor.id if actor else None,
+        notes="Demo own-post watch for safe alert pilot. No platform action is automated.",
+        is_demo=True,
+    )
+    before = session.scalar(select(func.count(NotificationDeliveryAttempt.id))) or 0
+    alert = create_own_post_alert(
+        session,
+        post,
+        actor=actor,
+        post_reference=post.post_reference,
+        notes="Demo Own Post Alert pilot. Human review only.",
+        create_opportunity=True,
+    )
+    after = session.scalar(select(func.count(NotificationDeliveryAttempt.id))) or 0
+    attempts_created = max(0, after - before)
+    return {
+        "post_id": post.id,
+        "alert_id": alert.id,
+        "opportunity_id": alert.opportunity_id,
+        "follow_up_task_id": alert.follow_up_task_id,
+        "attempts_created": attempts_created,
+        "simulated": attempts_created == 0,
+        "assigned_group": alert.assigned_group,
+    }
+
+
 def _strategy_templates_for(opportunity: Opportunity) -> list[dict]:
     base_risk = 20
     if opportunity.url:
@@ -1294,8 +1392,24 @@ def route_alert_notification(
     severity: str | None = None,
     metadata: dict | None = None,
 ) -> list[NotificationDeliveryAttempt]:
-    targets = active_targets_for_purposes(session, (_alert_group(assigned_group),))
+    group = _alert_group(assigned_group)
+    targets = active_targets_for_purposes(session, (group,))
     attempts: list[NotificationDeliveryAttempt] = []
+    if not targets:
+        upsert_recommendation(
+            session,
+            actor=actor,
+            recommendation_type=f"notification_target_missing_{group}",
+            title=f"Register Fortuna {group.upper()} Target",
+            description=(
+                "Fortuna could not route this alert because the Telegram target is not registered yet. "
+                "Open the future group/chat, add the bot, then use Register Current Chat."
+            ),
+            severity="warning",
+            entity_type="notification_target",
+            entity_id=None,
+            metadata={"missing_group": group, "event_type": event_type, "routing": "manual_registration_required"},
+        )
     for target in targets:
         attempts.append(
             create_delivery_attempt(
@@ -1309,7 +1423,7 @@ def route_alert_notification(
                         "title": title,
                         "body": body,
                         "severity": severity,
-                        "assigned_group": _alert_group(assigned_group),
+                        "assigned_group": group,
                         **(metadata or {}),
                     }
                 ),
@@ -1321,7 +1435,7 @@ def route_alert_notification(
         event_name=f"{event_type}.routed",
         resource_type="notification",
         resource_id=event_type,
-        payload={"target_count": len(attempts), "assigned_group": _alert_group(assigned_group)},
+        payload={"target_count": len(attempts), "assigned_group": group, "missing_target": not bool(targets)},
     )
     return attempts
 

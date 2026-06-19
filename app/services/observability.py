@@ -23,7 +23,7 @@ from app.services.help_brain import help_questions_today, notification_pilot_sta
 from app.services.heartbeats import list_heartbeats, system_status_summary
 from app.services.bot_instances import bot_instance_diagnostics
 from app.services.persistence import storage_status
-from app.services.notifications import purpose_aliases
+from app.services.notifications import notification_routing_mode_summary, purpose_aliases
 
 REQUIRED_NOTIFICATION_PURPOSES: tuple[tuple[str, str], ...] = (
     ("hq", "Fortuna HQ"),
@@ -129,6 +129,7 @@ def production_observability_summary(session: Session) -> dict[str, object]:
     )
     help_total, help_confused = help_questions_today(session)
     notification_pilot = notification_pilot_status(session)
+    routing_mode = notification_routing_mode_summary(session)
     proxy_pilot = proxy_pilot_status(session)
     bot_diagnostics = bot_instance_diagnostics(session)
     latest_self_test = _latest(session, UISelfTestRun, desc(UISelfTestRun.created_at), desc(UISelfTestRun.id))
@@ -207,6 +208,12 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         "last_delivery_status": status["last_delivery_status"],
         "failed_notification_count": status["failed_notification_count"],
         "notification_readiness": notification_target_readiness(session),
+        "notification_routing_mode": routing_mode.mode,
+        "notification_routing_label": routing_mode.label,
+        "notification_hq_configured": routing_mode.hq_configured,
+        "notification_ops_configured": routing_mode.ops_configured,
+        "notification_alerts_configured": routing_mode.alerts_configured,
+        "notification_ops_alerts_combined": routing_mode.combined_ops_alerts,
         "notification_targets_configured_count": configured_notification_targets,
         "help_questions_today": help_total,
         "help_confused_count": help_confused,

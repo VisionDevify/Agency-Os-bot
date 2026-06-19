@@ -43,6 +43,7 @@ SAFE_SMOKE_PAGES = {
     "models:list",
     "notification_group_pilot",
     "notification_group_setup",
+    "notification_routing",
     "notification_targets",
     "opportunities",
     "opportunities:command",

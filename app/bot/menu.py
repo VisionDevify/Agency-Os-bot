@@ -1695,6 +1695,7 @@ def settings_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="View Audit Logs", callback_data=callback_for("audit_logs"))],
             [InlineKeyboardButton(text="Notification Group Setup", callback_data=callback_for("notification_group_setup"))],
             [InlineKeyboardButton(text="Notification Group Pilot", callback_data=callback_for("notification_group_pilot"))],
+            [InlineKeyboardButton(text="Notification Routing", callback_data=callback_for("notification_routing"))],
             [InlineKeyboardButton(text="Notification Targets", callback_data=callback_for("notification_targets"))],
             [
                 InlineKeyboardButton(text="Back", callback_data=callback_for("menu")),
@@ -1729,6 +1730,7 @@ def notification_group_setup_menu() -> InlineKeyboardMarkup:
                 )
             ],
             [InlineKeyboardButton(text="Run Routing Test", callback_data=callback_for("notification_targets:routing_test"))],
+            [InlineKeyboardButton(text="Notification Routing", callback_data=callback_for("notification_routing"))],
             [
                 InlineKeyboardButton(text="Notification Targets", callback_data=callback_for("notification_targets")),
                 InlineKeyboardButton(text="How to Register Groups", callback_data=callback_for("help:notification_groups")),
@@ -1750,8 +1752,34 @@ def notification_group_pilot_menu() -> InlineKeyboardMarkup:
             ],
             [InlineKeyboardButton(text="Preview Routing", callback_data=callback_for("notification_targets:routing_test"))],
             [InlineKeyboardButton(text="Simulate Routing", callback_data=callback_for("notification_targets:routing_test"))],
+            [
+                InlineKeyboardButton(text="Run Creator Alert Pilot", callback_data=callback_for("notification_pilot:creator_alert")),
+            ],
+            [
+                InlineKeyboardButton(text="Run Own Post Pilot", callback_data=callback_for("notification_pilot:own_post_alert")),
+            ],
             [InlineKeyboardButton(text="Activation Checklist", callback_data=callback_for("notification_group_pilot"))],
             [InlineKeyboardButton(text="Ask Fortuna", callback_data=callback_for("help_copilot:notification_groups"))],
+            *page_controls(back_to="settings"),
+        ]
+    )
+
+
+def notification_routing_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Register Current Chat", callback_data=callback_for("notification_targets:add_current"))],
+            [
+                InlineKeyboardButton(text="Use 2 Groups", callback_data=callback_for("notification_routing:mode:2_group")),
+                InlineKeyboardButton(text="Use 3 Groups", callback_data=callback_for("notification_routing:mode:3_group")),
+            ],
+            [
+                InlineKeyboardButton(text="Test HQ", callback_data=callback_for("notification_targets:test:hq")),
+                InlineKeyboardButton(text="Test Ops", callback_data=callback_for("notification_targets:test:ops")),
+                InlineKeyboardButton(text="Test Alerts", callback_data=callback_for("notification_targets:test:alerts")),
+            ],
+            [InlineKeyboardButton(text="Simulate Alert Routing", callback_data=callback_for("notification_targets:routing_test"))],
+            [InlineKeyboardButton(text="Delivery History", callback_data=callback_for("reports:digest:history"))],
             *page_controls(back_to="settings"),
         ]
     )

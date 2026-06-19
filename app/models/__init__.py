@@ -32,7 +32,13 @@ from app.models.opportunity import (
 from app.models.permissions import Permission, Role, RolePermission, UserRole
 from app.models.proxy import Proxy, ProxyHealthCheckResult, ProxyRotationHistory
 from app.models.recommendation import Recommendation
-from app.models.reporting import AccountabilitySnapshot, DailyBriefing, NotificationDeliveryAttempt, NotificationTarget
+from app.models.reporting import (
+    AccountabilitySnapshot,
+    DailyBriefing,
+    NotificationDeliveryAttempt,
+    NotificationRoutingConfig,
+    NotificationTarget,
+)
 from app.models.system import SystemHeartbeat
 from app.models.task import Task
 from app.models.team_rollout import (
@@ -86,6 +92,7 @@ __all__ = [
     "NotificationTarget",
     "NotificationDeliveryAttempt",
     "NotificationDigest",
+    "NotificationRoutingConfig",
     "Opportunity",
     "OpportunityResult",
     "OpportunitySource",
