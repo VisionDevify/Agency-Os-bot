@@ -88,7 +88,7 @@ def test_simulation_does_not_mutate_proxy() -> None:
             session,
             actor=owner,
             provider="provider",
-            host="proxy.auto.local",
+            host="proxy.auto.example.com",
             port=8123,
             base_username="base",
             password="secret",

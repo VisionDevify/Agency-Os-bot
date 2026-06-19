@@ -173,6 +173,10 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_proxy_add_page()
     if page == "proxies:advanced":
         return render_proxy_advanced_page()
+    if page == "proxies:rotation_help":
+        return render_proxy_rotation_help_page()
+    if page == "proxies:cleanup_result" and session is not None:
+        return render_proxy_cleanup_result_page(session)
     if page == "proxies:list" and session is not None:
         return render_proxy_list_page(session)
     if page == "proxies:entry_check" and session is not None:
@@ -197,6 +201,16 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
             proxy_id = int(parts[1])
             if len(parts) == 2:
                 return render_proxy_detail_page(session, proxy_id)
+            if parts[2] == "manage":
+                return render_proxy_manage_page(session, proxy_id)
+            if parts[2] == "archive_confirm":
+                return render_proxy_archive_confirm_page(session, proxy_id)
+            if parts[2] == "archive_result":
+                return render_proxy_archive_result_page()
+            if parts[2] == "delete_confirm":
+                return render_proxy_delete_confirm_page(session, proxy_id)
+            if parts[2] == "delete_result":
+                return render_proxy_delete_result_page()
             if parts[2] == "rotate_preview":
                 return render_proxy_rotation_preview_page(session, proxy_id)
             if parts[2] == "rotated":

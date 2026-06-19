@@ -321,16 +321,11 @@ def team_onboarding_activation(session: Session) -> dict:
 
 
 def proxy_entry_status(session: Session) -> ProxyEntryStatus:
-    total = session.scalar(select(func.count(Proxy.id))) or 0
-    real = (
-        session.scalar(
-            select(func.count(Proxy.id)).where(
-                Proxy.status != "disabled",
-                Proxy.encrypted_password.is_not(None),
-            )
-        )
-        or 0
-    )
+    from app.services.proxies import list_proxies
+
+    real_proxies = list_proxies(session, include_disabled=False)
+    total = len(real_proxies)
+    real = len(real_proxies)
     missing = (
         session.scalar(
             select(func.count(Account.id)).where(

@@ -107,8 +107,9 @@ def test_proxy_vault_uses_simple_paste_assign_flow() -> None:
     with session_scope() as session:
         screen = render_proxies_home(session)
 
-        assert "What Proxies Do" in screen.text
+        assert "No real proxies saved yet." in screen.text
         assert "Paste your Olympix proxy string" in screen.text
+        assert "What to paste" in screen.text
         assert "Host:" not in screen.text
         assert "session_" not in screen.text
         assert "Paste Proxy" in _button_labels(screen)

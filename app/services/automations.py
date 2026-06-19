@@ -1346,11 +1346,11 @@ def create_simulation_run(
 
 def run_proxy_repair_simulation(session: Session, *, actor: User) -> AutomationSimulationRun:
     summary = simulation_mode_summary(session)
-    candidates = list(
-        session.scalars(
-            select(Proxy).where((Proxy.status.in_(("warning", "critical"))) | (Proxy.health_score < 70))
-        ).all()
-    )
+    candidates = [
+        proxy
+        for proxy in list_proxies(session)
+        if proxy.status in {"warning", "critical"} or proxy.health_score < 70
+    ]
     risk_level = "low"
     if summary.would_fail:
         risk_level = "high"

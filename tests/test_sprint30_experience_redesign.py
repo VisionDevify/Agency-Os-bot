@@ -135,11 +135,11 @@ def test_proxy_vault_home_is_first_class_and_not_backend_like() -> None:
         labels = _button_text(screen)
 
         assert "\U0001f6e1 Proxy Vault" in screen.text
-        assert "Status" in screen.text
-        assert "What Needs Attention" in screen.text
+        assert "real proxy saved" in screen.text
+        assert "Assign it to an account." in screen.text
         assert "Real Checks:" in screen.text
         assert "View Proxies" in labels
-        assert "Accounts Missing Proxy" in labels
+        assert "How Rotation Works" in labels
         assert "More Details" in labels
         assert "secret-password" not in screen.text
         _assert_no_raw_backend_text(screen.text)

@@ -130,11 +130,11 @@ def test_proxy_vault_and_detail_are_clean_and_secret_safe() -> None:
         home = render_proxies_home(session)
         detail = render_proxy_detail_page(session, proxy.id)
 
-        assert "Status" in home.text
-        assert "What Needs Attention" in home.text
+        assert "real proxy saved" in home.text
+        assert "Assign it to an account." in home.text
         assert "View Proxies" in _button_text(home)
         assert "More Details" in _button_text(home)
-        assert "Olympix Mobile Proxy" in detail.text
+        assert "Proxy Details" in detail.text
         assert "Connection:" in detail.text
         assert "Real Check: Off" in detail.text
         assert "super-secret" not in detail.text

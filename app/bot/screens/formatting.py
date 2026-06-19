@@ -96,11 +96,14 @@ from app.bot.menu import (
     proxies_menu,
     proxy_account_choice_menu,
     proxy_add_menu,
+    proxy_archive_confirm_menu,
+    proxy_delete_confirm_menu,
     proxy_detail_advanced_menu,
     proxy_detail_menu,
     proxy_entry_check_menu,
     proxy_import_success_menu,
     proxy_list_menu,
+    proxy_manage_menu,
     proxy_real_check_pilot_menu,
     proxy_result_menu,
     proxy_rotation_preview_menu,
@@ -281,8 +284,11 @@ from app.services.proxies import (
     accounts_missing_proxy,
     affected_models_for_proxy,
     calculate_proxy_health,
+    is_archived_proxy,
+    is_placeholder_proxy,
     infrastructure_stats,
     latest_proxy_health_check_results,
+    list_placeholder_proxies,
     list_proxies,
     mask_proxy_username,
     mask_session_suffix,
@@ -440,7 +446,7 @@ def _account_button(account: Account) -> tuple[str, str]:
     return label, f"nav:account:{account.id}"
 
 def _proxy_button(proxy: Proxy) -> tuple[str, str]:
-    return f"{proxy.id}. {proxy.provider} {proxy.host}:{proxy.port}", f"nav:proxy:{proxy.id}"
+    return f"Manage Proxy {proxy.id}", f"nav:proxy:{proxy.id}:manage"
 
 def _mask_proxy_value(value: str | None) -> str:
     if not value:

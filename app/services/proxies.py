@@ -194,6 +194,10 @@ def parse_olympix_proxy_string(proxy_string: str) -> ParsedOlympixProxyString:
     )
 
 
+PLACEHOLDER_PROVIDERS = {"placeholder", "fake", "demo", "test"}
+PLACEHOLDER_PORTS = set(range(8000, 8010))
+
+
 def _safe_proxy_payload(proxy: Proxy, extra: dict | None = None) -> dict:
     payload = {
         "proxy_id": proxy.id,
@@ -211,6 +215,36 @@ def _safe_proxy_payload(proxy: Proxy, extra: dict | None = None) -> dict:
     }
     payload.update(extra or {})
     return payload
+
+
+def is_archived_proxy(proxy: Proxy) -> bool:
+    metadata = proxy.metadata_json or {}
+    return bool(metadata.get("archived") or metadata.get("is_archived"))
+
+
+def is_placeholder_proxy(proxy: Proxy) -> bool:
+    metadata = proxy.metadata_json or {}
+    provider = (proxy.provider or "").casefold()
+    host = (proxy.host or "").casefold()
+    name = (proxy.name or "").casefold()
+    if metadata.get("is_demo") or metadata.get("is_placeholder") or metadata.get("placeholder"):
+        return True
+    if provider in PLACEHOLDER_PROVIDERS or any(marker in provider for marker in ("placeholder", "demo", "fake", "test")):
+        return True
+    if "placeholder" in host or host.endswith(".local"):
+        return True
+    if "placeholder" in name:
+        return True
+    if proxy.port in PLACEHOLDER_PORTS and (host.startswith("proxy-") or "placeholder" in name or provider in {"provider", "placeholder"}):
+        return True
+    required_values = (proxy.host, proxy.port, proxy.base_username, proxy.session_suffix, proxy.encrypted_password)
+    if any(value in (None, "", 0) for value in required_values):
+        return True
+    return False
+
+
+def is_real_proxy(proxy: Proxy) -> bool:
+    return not is_archived_proxy(proxy) and not is_placeholder_proxy(proxy)
 
 
 def _safe_rotation_payload(proxy: Proxy, extra: dict | None = None) -> dict:
@@ -459,7 +493,7 @@ def create_olympix_proxy_from_string(
 
 def create_default_proxy(session: Session, *, actor: User) -> Proxy:
     next_number = session.scalar(select(func.count(Proxy.id))) or 0
-    return create_proxy(
+    proxy = create_proxy(
         session,
         actor=actor,
         provider="placeholder",
@@ -470,13 +504,39 @@ def create_default_proxy(session: Session, *, actor: User) -> Proxy:
         target_country="United States",
         target_state="Florida",
     )
+    metadata = dict(proxy.metadata_json or {})
+    metadata["is_placeholder"] = True
+    metadata["archived"] = True
+    proxy.metadata_json = metadata
+    proxy.status = "disabled"
+    session.flush()
+    return proxy
 
 
-def list_proxies(session: Session, *, include_disabled: bool = True) -> list[Proxy]:
+def list_proxies(
+    session: Session,
+    *,
+    include_disabled: bool = True,
+    include_archived: bool = False,
+    include_placeholders: bool = False,
+) -> list[Proxy]:
     statement = select(Proxy).options(selectinload(Proxy.accounts)).order_by(Proxy.id)
     if not include_disabled:
         statement = statement.where(Proxy.status != "disabled")
-    return list(session.scalars(statement).all())
+    proxies = list(session.scalars(statement).all())
+    if not include_archived:
+        proxies = [proxy for proxy in proxies if not is_archived_proxy(proxy)]
+    if not include_placeholders:
+        proxies = [proxy for proxy in proxies if not is_placeholder_proxy(proxy)]
+    return proxies
+
+
+def list_placeholder_proxies(session: Session, *, include_archived: bool = True) -> list[Proxy]:
+    statement = select(Proxy).options(selectinload(Proxy.accounts), selectinload(Proxy.rotation_history), selectinload(Proxy.health_check_results)).order_by(Proxy.id)
+    proxies = [proxy for proxy in session.scalars(statement).all() if is_placeholder_proxy(proxy)]
+    if not include_archived:
+        proxies = [proxy for proxy in proxies if not is_archived_proxy(proxy)]
+    return proxies
 
 
 def get_proxy(session: Session, proxy_id: int) -> Proxy | None:
@@ -485,6 +545,154 @@ def get_proxy(session: Session, proxy_id: int) -> Proxy | None:
         .where(Proxy.id == proxy_id)
         .options(selectinload(Proxy.accounts).selectinload(Account.model_brand), selectinload(Proxy.rotation_history))
     )
+
+
+def archive_proxy(session: Session, proxy: Proxy, *, actor: User, reason: str = "owner_requested") -> Proxy:
+    _require_any_permission(session, actor, "manage_proxies")
+    metadata = dict(proxy.metadata_json or {})
+    metadata["archived"] = True
+    metadata["archive_reason"] = reason
+    metadata["archived_at"] = _now().isoformat()
+    proxy.metadata_json = metadata
+    proxy.status = "disabled"
+    session.flush()
+    audit_action(
+        session,
+        actor=actor,
+        action="proxy.archived",
+        resource_type="proxy",
+        resource_id=str(proxy.id),
+        details={"provider": proxy.provider, "username_masked": mask_proxy_username(proxy.base_username), "reason": reason},
+    )
+    emit_event(
+        session,
+        actor=actor,
+        event_name="proxy.archived",
+        resource_type="proxy",
+        resource_id=str(proxy.id),
+        payload={"reason": reason, "provider": proxy.provider},
+    )
+    return proxy
+
+
+def disable_proxy(session: Session, proxy: Proxy, *, actor: User) -> Proxy:
+    _require_any_permission(session, actor, "manage_proxies")
+    proxy.status = "disabled"
+    session.flush()
+    audit_action(
+        session,
+        actor=actor,
+        action="proxy.disabled",
+        resource_type="proxy",
+        resource_id=str(proxy.id),
+        details={"provider": proxy.provider, "username_masked": mask_proxy_username(proxy.base_username)},
+    )
+    emit_event(
+        session,
+        actor=actor,
+        event_name="proxy.disabled",
+        resource_type="proxy",
+        resource_id=str(proxy.id),
+        payload={"provider": proxy.provider},
+    )
+    return proxy
+
+
+def reactivate_proxy(session: Session, proxy: Proxy, *, actor: User) -> Proxy:
+    _require_any_permission(session, actor, "manage_proxies")
+    metadata = dict(proxy.metadata_json or {})
+    metadata.pop("archived", None)
+    metadata.pop("is_archived", None)
+    proxy.metadata_json = metadata
+    proxy.status = "warning"
+    session.flush()
+    audit_action(
+        session,
+        actor=actor,
+        action="proxy.reactivated",
+        resource_type="proxy",
+        resource_id=str(proxy.id),
+        details={"provider": proxy.provider, "username_masked": mask_proxy_username(proxy.base_username)},
+    )
+    emit_event(
+        session,
+        actor=actor,
+        event_name="proxy.reactivated",
+        resource_type="proxy",
+        resource_id=str(proxy.id),
+        payload={"provider": proxy.provider},
+    )
+    return proxy
+
+
+def delete_proxy(session: Session, proxy: Proxy, *, actor: User) -> None:
+    _require_any_permission(session, actor, "manage_proxies")
+    assigned_accounts = accounts_for_proxy(session, proxy)
+    if assigned_accounts:
+        raise ValueError("Proxy is assigned to an active account. Remove it from accounts before deleting.")
+    proxy_id = proxy.id
+    provider = proxy.provider
+    username_masked = mask_proxy_username(proxy.base_username)
+    audit_action(
+        session,
+        actor=actor,
+        action="proxy.deleted",
+        resource_type="proxy",
+        resource_id=str(proxy_id),
+        details={"provider": provider, "username_masked": username_masked},
+    )
+    emit_event(
+        session,
+        actor=actor,
+        event_name="proxy.deleted",
+        resource_type="proxy",
+        resource_id=str(proxy_id),
+        payload={"provider": provider},
+    )
+    session.delete(proxy)
+    session.flush()
+
+
+def cleanup_placeholder_proxies(session: Session, *, actor: User) -> dict[str, int]:
+    _require_any_permission(session, actor, "manage_proxies")
+    archived = 0
+    deleted = 0
+    hidden = 0
+    for proxy in list_placeholder_proxies(session, include_archived=False):
+        has_history = bool(proxy.accounts or proxy.rotation_history or proxy.health_check_results)
+        if has_history:
+            archive_proxy(session, proxy, actor=actor, reason="placeholder_cleanup")
+            archived += 1
+            audit_action(
+                session,
+                actor=actor,
+                action="proxy.placeholder.archived",
+                resource_type="proxy",
+                resource_id=str(proxy.id),
+                details={"provider": proxy.provider, "host_masked": "hidden"},
+            )
+        else:
+            proxy_id = proxy.id
+            audit_action(
+                session,
+                actor=actor,
+                action="proxy.placeholder.removed",
+                resource_type="proxy",
+                resource_id=str(proxy_id),
+                details={"provider": proxy.provider, "host_masked": "hidden"},
+            )
+            session.delete(proxy)
+            deleted += 1
+        hidden += 1
+    session.flush()
+    emit_event(
+        session,
+        actor=actor,
+        event_name="proxy.placeholder.hidden",
+        resource_type="proxy",
+        payload={"archived": archived, "deleted": deleted, "hidden": hidden},
+    )
+    return {"archived": archived, "deleted": deleted, "hidden": hidden}
 
 
 def update_proxy_location_target(

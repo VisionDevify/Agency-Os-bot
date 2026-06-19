@@ -46,11 +46,17 @@ from app.services.model_brands import (
 )
 from app.services.proxies import (
     ProxyTestResult,
+    archive_proxy,
     assign_proxy_to_account,
-    create_default_proxy,
+    cleanup_placeholder_proxies,
+    delete_proxy,
+    disable_proxy,
     get_proxy,
+    is_archived_proxy,
+    is_placeholder_proxy,
     list_proxies,
     proxy_check_mode,
+    reactivate_proxy,
     remove_proxy_from_account,
     repair_proxy,
     rollback_session,
@@ -811,13 +817,17 @@ def _perform_admin_action(
             archive_incident(session, incident, actor=actor)
             return f"incident:{incident.id}"
     if page == "proxies:create":
-        proxy = create_default_proxy(session, actor=actor)
-        return f"proxy:{proxy.id}"
+        return "proxies:olympix:paste"
+    if page == "proxies:cleanup_placeholders":
+        cleanup_placeholder_proxies(session, actor=actor)
+        return "proxies:cleanup_result"
     if len(parts) >= 3 and parts[0] == "proxy" and parts[1].isdigit():
         proxy = get_proxy(session, int(parts[1]))
         if proxy is None:
             return "proxies:list"
         action = parts[2]
+        if (is_archived_proxy(proxy) or is_placeholder_proxy(proxy)) and action not in {"archive", "delete"}:
+            return "proxies:list"
         if action == "rotate":
             history = rotate_olympix_session(session, proxy, actor=actor)
             return f"proxy:{proxy.id}:rotated:{history.id}"
@@ -871,27 +881,20 @@ def _perform_admin_action(
             set_proxy_real_check_flags(session, proxy, actor=actor, health_enabled=False, location_enabled=False)
             return f"proxy:{proxy.id}"
         if action == "disable":
-            proxy.status = "disabled"
-            audit_action(
-                session,
-                actor=actor,
-                action="proxy.disabled",
-                resource_type="proxy",
-                resource_id=str(proxy.id),
-                details={"provider": proxy.provider, "host": proxy.host},
-            )
-            return f"proxy:{proxy.id}"
+            disable_proxy(session, proxy, actor=actor)
+            return f"proxy:{proxy.id}:manage"
         if action == "reactivate":
-            proxy.status = "warning"
-            audit_action(
-                session,
-                actor=actor,
-                action="proxy.reactivated",
-                resource_type="proxy",
-                resource_id=str(proxy.id),
-                details={"provider": proxy.provider, "host": proxy.host},
-            )
-            return f"proxy:{proxy.id}"
+            reactivate_proxy(session, proxy, actor=actor)
+            return f"proxy:{proxy.id}:manage"
+        if action == "archive":
+            archive_proxy(session, proxy, actor=actor)
+            return f"proxy:{proxy.id}:archive_result"
+        if action == "delete":
+            try:
+                delete_proxy(session, proxy, actor=actor)
+                return f"proxy:{proxy.id}:delete_result"
+            except ValueError:
+                return f"proxy:{proxy.id}:delete_confirm"
         if action == "rotate_until_match":
             mode = proxy_check_mode(proxy)
             if mode.real_health_enabled and not actor.is_owner:
@@ -967,7 +970,7 @@ def _perform_admin_action(
                 return f"account:{account.id}"
             if proxy_action == "assign" and len(parts) >= 5 and parts[4].isdigit():
                 proxy = get_proxy(session, int(parts[4]))
-                if proxy is not None:
+                if proxy is not None and not is_archived_proxy(proxy) and not is_placeholder_proxy(proxy):
                     assign_proxy_to_account(session, proxy, account, actor=actor)
                 return f"account:{account.id}"
             if proxy_action == "remove":

@@ -153,8 +153,8 @@ def test_proxy_screens_label_simulated_health_and_hide_secrets() -> None:
         detail_screen = render_proxy_detail_page(session, proxy.id)
         simulation_screen = render_proxy_simulation_page(session)
 
+        assert "simulated" in simulation_screen.text.lower()
         for screen in (list_screen, detail_screen, simulation_screen):
-            assert "simulated" in screen.text.lower()
             assert "super-secret" not in screen.text
             assert "encrypted_password" not in screen.text
             assert "{" not in screen.text

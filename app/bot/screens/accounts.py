@@ -99,11 +99,12 @@ def render_account_detail_page(session: Session, account_id: int) -> Screen:
     model_name = account.model_brand.display_name if account.model_brand else "Unassigned"
     health = account_health(account)
     last_checked = format_user_datetime(None, account.last_checked_at) if account.last_checked_at else "Not checked yet"
-    proxy_assignment = (
-        f"{account.assigned_proxy.provider} {account.assigned_proxy.host}:{account.assigned_proxy.port}"
-        if account.assigned_proxy
-        else "Not assigned"
-    )
+    proxy_assignment = "Not assigned"
+    if account.assigned_proxy:
+        if is_archived_proxy(account.assigned_proxy) or is_placeholder_proxy(account.assigned_proxy):
+            proxy_assignment = "Hidden archived proxy"
+        else:
+            proxy_assignment = f"{account.assigned_proxy.provider} ({mask_session_suffix(account.assigned_proxy.session_suffix)})"
     lines = [
         "Account Detail",
         "",
@@ -140,7 +141,7 @@ def render_account_proxy_assignment_page(session: Session, account_id: int) -> S
     proxies = list_proxies(session, include_disabled=False)
     buttons = [
         (
-            f"{proxy.id}. {proxy.provider} {proxy.host}:{proxy.port}",
+            f"{proxy.provider} {mask_session_suffix(proxy.session_suffix)}",
             f"nav:account:{account.id}:proxy:assign:{proxy.id}",
         )
         for proxy in proxies

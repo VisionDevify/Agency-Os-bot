@@ -16,63 +16,89 @@ def _result_location(result) -> str:
         item for item in [result.detected_city, result.detected_state, result.detected_country] if item
     ) or "Unknown"
 
+
+def _is_hidden_proxy(proxy: Proxy) -> bool:
+    return is_archived_proxy(proxy) or is_placeholder_proxy(proxy)
+
+
+def _proxy_summary_name(proxy: Proxy) -> str:
+    proxy_type = (proxy.metadata_json or {}).get("proxy_type") or "Mobile"
+    if "olympix" in (proxy.provider or "").casefold():
+        return "Olympix Mobile"
+    return f"{proxy.provider} {proxy_type}".strip()
+
+
 def render_proxies_home(session: Session | None = None) -> Screen:
     if session is not None:
         proxies = list_proxies(session)
-        healthy = 0
-        needs_attention = 0
         real_enabled = 0
         for proxy in proxies:
-            health = calculate_proxy_health(proxy)
-            if proxy.status == "healthy" and health.score >= 80:
-                healthy += 1
-            else:
-                needs_attention += 1
             if proxy_check_mode(proxy).real_health_enabled:
                 real_enabled += 1
         missing_proxy = len(accounts_missing_proxy(session))
         total = len(proxies)
     else:
-        total = healthy = needs_attention = missing_proxy = real_enabled = 0
+        proxies = []
+        total = missing_proxy = real_enabled = 0
     return Screen(
         text="\n".join(
             (
                 [
                     "\U0001f6e1 Proxy Vault",
                     "",
-                    "Status",
-                    "Ready for setup.",
+                    "No real proxies saved yet.",
                     "",
-                    "What Proxies Do",
-                    "They help keep account activity separated and organized.",
-                    "",
-                    "Next",
+                    "Next:",
                     "Paste your Olympix proxy string.",
                     "",
-                    "Fortuna will encrypt the password and never show it back.",
+                    "What to paste:",
+                    "host:port:username:password",
+                    "",
+                    "Fortuna encrypts the password and never shows it back.",
                 ]
                 if total == 0
                 else [
                     "\U0001f6e1 Proxy Vault",
                     "",
-                    "Status",
-                    f"\u2705 {total} saved {'proxy' if total == 1 else 'proxies'}.",
+                    f"{total} real {'proxy' if total == 1 else 'proxies'} saved.",
                     "",
-                    "What Needs Attention",
+                    "Next:",
+                    "Assign it to an account." if total == 1 else "Choose one to manage or add another.",
+                    "",
+                    "Proxy:",
+                    f"{_proxy_summary_name(proxies[0])}",
+                    f"Status: {'Not tested' if proxies[0].last_health_check is None else proxies[0].status.replace('_', ' ').title()}",
+                    f"Session: {mask_session_suffix(proxies[0].session_suffix)}",
+                    f"Accounts: {len(accounts_for_proxy(session, proxies[0])) if session is not None else 0}",
+                    "",
+                    f"Real Checks: {'On' if real_enabled else 'Off'}",
                     (
-                        f"{missing_proxy} account{'s' if missing_proxy != 1 else ''} missing a proxy."
+                        f"{missing_proxy} account{'s' if missing_proxy != 1 else ''} still need a proxy."
                         if missing_proxy
                         else "Nothing urgent here."
                     ),
-                    "",
-                    "Next",
-                    "Assign a proxy to an account." if missing_proxy else "Run a check when you need fresh status.",
-                    "",
-                    f"Real Checks: {'On' if real_enabled else 'Off'}",
                 ]
             )
         ),
         reply_markup=proxies_menu(),
+    )
+
+
+def render_proxy_rotation_help_page() -> Screen:
+    return Screen(
+        text="\n".join(
+            [
+                "How Rotation Works",
+                "",
+                "Olympix gives a fresh session when Fortuna changes the session suffix.",
+                "",
+                "Current idea:",
+                "session_abcd1234 -> session_new5678",
+                "",
+                "Fortuna saves the old session first, so rollback is available after a rotation.",
+            ]
+        ),
+        reply_markup=page_menu(back_to="proxies"),
     )
 
 
@@ -84,6 +110,8 @@ def render_proxy_advanced_page() -> Screen:
                 "",
                 "Diagnostics and infrastructure views live here.",
                 "Real provider checks stay off until an owner enables them.",
+                "",
+                "Placeholder cleanup is safe: assigned proxies are archived, unassigned empty placeholders are removed.",
             ]
         ),
         reply_markup=proxies_advanced_menu(),
@@ -163,19 +191,51 @@ def render_olympix_proxy_paste_page(session: Session | None = None) -> Screen:
 
 def render_proxy_list_page(session: Session) -> Screen:
     proxies = list_proxies(session)
-    lines = ["Proxy Vault", ""]
+    lines = ["\U0001f6e1 Proxy Vault", ""]
     buttons: list[tuple[str, str]] = []
     if not proxies:
-        lines.append("No proxies yet. Paste your Olympix proxy string to save the first encrypted proxy.")
-    for proxy in proxies[:15]:
-        health = calculate_proxy_health(proxy)
-        lines.append(f"{proxy.id}. {proxy.provider} {proxy.host}:{proxy.port}")
-        lines.append(f"   Status: {proxy.status} | Health: {health.label} {health.score}/100")
-        lines.append(f"   Target: {proxy.target_state or proxy.target_country or 'Not set'}")
-        mode = proxy_check_mode(proxy)
-        lines.append(f"   Real Checks: {_yes_no(mode.real_health_enabled)} | Location: {_yes_no(mode.real_location_enabled)}")
-        lines.append("   Default Mode: simulated unless real checks are owner-enabled")
+        lines.extend(
+            [
+                "No real proxies saved yet.",
+                "",
+                "Next:",
+                "Paste your Olympix proxy string.",
+                "",
+                "What to paste:",
+                "host:port:username:password",
+            ]
+        )
+        return Screen(text="\n".join(lines), reply_markup=proxies_menu())
+    lines.append(f"{len(proxies)} real {'proxy' if len(proxies) == 1 else 'proxies'} saved.")
+    lines.extend(["", "Next:", "Assign a proxy to an account.", ""])
+    for index, proxy in enumerate(proxies[:10], start=1):
+        assigned_count = len(accounts_for_proxy(session, proxy))
+        last_status = "Not tested" if proxy.last_health_check is None else proxy.status.replace("_", " ").title()
+        lines.extend(
+            [
+                f"{index}. {_proxy_summary_name(proxy)}",
+                f"Status: {last_status}",
+                f"Session: {mask_session_suffix(proxy.session_suffix)}",
+                f"Accounts: {assigned_count}",
+                "",
+            ]
+        )
         buttons.append(_proxy_button(proxy))
+    if len(proxies) == 1:
+        proxy = proxies[0]
+        return Screen(
+            text="\n".join(lines).strip(),
+            reply_markup=choice_menu(
+                [
+                    ("Assign Proxy", f"nav:proxy:{proxy.id}:assign"),
+                    ("Rotate Proxy", f"nav:proxy:{proxy.id}:rotate_preview"),
+                    ("View Details", f"nav:proxy:{proxy.id}"),
+                    ("Add Another", "nav:proxies:olympix:paste"),
+                    ("Manage", f"nav:proxy:{proxy.id}:manage"),
+                ],
+                back_to="proxies",
+            ),
+        )
     return Screen(text="\n".join(lines), reply_markup=proxy_list_menu(buttons))
 
 def render_olympix_proxy_wizard_page() -> Screen:
@@ -291,7 +351,7 @@ def render_proxy_detail_page(session: Session, proxy_id: int) -> Screen:
         .where(Proxy.id == proxy_id)
         .options(selectinload(Proxy.accounts).selectinload(Account.model_brand))
     )
-    if proxy is None:
+    if proxy is None or _is_hidden_proxy(proxy):
         return Screen(text="Proxy not found.", reply_markup=page_menu(back_to="proxies:list"))
     mode = proxy_check_mode(proxy)
     recent_results = latest_proxy_health_check_results(session, proxy, limit=5)
@@ -310,11 +370,11 @@ def render_proxy_detail_page(session: Session, proxy_id: int) -> Screen:
         last_check_label = f"{last_result.status.title()} ({last_result.check_type})"
         target_match = "Yes" if last_result.target_match else "No" if last_result.target_match is False else "Unknown"
     lines = [
-        "\U0001f6e1 Olympix Mobile Proxy",
+        "Proxy Details",
         "",
+        f"Provider: {_proxy_summary_name(proxy)}",
         f"Status: {status_label}",
         f"Real Check: {'On' if mode.real_health_enabled else 'Off'}",
-        f"Mode: {'Real provider checks enabled' if mode.real_health_enabled else 'Simulated until enabled'}",
         f"Assigned Accounts: {len(assigned_accounts)}",
         "",
         "Connection:",
@@ -340,6 +400,29 @@ def render_proxy_detail_page(session: Session, proxy_id: int) -> Screen:
     return Screen(text="\n".join(lines), reply_markup=proxy_detail_menu(proxy.id))
 
 
+def render_proxy_manage_page(session: Session, proxy_id: int) -> Screen:
+    proxy = session.get(Proxy, proxy_id)
+    if proxy is None or _is_hidden_proxy(proxy):
+        return Screen(text="Proxy not found.", reply_markup=page_menu(back_to="proxies:list"))
+    assigned_count = len(accounts_for_proxy(session, proxy))
+    return Screen(
+        text="\n".join(
+            [
+                "Manage Proxy",
+                "",
+                "Choose what you want to do.",
+                "",
+                f"Proxy: {_proxy_summary_name(proxy)}",
+                f"Session: {mask_session_suffix(proxy.session_suffix)}",
+                f"Accounts: {assigned_count}",
+                "",
+                "Fortuna will explain risky actions before confirming.",
+            ]
+        ),
+        reply_markup=proxy_manage_menu(proxy.id),
+    )
+
+
 def render_proxy_import_success_page(session: Session, proxy_id: int) -> Screen:
     proxy = session.get(Proxy, proxy_id)
     if proxy is None:
@@ -363,16 +446,17 @@ def render_proxy_import_success_page(session: Session, proxy_id: int) -> Screen:
 
 def render_proxy_rotation_preview_page(session: Session, proxy_id: int) -> Screen:
     proxy = session.get(Proxy, proxy_id)
-    if proxy is None:
+    if proxy is None or _is_hidden_proxy(proxy):
         return Screen(text="Proxy not found.", reply_markup=page_menu(back_to="proxies:list"))
     return Screen(
         text="\n".join(
             [
-                "Rotate Session",
+                "\U0001f504 Rotate Proxy",
                 "",
-                "This changes the session suffix and should create a fresh IP/session with Olympix.",
+                "This changes the session suffix so Olympix gives a fresh session/IP.",
                 "",
-                f"Current session: {mask_session_suffix(proxy.session_suffix)}",
+                "Current session:",
+                mask_session_suffix(proxy.session_suffix),
                 "",
                 "Fortuna will not show or log the proxy password.",
             ]
@@ -418,7 +502,7 @@ def render_proxy_rollback_result_page(session: Session, proxy_id: int, history_i
 def render_proxy_no_rollback_page(session: Session, proxy_id: int) -> Screen:
     return Screen(
         "No previous session saved yet.\n\nRotate this proxy once before rollback is available.",
-        page_menu(back_to=f"proxy:{proxy_id}"),
+        page_menu(back_to=f"proxy:{proxy_id}:manage"),
     )
 
 
@@ -474,7 +558,7 @@ def render_proxy_location_page(session: Session, proxy_id: int) -> Screen:
 
 def render_proxy_detail_advanced_page(session: Session, proxy_id: int) -> Screen:
     proxy = session.get(Proxy, proxy_id)
-    if proxy is None:
+    if proxy is None or _is_hidden_proxy(proxy):
         return Screen(text="Proxy not found.", reply_markup=page_menu(back_to="proxies:list"))
     mode = proxy_check_mode(proxy)
     lines = [
@@ -502,7 +586,7 @@ def render_proxy_assigned_accounts_page(session: Session, proxy_id: int) -> Scre
 
 def render_proxy_assign_account_page(session: Session, proxy_id: int) -> Screen:
     proxy = session.get(Proxy, proxy_id)
-    if proxy is None:
+    if proxy is None or _is_hidden_proxy(proxy):
         return Screen(text="Proxy not found.", reply_markup=page_menu(back_to="proxies:list"))
     buttons = [
         (
@@ -514,8 +598,10 @@ def render_proxy_assign_account_page(session: Session, proxy_id: int) -> Screen:
     lines = [
         "Assign Account to Proxy",
         "",
-        f"Proxy: {proxy.provider} {proxy.host}:{proxy.port}",
+        f"Proxy: {_proxy_summary_name(proxy)}",
         f"Session: {mask_session_suffix(proxy.session_suffix)}",
+        "",
+        "This will attach the proxy to the selected account and run a safe simulated check.",
         "",
     ]
     if not buttons:
@@ -527,7 +613,7 @@ def render_proxy_assign_account_page(session: Session, proxy_id: int) -> Screen:
 
 def render_proxy_remove_account_page(session: Session, proxy_id: int) -> Screen:
     proxy = session.get(Proxy, proxy_id)
-    if proxy is None:
+    if proxy is None or _is_hidden_proxy(proxy):
         return Screen(text="Proxy not found.", reply_markup=page_menu(back_to="proxies:list"))
     buttons = [
         (
@@ -536,10 +622,92 @@ def render_proxy_remove_account_page(session: Session, proxy_id: int) -> Screen:
         )
         for account in accounts_for_proxy(session, proxy)
     ]
-    lines = ["Remove Account from Proxy", "", f"Proxy: {proxy.provider} {proxy.host}:{proxy.port}", "Password: Encrypted", ""]
+    lines = [
+        "Remove Account from Proxy",
+        "",
+        f"Proxy: {_proxy_summary_name(proxy)}",
+        "Password: Encrypted",
+        "",
+        "This will detach the selected account. The proxy itself will stay saved.",
+        "",
+    ]
     if not buttons:
         lines.append("No accounts are assigned to this proxy.")
     return Screen(text="\n".join(lines), reply_markup=proxy_account_choice_menu(proxy.id, buttons, "remove"))
+
+
+def render_proxy_archive_confirm_page(session: Session, proxy_id: int) -> Screen:
+    proxy = session.get(Proxy, proxy_id)
+    if proxy is None or _is_hidden_proxy(proxy):
+        return Screen(text="Proxy not found.", reply_markup=page_menu(back_to="proxies:list"))
+    return Screen(
+        "\n".join(
+            [
+                "Archive Proxy",
+                "",
+                f"Proxy: {_proxy_summary_name(proxy)}",
+                f"Session: {mask_session_suffix(proxy.session_suffix)}",
+                "",
+                "Archive hides this proxy from Proxy Vault and prevents future assignment, rotation, and checks.",
+                "History stays available for audit.",
+            ]
+        ),
+        proxy_archive_confirm_menu(proxy.id),
+    )
+
+
+def render_proxy_delete_confirm_page(session: Session, proxy_id: int) -> Screen:
+    proxy = session.get(Proxy, proxy_id)
+    if proxy is None or _is_hidden_proxy(proxy):
+        return Screen(text="Proxy not found.", reply_markup=page_menu(back_to="proxies:list"))
+    assigned = accounts_for_proxy(session, proxy)
+    can_delete = not assigned
+    lines = [
+        "Delete Proxy",
+        "",
+        f"Proxy: {_proxy_summary_name(proxy)}",
+        f"Session: {mask_session_suffix(proxy.session_suffix)}",
+        "",
+    ]
+    if can_delete:
+        lines.extend(
+            [
+                "Delete is permanent.",
+                "Only use this for a proxy you no longer need.",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                f"This proxy is assigned to {len(assigned)} active account(s).",
+                "Remove it from accounts first, or archive it instead.",
+            ]
+        )
+    return Screen("\n".join(lines), proxy_delete_confirm_menu(proxy.id, can_delete=can_delete))
+
+
+def render_proxy_archive_result_page() -> Screen:
+    return Screen("Proxy archived.\n\nIt is hidden from the normal Proxy Vault now.", page_menu(back_to="proxies"))
+
+
+def render_proxy_delete_result_page() -> Screen:
+    return Screen("Proxy deleted.\n\nIt will no longer appear in Proxy Vault.", page_menu(back_to="proxies"))
+
+
+def render_proxy_cleanup_result_page(session: Session) -> Screen:
+    remaining = len(list_placeholder_proxies(session, include_archived=False))
+    return Screen(
+        "\n".join(
+            [
+                "Placeholder Cleanup",
+                "",
+                f"Placeholder proxies still visible to cleanup: {remaining}",
+                "",
+                "Normal Proxy Vault only shows real, non-archived proxies.",
+            ]
+        ),
+        page_menu(back_to="proxies"),
+    )
 
 def render_accounts_missing_proxy_page(session: Session) -> Screen:
     missing = accounts_missing_proxy(session)
