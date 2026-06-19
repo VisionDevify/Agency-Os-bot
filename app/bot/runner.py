@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import logging
+import os
 import time
 from datetime import UTC, datetime
 
@@ -1661,16 +1662,16 @@ async def main() -> None:
         raise RuntimeError("Another Fortuna OS bot polling instance appears active after waiting")
     refresh_task: asyncio.Task | None = None
 
-    main_task = asyncio.current_task()
-
     async def refresh_guard() -> None:
         while True:
             await asyncio.sleep(60)
             if not guard.refresh():
                 logger.error("Lost Fortuna OS bot polling lock; stopping process to avoid duplicate polling")
-                if main_task is not None:
-                    main_task.cancel()
-                return
+                # If long polling hangs during cancellation, Railway can show the worker as online
+                # while Telegram updates are no longer consumed. Exiting immediately is safer: the
+                # platform restarts the single primary worker, and the Redis lock prevents duplicate
+                # pollers from surviving together.
+                os._exit(1)
             if SessionLocal is not None:
                 try:
                     with SessionLocal() as session:

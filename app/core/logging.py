@@ -14,4 +14,12 @@ class SecretRedactionFilter(logging.Filter):
 
 def configure_logging() -> None:
     root = logging.getLogger()
-    root.addFilter(SecretRedactionFilter())
+    if not root.handlers:
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s %(levelname)s %(name)s %(message)s",
+        )
+    else:
+        root.setLevel(logging.INFO)
+    if not any(isinstance(item, SecretRedactionFilter) for item in root.filters):
+        root.addFilter(SecretRedactionFilter())
