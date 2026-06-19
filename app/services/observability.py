@@ -25,7 +25,7 @@ from app.services.bot_instances import bot_instance_diagnostics
 from app.services.persistence import storage_status
 from app.services.notifications import notification_routing_mode_summary, purpose_aliases
 from app.services.recovery import recovery_risk_assessment
-from app.services.shared_status import StatusCondition, compute_shared_status, status_from_risk_level
+from app.services.shared_status import StatusCondition, compute_shared_status
 from app.services.system_truth import (
     AlembicRevisionStatus,
     alembic_revision_status,
@@ -132,7 +132,7 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         production_risk = "degraded"
     operations_issue_count = len(truth.current_issues)
     operations_status = "healthy" if truth.production_ready else ("critical" if production_risk == "unsafe" else "needs_attention")
-    recovery_status = status_from_risk_level(recovery.risk_level)
+    recovery_status = recovery.status
     recovery_issue_count = len(recovery.alerts) or (0 if recovery_status == "healthy" else 1)
     shared_status = compute_shared_status(
         [

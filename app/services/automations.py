@@ -54,6 +54,7 @@ from app.services.proxies import (
     simulation_mode_summary,
 )
 from app.services.recommendations import upsert_recommendation
+from app.services.recovery import run_backup
 from app.services.tasks import create_task, escalate_task, overdue_tasks
 
 
@@ -81,6 +82,7 @@ MUTATING_ACTIONS = {
     "create_recommendation",
     "mark_recommendation_acknowledged_placeholder",
     "write_event_log",
+    "run_recovery_backup",
 }
 
 
@@ -230,6 +232,19 @@ BUILTIN_AUTOMATION_TEMPLATES: tuple[AutomationTemplate, ...] = (
         risk_level="low",
         requires_owner_approval=False,
         schedule_type="event_based",
+    ),
+    AutomationTemplate(
+        name="Nightly Recovery Backup",
+        automation_type="nightly_recovery_backup",
+        description="Runs an evidence-checked encrypted backup through the configured recovery storage target.",
+        category="infrastructure",
+        trigger_type="scheduled",
+        trigger_config={"schedule": "nightly"},
+        conditions=[{"type": "time_window_allowed", "window": "nightly"}],
+        actions=[{"type": "run_recovery_backup", "backup_type": "nightly"}],
+        risk_level="medium",
+        requires_owner_approval=False,
+        schedule_type="daily",
     ),
 )
 
@@ -1012,6 +1027,14 @@ def execute_action(session: Session, action: dict[str, Any], *, actor: User | No
             payload={"source": "automation_action"},
         )
         return {"audit_id": event.id}
+    if action_type == "run_recovery_backup":
+        run = run_backup(session, actor=actor, backup_type=action.get("backup_type", "nightly"))
+        return {
+            "backup_run_id": run.id,
+            "status": run.status,
+            "artifact_verified": run.artifact_verified,
+            "external_storage_used": run.external_storage_used,
+        }
     if action_type == "fail_action":
         raise RuntimeError(action.get("message", "Intentional automation failure"))
     return {"skipped": True, "reason": f"unsupported action {action_type}"}

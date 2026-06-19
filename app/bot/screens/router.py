@@ -33,8 +33,14 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_backup_run_page(session, user)
     if page == "recovery:history" and session is not None:
         return render_backup_history_page(session, user)
-    if page.startswith("recovery:storage"):
-        return render_backup_storage_page()
+    if page == "recovery:storage" and session is not None:
+        return render_backup_storage_page(session, user)
+    if page.startswith("recovery:storage:s3") and session is not None:
+        return render_backup_storage_page(session, user, target_type="s3_compatible")
+    if page.startswith("recovery:storage:b2") and session is not None:
+        return render_backup_storage_page(session, user, target_type="backblaze_b2")
+    if page == "recovery:storage:manual" and session is not None:
+        return render_backup_storage_page(session, user, target_type="manual_export")
     if page == "recovery:restore:test" and session is not None:
         return render_restore_test_page(session, user)
     if page == "recovery:disaster_plan":

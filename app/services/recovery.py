@@ -24,6 +24,12 @@ from app.models.social import SocialDiscoveryLead, SocialSource
 from app.models.user import User
 from app.services.audit import sanitize_details
 from app.services.auth import audit_action, user_has_permission
+from app.services.backup_storage import (
+    ProviderOperationResult,
+    provider_for_target,
+    select_active_storage_target,
+)
+from app.services.crypto import decrypt_bytes, encrypt_bytes
 from app.services.events import emit_event
 from app.services.recommendations import upsert_recommendation
 
@@ -38,6 +44,7 @@ TERMINAL_RESTORE_STATUSES = {"verified_only", "verified", "passed", "succeeded",
 
 @dataclass(frozen=True)
 class RecoveryAssessment:
+    status: str
     protection_status: str
     last_backup_status: str
     restore_test_status: str
@@ -92,6 +99,8 @@ def _restore_is_terminal(run: RestoreTestRun | None) -> bool:
 
 
 def _require_owner_or_admin(session: Session, actor: User | None) -> None:
+    if actor is None:
+        return
     if actor is not None and (actor.is_owner or user_has_permission(actor, "manage_roles")):
         return
     audit_action(
@@ -132,6 +141,16 @@ def _enabled_storage_targets(session: Session) -> list[BackupStorageTarget]:
     )
 
 
+def _active_external_storage_targets(session: Session) -> list[BackupStorageTarget]:
+    return [
+        target
+        for target in _enabled_storage_targets(session)
+        if target.target_type not in {"local_runtime", "manual_export"}
+        and target.connection_status == "active"
+        and target.provider_available
+    ]
+
+
 def backup_copy_count(session: Session, *, now: datetime | None = None) -> int:
     current = now or _now()
     since = current - timedelta(days=BACKUP_COPY_LOOKBACK_DAYS)
@@ -145,6 +164,7 @@ def backup_copy_count(session: Session, *, now: datetime | None = None) -> int:
             BackupRun.artifact_verified.is_(True),
             BackupRun.checksum.is_not(None),
             BackupRun.encrypted.is_(True),
+            BackupRun.external_storage_used.is_(True),
         )
         .distinct()
     ).all()
@@ -191,13 +211,49 @@ def _restore_result_json(restore: RestoreTestRun | None) -> dict[str, Any]:
     return payload if isinstance(payload, dict) else {}
 
 
+def _canonical_recovery_status(
+    *,
+    external_storage_configured: bool,
+    provider_available: bool,
+    latest_success: BackupRun | None,
+    latest_restore: RestoreTestRun | None,
+    recent_failure_count: int,
+    backup_age_hours: int | None,
+) -> str:
+    if not external_storage_configured:
+        return "critical"
+    if not provider_available:
+        return "needs_attention"
+    if latest_success is None:
+        return "needs_attention"
+    if not _backup_is_verified_success(latest_success):
+        return "needs_attention"
+    if not latest_success.external_storage_used:
+        return "needs_attention"
+    if backup_age_hours is not None and backup_age_hours > BACKUP_FRESHNESS_TARGET_HOURS:
+        return "needs_attention"
+    if recent_failure_count >= 2:
+        return "needs_attention"
+    if latest_restore is None:
+        return "needs_review"
+    if latest_restore.status == "failed":
+        return "needs_attention"
+    if latest_restore.status in {"verified_only", "verified"}:
+        return "needs_review"
+    if latest_restore.status in {"passed", "succeeded"} and latest_restore.full_restore_performed:
+        return "healthy"
+    return "needs_review"
+
+
 def recovery_risk_assessment(session: Session, *, now: datetime | None = None) -> RecoveryAssessment:
     current = now or _now()
     latest_any = _latest_backup(session)
     latest_success = _latest_backup(session, succeeded_only=True)
     latest_restore = _latest_restore_test(session)
     enabled_targets = _enabled_storage_targets(session)
-    external_storage_configured = any(target.target_type not in {"local_runtime", "manual_export"} for target in enabled_targets)
+    active_external_targets = _active_external_storage_targets(session)
+    external_storage_configured = bool(active_external_targets)
+    provider_available = bool(active_external_targets) and all(target.provider_available for target in active_external_targets)
     copies = backup_copy_count(session, now=current)
     failure_since = current - timedelta(days=BACKUP_FAILURE_LOOKBACK_DAYS)
     recent_failure_count = session.scalar(
@@ -242,9 +298,9 @@ def recovery_risk_assessment(session: Session, *, now: datetime | None = None) -
 
     if not external_storage_configured:
         risk += 10
-        evidence.append("No external storage target is enabled yet.")
+        evidence.append("No external storage target has passed connection testing yet.")
     else:
-        evidence.append("At least one external storage target is enabled.")
+        evidence.append("At least one external storage target is active and available.")
 
     encrypted = bool(latest_success and latest_success.encrypted)
     checksum_present = bool(latest_success and latest_success.checksum)
@@ -297,13 +353,16 @@ def recovery_risk_assessment(session: Session, *, now: datetime | None = None) -
     confidence = _confidence_for(score, latest_success, latest_restore)
     if latest_success is None:
         protection_status = "Not set up yet"
-        next_move = "Run your first backup and configure backup storage."
+        next_move = "Connect backup storage." if not external_storage_configured else "Run your first backup."
     elif latest_restore is None:
         protection_status = "Backup recorded, restore not tested"
         next_move = "Run a restore test so Fortuna can verify the backup."
-    elif copies < 2 or not external_storage_configured:
+    elif not external_storage_configured:
         protection_status = "Needs external redundancy"
         next_move = "Configure an external backup target."
+    elif copies < 2:
+        protection_status = "Verified backup; add redundancy when ready"
+        next_move = "Add a second external backup copy when you can."
     elif score <= 24:
         protection_status = "Protected by recent verified backups"
         next_move = "Nothing urgent. Keep nightly backups enabled."
@@ -314,8 +373,17 @@ def recovery_risk_assessment(session: Session, *, now: datetime | None = None) -
     alerts: list[str] = []
     if level != "Low":
         alerts.append(f"Recovery Alert - {level} Risk")
+    canonical_status = _canonical_recovery_status(
+        external_storage_configured=external_storage_configured,
+        provider_available=provider_available,
+        latest_success=latest_success,
+        latest_restore=latest_restore,
+        recent_failure_count=int(recent_failure_count),
+        backup_age_hours=_backup_age_hours(latest_success, now=current),
+    )
 
     return RecoveryAssessment(
+        status=canonical_status,
         protection_status=protection_status,
         last_backup_status=last_backup_status,
         restore_test_status=restore_status,
@@ -372,9 +440,50 @@ def _backup_manifest(session: Session, backup_type: str, storage_target: str) ->
     )
 
 
-def _checksum(payload: dict[str, Any]) -> str:
-    raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    return hashlib.sha256(raw).hexdigest()
+SECRET_COLUMN_MARKERS = ("password", "secret", "token", "key", "credential", "encrypted_config")
+
+
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, datetime):
+        return _aware(value).isoformat()
+    if isinstance(value, bytes):
+        return f"<{len(value)} bytes>"
+    return value
+
+
+def _backup_rows(session: Session, *, max_rows_per_table: int = 5000) -> dict[str, Any]:
+    snapshot: dict[str, Any] = {}
+    for table in sorted(BackupRun.metadata.sorted_tables, key=lambda item: item.name):
+        rows: list[dict[str, Any]] = []
+        columns = list(table.columns)
+        statement = select(table).limit(max_rows_per_table)
+        for row in session.execute(statement).mappings().all():
+            record: dict[str, Any] = {}
+            for column in columns:
+                name = column.name
+                if any(marker in name.casefold() for marker in SECRET_COLUMN_MARKERS):
+                    record[name] = "[excluded]"
+                else:
+                    record[name] = _json_safe(row.get(name))
+            rows.append(record)
+        snapshot[table.name] = {"row_count_exported": len(rows), "rows": rows}
+    return snapshot
+
+
+def _backup_payload(session: Session, backup_type: str, storage_target: str) -> bytes:
+    payload = sanitize_details(
+        {
+            "manifest": _backup_manifest(session, backup_type, storage_target),
+            "tables": _backup_rows(session),
+            "format": "fortuna-json-v1",
+            "credential_columns": "excluded",
+        }
+    )
+    return json.dumps(payload, sort_keys=True, default=str).encode("utf-8")
+
+
+def _checksum_bytes(payload: bytes) -> str:
+    return hashlib.sha256(payload).hexdigest()
 
 
 def ensure_local_storage_target(session: Session) -> BackupStorageTarget:
@@ -467,10 +576,24 @@ def record_backup_run(
 
 def run_backup(session: Session, *, actor: User | None, backup_type: str = "manual") -> BackupRun:
     _require_owner_or_admin(session, actor)
-    target = ensure_local_storage_target(session)
+    target = select_active_storage_target(session)
     started = _now()
     encrypted = bool(settings.encryption_key.get_secret_value())
-    if not encrypted:
+    if target is None:
+        ensure_local_storage_target(session)
+        run = record_backup_run(
+            session,
+            actor=actor,
+            backup_type=backup_type,
+            status="not_configured",
+            storage_target="external_storage",
+            encrypted=False,
+            error_summary="External backup storage is not configured yet.",
+            result_summary="Connect S3-compatible storage or use Manual Export guidance before backups can be verified.",
+            started_at=started,
+            finished_at=_now(),
+        )
+    elif not encrypted:
         run = record_backup_run(
             session,
             actor=actor,
@@ -483,21 +606,64 @@ def run_backup(session: Session, *, actor: User | None, backup_type: str = "manu
             finished_at=_now(),
         )
     else:
-        run = record_backup_run(
-            session,
-            actor=actor,
-            backup_type=backup_type,
-            status="manual_required",
-            storage_target=target.name,
-            encrypted=True,
-            result_summary=(
-                "Automated Postgres export is not configured in this runtime. "
-                "Use Manual Export or configure external backup storage before Fortuna can count backups as protected."
-            ),
-            error_summary="Manual backup export or external storage configuration is required.",
-            started_at=started,
-            finished_at=_now(),
-        )
+        identifier = _new_run_identifier("backup")
+        try:
+            plain_payload = _backup_payload(session, backup_type, target.name)
+            encrypted_payload = encrypt_bytes(plain_payload)
+            checksum = _checksum_bytes(encrypted_payload)
+            provider = provider_for_target(target)
+            key = f"fortuna-backups/{identifier}.json.enc"
+            upload = provider.upload_artifact(key=key, payload=encrypted_payload, checksum=checksum)
+            if not upload.success or not upload.artifact_uri:
+                run = record_backup_run(
+                    session,
+                    actor=actor,
+                    backup_type=backup_type,
+                    run_identifier=identifier,
+                    status="failed",
+                    storage_target=target.name,
+                    encrypted=True,
+                    checksum=checksum,
+                    external_storage_used=False,
+                    size_bytes=len(encrypted_payload),
+                    result_summary=upload.summary,
+                    error_summary=upload.summary,
+                    started_at=started,
+                    finished_at=_now(),
+                )
+            else:
+                verified = provider.verify_artifact(artifact_uri=upload.artifact_uri, checksum=checksum)
+                status = "succeeded" if verified.success else "failed"
+                run = record_backup_run(
+                    session,
+                    actor=actor,
+                    backup_type=backup_type,
+                    run_identifier=identifier,
+                    status=status,
+                    storage_target=target.name,
+                    encrypted=True,
+                    checksum=checksum,
+                    artifact_uri=upload.artifact_uri,
+                    artifact_verified=verified.success,
+                    external_storage_used=True,
+                    size_bytes=verified.size_bytes or upload.size_bytes or len(encrypted_payload),
+                    result_summary=verified.summary,
+                    error_summary=None if verified.success else verified.summary,
+                    started_at=started,
+                    finished_at=_now(),
+                )
+        except Exception as exc:
+            run = record_backup_run(
+                session,
+                actor=actor,
+                backup_type=backup_type,
+                status="failed",
+                storage_target=target.name,
+                encrypted=encrypted,
+                error_summary=f"Backup failed safely: {type(exc).__name__}.",
+                started_at=started,
+                finished_at=_now(),
+            )
     audit_action(
         session,
         actor=actor,
@@ -505,7 +671,7 @@ def run_backup(session: Session, *, actor: User | None, backup_type: str = "manu
         resource_type="backup_run",
         resource_id=str(run.id),
         status=run.status,
-        details={"backup_type": backup_type, "storage_target": target.target_type, "encrypted": run.encrypted},
+        details={"backup_type": backup_type, "storage_target": run.storage_target, "encrypted": run.encrypted},
     )
     emit_event(
         session,
@@ -561,21 +727,50 @@ def run_restore_test(session: Session, *, actor: User | None, run_identifier: st
             "full_restore_performed": False,
         }
     else:
-        summary_payload = {
-            "checksum_verified": True,
-            "archive_decrypts": True,
-            "test_database_restored": False,
-            "message": "Fortuna verified the backup file metadata, but no test restore database is configured yet.",
-        }
-        payload = {
-            "backup_run_id": backup.id,
-            "status": "verified_only",
-            "result_summary": json.dumps(summary_payload, sort_keys=True),
-            "error_summary": None,
-            "checksum_verified": True,
-            "decrypt_verified": True,
-            "full_restore_performed": False,
-        }
+        target = session.scalar(select(BackupStorageTarget).where(BackupStorageTarget.name == backup.storage_target))
+        download: ProviderOperationResult | None = None
+        checksum_verified = False
+        decrypt_verified = False
+        if target is None or target.target_type in {"local_runtime", "manual_export"}:
+            checksum_verified = bool(backup.checksum and backup.artifact_verified)
+            decrypt_verified = bool(backup.encrypted and backup.artifact_uri)
+        else:
+            provider = provider_for_target(target)
+            download = provider.download_artifact(artifact_uri=backup.artifact_uri or "")
+            if download.success and download.data is not None:
+                checksum_verified = hashlib.sha256(download.data).hexdigest() == backup.checksum
+                if checksum_verified:
+                    try:
+                        decrypt_bytes(download.data)
+                        decrypt_verified = True
+                    except Exception:
+                        decrypt_verified = False
+        if not checksum_verified or not decrypt_verified:
+            payload = {
+                "backup_run_id": backup.id,
+                "status": "failed",
+                "result_summary": "Backup artifact could not be verified for restore readiness.",
+                "error_summary": (download.summary if download is not None else "Backup storage target was not available."),
+                "checksum_verified": checksum_verified,
+                "decrypt_verified": decrypt_verified,
+                "full_restore_performed": False,
+            }
+        else:
+            summary_payload = {
+                "checksum_verified": True,
+                "archive_decrypts": True,
+                "test_database_restored": False,
+                "message": "Fortuna verified the backup file, but no test restore database is configured yet.",
+            }
+            payload = {
+                "backup_run_id": backup.id,
+                "status": "verified_only",
+                "result_summary": json.dumps(summary_payload, sort_keys=True),
+                "error_summary": None,
+                "checksum_verified": True,
+                "decrypt_verified": True,
+                "full_restore_performed": False,
+            }
     if existing is None:
         test = RestoreTestRun(
             run_identifier=identifier,

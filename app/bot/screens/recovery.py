@@ -3,6 +3,8 @@ from __future__ import annotations
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.bot.menu import callback_for, page_controls
+from app.models.recovery import BackupStorageTarget
+from app.services.backup_storage import backup_storage_targets
 from app.services.recovery import backup_history, recovery_risk_assessment, run_backup, run_restore_test
 
 from .formatting import *
@@ -12,7 +14,34 @@ def _recovery_status_icon(level: str) -> str:
     return {"Low": "🟢", "Moderate": "🟡", "High": "🟠", "Critical": "🔴"}.get(level, "🟡")
 
 
-def _recovery_menu(*, back_to: str = "owner_advanced") -> InlineKeyboardMarkup:
+def _legacy_recovery_menu(*, back_to: str = "owner_advanced") -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Run Backup", callback_data=callback_for("recovery:backup:run"))],
+            [InlineKeyboardButton(text="📦 Backup Storage", callback_data=callback_for("recovery:storage"))],
+            [InlineKeyboardButton(text="📦 Backup History", callback_data=callback_for("recovery:history"))],
+            [InlineKeyboardButton(text="🧪 Test Restore", callback_data=callback_for("recovery:restore:test"))],
+            [InlineKeyboardButton(text="🚨 Disaster Plan", callback_data=callback_for("recovery:disaster_plan"))],
+            [InlineKeyboardButton(text="🔎 Details", callback_data=callback_for("recovery:details"))],
+            [InlineKeyboardButton(text="❓ Help", callback_data=callback_for("help_from:recovery_center"))],
+            *page_controls(back_to=back_to),
+        ]
+    )
+
+
+def _recovery_menu(*, back_to: str = "owner_advanced", storage_setup: bool = False) -> InlineKeyboardMarkup:
+    if storage_setup:
+        return InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="☁️ Add S3 Storage", callback_data=callback_for("recovery:storage:s3"))],
+                [InlineKeyboardButton(text="📦 Add Backblaze B2", callback_data=callback_for("recovery:storage:b2"))],
+                [InlineKeyboardButton(text="📁 Manual Export", callback_data=callback_for("recovery:storage:manual"))],
+                [InlineKeyboardButton(text="🧪 Test Restore", callback_data=callback_for("recovery:restore:test"))],
+                [InlineKeyboardButton(text="🔎 Details", callback_data=callback_for("recovery:details"))],
+                [InlineKeyboardButton(text="❓ Help", callback_data=callback_for("help_from:recovery_center"))],
+                *page_controls(back_to=back_to),
+            ]
+        )
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Run Backup", callback_data=callback_for("recovery:backup:run"))],
@@ -31,7 +60,10 @@ def render_recovery_center_page(session: Session, user: User | None = None, *, d
     assessment = recovery_risk_assessment(session)
     icon = _recovery_status_icon(assessment.risk_level)
     if not details:
-        if assessment.latest_backup is None:
+        if not assessment.external_storage_configured:
+            heading = "Recovery Gap"
+            summary = "No external backup storage has passed connection testing yet."
+        elif assessment.latest_backup is None:
             heading = "🟡 Recovery needs setup"
             summary = "Fortuna has not recorded a successful backup yet."
         elif assessment.alerts:
@@ -60,7 +92,7 @@ def render_recovery_center_page(session: Session, user: User | None = None, *, d
             "✨ Next Best Move",
             assessment.next_best_move,
         ]
-        return Screen("\n".join(lines), _recovery_menu())
+        return Screen("\n".join(lines), _recovery_menu(storage_setup=not assessment.external_storage_configured))
 
     lines = [
         "🔎 Recovery Technical Details",
@@ -158,7 +190,7 @@ def render_restore_test_page(session: Session, user: User | None = None) -> Scre
     return Screen("\n".join(lines), _recovery_menu(back_to="recovery_center"))
 
 
-def render_backup_storage_page() -> Screen:
+def _render_backup_storage_page_legacy() -> Screen:
     lines = [
         "📦 Backup Storage",
         "",
@@ -181,6 +213,151 @@ def render_backup_storage_page() -> Screen:
                 [InlineKeyboardButton(text="📦 Backblaze B2", callback_data=callback_for("recovery:storage:b2"))],
                 [InlineKeyboardButton(text="📁 Manual Export", callback_data=callback_for("recovery:storage:manual"))],
                 [InlineKeyboardButton(text="🔎 Details", callback_data=callback_for("recovery:details"))],
+                *page_controls(back_to="recovery_center"),
+            ]
+        ),
+    )
+
+
+def _storage_target_for_type(session: Session, target_type: str) -> BackupStorageTarget | None:
+    for target in backup_storage_targets(session):
+        if target.target_type == target_type:
+            return target
+    return None
+
+
+def _storage_status_text(target: BackupStorageTarget | None) -> str:
+    if target is None:
+        return "Not configured yet."
+    if target.connection_status == "active" and target.provider_available:
+        return "Connected and available."
+    if target.connection_status == "failed":
+        return "Connection failed."
+    if target.connection_status == "disabled":
+        return "Removed."
+    return "Not configured yet."
+
+
+def _storage_target_rows(target: BackupStorageTarget | None) -> list[str]:
+    if target is None:
+        return ["Configured: No"]
+    masked = target.masked_config_json or {}
+    rows = [
+        f"Configured: {'Yes' if target.connection_status == 'active' else 'No'}",
+        f"Status: {_storage_status_text(target)}",
+    ]
+    for label, key in (
+        ("Endpoint", "endpoint"),
+        ("Bucket", "bucket"),
+        ("Region", "region"),
+        ("Access Key", "access_key"),
+        ("Key ID", "key_id"),
+    ):
+        value = masked.get(key)
+        if value:
+            rows.append(f"{label}: {value}")
+    if masked.get("secret_key") or masked.get("application_key"):
+        rows.append("Secret: Encrypted")
+    if target.last_test_at:
+        rows.append(f"Last Test: {format_user_datetime(None, target.last_test_at)}")
+    if target.last_test_summary:
+        rows.append(f"Result: {target.last_test_summary}")
+    return rows
+
+
+def render_backup_storage_page(session: Session, user: User | None = None, *, target_type: str | None = None) -> Screen:
+    if target_type in {"s3_compatible", "backblaze_b2"}:
+        target = _storage_target_for_type(session, target_type)
+        title = "S3-Compatible Storage" if target_type == "s3_compatible" else "Backblaze B2 Storage"
+        activate_page = "recovery:storage:s3:activate" if target_type == "s3_compatible" else "recovery:storage:b2:activate"
+        guidance = (
+            "Add credentials as Railway variables, then tap Activate. Fortuna tests write, read, and cleanup before enabling it."
+            if target_type == "s3_compatible"
+            else "Backblaze B2 direct setup is prepared but not active yet. Use Backblaze's S3-compatible endpoint in S3-Compatible Storage."
+        )
+        rows = [[InlineKeyboardButton(text="Activate / Test From Railway Env", callback_data=callback_for(activate_page))]]
+        if target is not None:
+            rows.append([InlineKeyboardButton(text="Test Connection", callback_data=callback_for(f"recovery:storage:test:{target.id}"))])
+            rows.append([InlineKeyboardButton(text="Remove", callback_data=callback_for(f"recovery:storage:remove:{target.id}"))])
+        rows.extend(
+            [
+                [InlineKeyboardButton(text="Backup Storage", callback_data=callback_for("recovery:storage"))],
+                *page_controls(back_to="recovery_center"),
+            ]
+        )
+        lines = [
+            title,
+            "",
+            "Status:",
+            _storage_status_text(target),
+            "",
+            "Configuration:",
+            *_storage_target_rows(target),
+            "",
+            "How to connect:",
+            guidance,
+            "",
+            "Security:",
+            "Credentials are encrypted and never shown in Telegram.",
+            "",
+            "Next Best Move",
+            "Add the Railway variables, then activate and test the connection.",
+        ]
+        return Screen("\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows))
+
+    if target_type == "manual_export":
+        lines = [
+            "Manual Export",
+            "",
+            "Status:",
+            "Available as a manual recovery option.",
+            "",
+            "What happens:",
+            "Fortuna can guide the export, but it will not call recovery protected until an external verified backup exists.",
+            "",
+            "Next Best Move",
+            "Connect S3-compatible storage for automated verified backups.",
+            "",
+            "No credentials are shown here.",
+        ]
+        return Screen(
+            "\n".join(lines),
+            InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="Backup Storage", callback_data=callback_for("recovery:storage"))],
+                    *page_controls(back_to="recovery_center"),
+                ]
+            ),
+        )
+
+    targets = backup_storage_targets(session)
+    active = [target for target in targets if target.enabled and target.connection_status == "active"]
+    lines = [
+        "Backup Storage",
+        "",
+        "Status:",
+        "External storage is connected." if active else "External storage is not connected yet.",
+        "",
+        "Why it matters:",
+        "If Railway breaks, external backups help restore Fortuna somewhere else.",
+        "",
+        "Next Best Move",
+        "Run a backup." if active else "Choose and test a backup storage target.",
+        "",
+        "Configured Targets:",
+        *(f"- {target.name}: {_storage_status_text(target)}" for target in targets[:5]),
+        *([] if targets else ["- None yet"]),
+        "",
+        "No credentials are shown here.",
+    ]
+    return Screen(
+        "\n".join(lines),
+        InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="S3-Compatible", callback_data=callback_for("recovery:storage:s3"))],
+                [InlineKeyboardButton(text="Backblaze B2", callback_data=callback_for("recovery:storage:b2"))],
+                [InlineKeyboardButton(text="Manual Export", callback_data=callback_for("recovery:storage:manual"))],
+                [InlineKeyboardButton(text="Details", callback_data=callback_for("recovery:details"))],
                 *page_controls(back_to="recovery_center"),
             ]
         ),

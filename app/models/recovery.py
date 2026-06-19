@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text
+from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -9,7 +9,15 @@ from app.models.mixins import TimestampMixin
 
 BACKUP_RUN_TYPES = ("manual", "nightly", "pre_deploy", "restore_test")
 BACKUP_RUN_STATUSES = ("pending", "running", "success", "succeeded", "failed", "skipped", "manual_required", "not_configured")
-BACKUP_TARGET_TYPES = ("local_runtime", "manual_export", "s3_compatible", "backblaze_b2", "google_drive")
+BACKUP_TARGET_TYPES = (
+    "local_runtime",
+    "manual_export",
+    "s3_compatible",
+    "backblaze_b2",
+    "google_drive",
+    "cloudflare_r2",
+    "azure_blob",
+)
 RESTORE_TEST_STATUSES = (
     "pending",
     "running",
@@ -65,12 +73,17 @@ class BackupStorageTarget(TimestampMixin, Base):
     __tablename__ = "backup_storage_targets"
     __table_args__ = (
         CheckConstraint(
-            "target_type in ('local_runtime', 'manual_export', 's3_compatible', 'backblaze_b2', 'google_drive')",
+            "target_type in ('local_runtime', 'manual_export', 's3_compatible', 'backblaze_b2', 'google_drive', 'cloudflare_r2', 'azure_blob')",
             name="ck_backup_storage_targets_type",
+        ),
+        CheckConstraint(
+            "connection_status in ('not_configured', 'pending', 'active', 'failed', 'disabled')",
+            name="ck_backup_storage_targets_connection_status",
         ),
         Index("ix_backup_storage_targets_enabled", "enabled"),
         Index("ix_backup_storage_targets_type", "target_type"),
         Index("ix_backup_storage_targets_last_success", "last_success_at"),
+        Index("ix_backup_storage_targets_connection_status", "connection_status"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -78,6 +91,13 @@ class BackupStorageTarget(TimestampMixin, Base):
     target_type: Mapped[str] = mapped_column(String(60), nullable=False)
     enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     encrypted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    encrypted_config_json: Mapped[str | None] = mapped_column(Text(), nullable=True)
+    masked_config_json: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    connection_status: Mapped[str] = mapped_column(String(40), default="not_configured", nullable=False)
+    provider_available: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    last_test_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_test_status: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    last_test_summary: Mapped[str | None] = mapped_column(Text(), nullable=True)
     last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_failure_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text(), nullable=True)

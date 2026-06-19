@@ -105,6 +105,12 @@ from app.services.notifications import (
     test_notification_target,
 )
 from app.services.chat_cleanup import toggle_chat_cleanup
+from app.services.backup_storage import (
+    configure_b2_storage_from_environment,
+    configure_s3_storage_from_environment,
+    disable_storage_target,
+    test_storage_target_connection,
+)
 from app.services.opportunities import run_creator_alert_pilot, run_own_post_alert_pilot
 from app.services.automations import (
     activate_automation_rule,
@@ -128,6 +134,7 @@ from app.services.automations import (
     update_simulation_status,
 )
 from app.services.recommendations import get_recommendation, update_recommendation_status
+from app.models.recovery import BackupStorageTarget
 from app.services.intelligence import run_full_intelligence_scan, run_intelligence_analysis
 from app.services.learning import create_playbook_run, get_playbook, record_feedback, seed_default_playbooks
 from app.services.help_brain import record_help_feedback
@@ -413,6 +420,23 @@ def _perform_admin_action(
             details={"source": "fallback_screen"},
         )
         return page
+    if page == "recovery:storage:s3:activate":
+        configure_s3_storage_from_environment(session, actor=actor)
+        return "recovery:storage:s3"
+    if page == "recovery:storage:b2:activate":
+        configure_b2_storage_from_environment(session, actor=actor)
+        return "recovery:storage:b2"
+    if len(parts) >= 4 and parts[:3] == ["recovery", "storage", "test"] and parts[3].isdigit():
+        target = session.get(BackupStorageTarget, int(parts[3]))
+        if target is not None:
+            test_storage_target_connection(session, target, actor=actor)
+            return f"recovery:storage:{target.target_type}"
+        return "recovery:storage"
+    if len(parts) >= 4 and parts[:3] == ["recovery", "storage", "remove"] and parts[3].isdigit():
+        target = session.get(BackupStorageTarget, int(parts[3]))
+        if target is not None:
+            disable_storage_target(session, target, actor=actor)
+        return "recovery:storage"
     if page == "setup:wizard:start":
         start_setup_wizard(session, actor=actor)
         return "setup:wizard"

@@ -69,8 +69,8 @@ def test_builtin_templates_seed_idempotently() -> None:
         first = seed_builtin_automation_templates(session, actor=owner)
         second = seed_builtin_automation_templates(session, actor=owner)
 
-        assert len(first) == 6
-        assert len(second) == 6
+        assert len(first) == 7
+        assert len(second) == 7
         assert {rule.automation_type for rule in second} >= {
             "daily_intelligence_scan",
             "daily_executive_digest",
@@ -78,6 +78,7 @@ def test_builtin_templates_seed_idempotently() -> None:
             "critical_incident_escalation",
             "proxy_repair_assistant",
             "notification_failure_watch",
+            "nightly_recovery_backup",
         }
 
 

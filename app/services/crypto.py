@@ -19,3 +19,11 @@ def encrypt_secret(value: str) -> str:
 
 def decrypt_secret(value: str) -> str:
     return _fernet().decrypt(value.encode("utf-8")).decode("utf-8")
+
+
+def encrypt_bytes(value: bytes) -> bytes:
+    return _fernet().encrypt(value)
+
+
+def decrypt_bytes(value: bytes) -> bytes:
+    return _fernet().decrypt(value)

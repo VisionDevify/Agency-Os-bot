@@ -88,6 +88,9 @@ def test_recovery_low_risk_requires_redundant_encrypted_checked_and_restored_evi
                 BackupStorageTarget(name="External B", target_type="backblaze_b2", enabled=True, encrypted=True),
             ]
         )
+        for target in session.query(BackupStorageTarget).all():
+            target.connection_status = "active"
+            target.provider_available = True
         first = record_backup_run(
             session,
             actor=owner,
@@ -134,6 +137,7 @@ def test_recovery_low_risk_requires_redundant_encrypted_checked_and_restored_evi
         assert backup_copy_count(session, now=now) == 2
         assert assessment.risk_score <= 24
         assert assessment.risk_level == "Low"
+        assert assessment.status == "healthy"
         assert assessment.recovery_confidence == "High"
         assert assessment.protection_status == "Protected by recent verified backups"
 
@@ -171,9 +175,9 @@ def test_recovery_screens_and_disaster_plan_hide_secrets_and_use_emoji_buttons()
         assert "password" not in combined
         assert "database_url" not in combined
         assert "encrypted backup" in disaster.text
-        assert "🔄 Run Backup" in labels
+        assert "☁️ Add S3 Storage" in labels
+        assert "📁 Manual Export" in labels
         assert "🧪 Test Restore" in labels
-        assert "🚨 Disaster Plan" in labels
 
 
 def test_team_performance_snapshot_and_summary_use_real_work_data() -> None:
