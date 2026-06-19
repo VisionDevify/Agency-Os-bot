@@ -80,9 +80,12 @@ def test_production_observability_renders_safe_metadata_and_owner_gate() -> None
         assert "Production Observability" in screen.text
         assert "Status:" in screen.text
         assert "Recommended Action:" in screen.text
-        assert "App: Fortuna OS" not in screen.text
+        assert "App Name: Fortuna OS" not in screen.text
         assert "Production Observability Technical Details" in details.text
-        assert "App: Fortuna OS" in details.text
+        assert "App Name: Fortuna OS" in details.text
+        assert "Build Version:" in details.text
+        assert "Git Commit:" in details.text
+        assert "Build Alembic Revision:" in details.text
         assert "Alembic:" in details.text
         assert "Bot Started: 2026-06-18T00:00:00Z" in details.text
         assert "Last Polling Loop: 2026-06-18T00:01:00Z" in details.text
@@ -110,9 +113,47 @@ def test_db_revision_and_missing_metadata_are_displayed_cleanly() -> None:
 
         summary = production_observability_summary(session)
         assert summary["alembic_current"] == "0024_fortuna_coo"
-        assert summary["app_version"] == "Unknown"
-        assert summary["git_commit"] == "Unknown"
-        assert summary["deployed_at"] == "Unknown"
+        assert summary["app_version"] == "unknown"
+        assert summary["build_version"] == "unknown"
+        assert summary["git_commit"] == "unknown"
+        assert summary["deployed_at"] == "unknown"
+
+
+def test_observability_displays_safe_build_metadata(monkeypatch) -> None:
+    monkeypatch.setattr("app.core.config.settings.git_commit", "198e746")
+    monkeypatch.setattr("app.core.config.settings.app_version", "v50.1")
+    monkeypatch.setattr("app.core.config.settings.deployed_at", "2026-06-19T12:00:00Z")
+    monkeypatch.setattr("app.core.config.settings.railway_deployment_id", "deployment-safe-label")
+    with session_scope() as session:
+        session.execute(text("create table alembic_version (version_num varchar(32) not null)"))
+        session.execute(text("insert into alembic_version (version_num) values ('0037_social_comment_profiles')"))
+
+        details = render_production_observability_page(session, details=True)
+
+        assert "App Name: Fortuna OS" in details.text
+        assert "Build Version: v50.1" in details.text
+        assert "Git Commit: 198e746" in details.text
+        assert "Deployed At: 2026-06-19T12:00:00Z" in details.text
+        assert "Build Alembic Revision: 0037_social_comment_profiles" in details.text
+        assert "deployment-safe-label" in details.text
+        assert "DATABASE_URL" not in details.text
+        assert "TELEGRAM_BOT_TOKEN" not in details.text
+        assert "postgres://" not in details.text
+
+
+def test_observability_hides_suspicious_build_metadata(monkeypatch) -> None:
+    monkeypatch.setattr("app.core.config.settings.git_commit", "secret-token")
+    monkeypatch.setattr("app.core.config.settings.app_version", "DATABASE_URL=postgres://user:pass@example/db")
+    monkeypatch.setattr("app.core.config.settings.deployed_at", "redis://:password@example")
+    with session_scope() as session:
+        details = render_production_observability_page(session, details=True)
+
+        assert "Git Commit: unknown" in details.text
+        assert "Build Version: unknown" in details.text
+        assert "Deployed At: unknown" in details.text
+        assert "secret-token" not in details.text
+        assert "user:pass" not in details.text
+        assert "redis://:password" not in details.text
 
 
 def test_notification_readiness_card_tracks_required_targets() -> None:

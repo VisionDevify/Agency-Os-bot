@@ -31,10 +31,21 @@ Confirm presence only; never print values:
 - `APP_SECRET_KEY`
 - `ENCRYPTION_KEY`
 - `OWNER_TELEGRAM_ID`
+- `GIT_COMMIT`
+- `APP_VERSION`
+- `DEPLOYED_AT`
+
+Safe build metadata:
+
+- `GIT_COMMIT`: commit SHA deployed to Railway.
+- `APP_VERSION`: release/build label.
+- `DEPLOYED_AT`: deployment timestamp.
+
+These labels are safe to show in `/health` and Production Observability. Do not put secrets, URLs, tokens, or dumped env values in these fields.
 
 ## Health And Heartbeats
 
-The `/health` endpoint returns safe labels for API, database, and Redis. It also updates `system_heartbeats` for:
+The `/health` endpoint returns safe labels for API, database, Redis, build metadata, and Alembic revision. It also updates `system_heartbeats` for:
 
 - `api`
 - `db`
@@ -45,6 +56,8 @@ Public production health URL:
 ```bash
 curl https://agency-os-bot-production.up.railway.app/health
 ```
+
+Expected proof fields include `app_name`, `environment`, `git_commit`, `build_version`, `deployed_at`, `alembic_revision`, `db_backend`, `db_durable`, and `redis`. Missing build metadata renders as `unknown`; secrets and connection URLs are never returned.
 
 The bot worker records `bot` heartbeat rows on startup and Telegram activity.
 

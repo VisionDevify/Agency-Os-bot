@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 from app.core.config import settings
+from app.services.build_metadata import safe_build_metadata
 
 PRODUCTION_ENV_VALUES = {"production", "prod", "railway"}
 SQLITE_SCHEMES = {"sqlite", "sqlite+pysqlite", "sqlite+aiosqlite"}
@@ -161,6 +162,7 @@ def health_payload(
     storage: StorageStatus | None = None,
     db_connected: bool,
     redis_status: str,
+    alembic_revision: str | None = None,
 ) -> dict[str, object]:
     current = storage or storage_status()
     warnings: list[str] = []
@@ -188,6 +190,7 @@ def health_payload(
         warnings.append("redis_unavailable")
 
     payload: dict[str, object] = {
+        **safe_build_metadata(environment=current.environment, alembic_revision=alembic_revision),
         "status": overall,
         "api": "healthy",
         "db": db_status,

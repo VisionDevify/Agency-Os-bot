@@ -123,6 +123,17 @@ https://agency-os-bot-production.up.railway.app/health
 
 The health endpoint returns safe status labels for API, database backend type, database durability, and Redis. It never returns secret values. Production is only truly ready when `/health` shows `db_backend=postgresql`, `db=healthy`, and `redis=healthy`. If emergency SQLite is used in Railway, `/health` returns `status=degraded` and `db_backend=sqlite_fallback`.
 
+`/health` also returns safe build proof fields:
+
+- `app_name`
+- `environment`
+- `git_commit`
+- `build_version`
+- `deployed_at`
+- `alembic_revision`
+
+Set `GIT_COMMIT`, `APP_VERSION`, and `DEPLOYED_AT` in Railway for deploy verification. Missing values render as `unknown`; secrets, tokens, and connection URLs are never returned.
+
 Owner-only integrity check:
 
 ```bash

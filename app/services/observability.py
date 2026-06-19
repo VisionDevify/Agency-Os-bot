@@ -16,6 +16,7 @@ from app.models.proxy import ProxyHealthCheckResult
 from app.models.permissions import Role
 from app.models.reporting import NotificationTarget
 from app.models.user import User
+from app.services.build_metadata import safe_build_metadata, safe_metadata_value
 from app.services.help_brain import help_questions_today, notification_pilot_status, proxy_pilot_status
 from app.services.heartbeats import list_heartbeats, system_status_summary
 from app.services.bot_instances import bot_instance_diagnostics
@@ -69,6 +70,7 @@ def _latest(session: Session, model, *order_columns):
 def production_observability_summary(session: Session) -> dict[str, object]:
     revision = alembic_revision_status(session)
     storage = storage_status()
+    build_metadata = safe_build_metadata(environment=storage.environment, alembic_revision=revision.current.lower())
     status = system_status_summary(session)
     truth = system_truth(session)
     heartbeats = {heartbeat.service_name: heartbeat for heartbeat in list_heartbeats(session)}
@@ -125,12 +127,16 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         production_risk = "degraded"
 
     return {
-        "app_display_name": settings.app_display_name,
-        "app_version": _unknown(settings.app_version),
-        "git_commit": _unknown(settings.git_commit),
-        "deployed_at": _unknown(settings.deployed_at),
-        "railway_deployment_id": _unknown(settings.railway_deployment_id),
+        "app_display_name": build_metadata["app_name"],
+        "app_name": build_metadata["app_name"],
+        "app_version": build_metadata["build_version"],
+        "build_version": build_metadata["build_version"],
+        "git_commit": build_metadata["git_commit"],
+        "deployed_at": build_metadata["deployed_at"],
+        "railway_deployment_id": safe_metadata_value(settings.railway_deployment_id, default="unknown"),
         "environment": status["environment"],
+        "build_environment": build_metadata["environment"],
+        "build_alembic_revision": build_metadata["alembic_revision"],
         "api_status": status["api_status"],
         "bot_status": status["bot_status"],
         "postgres_status": status["db_status"],

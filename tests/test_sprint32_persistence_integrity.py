@@ -29,11 +29,61 @@ def test_health_payload_shows_postgresql_backend() -> None:
     payload = health_payload(storage=storage, db_connected=True, redis_status="healthy")
 
     assert payload["status"] == "ok"
+    assert payload["app_name"] == "Fortuna OS"
+    assert payload["environment"] == "production"
+    assert payload["git_commit"] == "unknown"
+    assert payload["build_version"] == "unknown"
+    assert payload["deployed_at"] == "unknown"
+    assert payload["alembic_revision"] == "unknown"
     assert payload["db"] == "healthy"
     assert payload["db_backend"] == "postgresql"
     assert payload["db_driver"] == "postgresql+psycopg"
     assert payload["db_durable"] is True
     assert "user:pass" not in str(payload)
+
+
+def test_health_payload_includes_safe_build_metadata_without_secrets(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "git_commit", "198e746")
+    monkeypatch.setattr(settings, "app_version", "v50.1")
+    monkeypatch.setattr(settings, "deployed_at", "2026-06-19T12:00:00Z")
+    storage = storage_status(
+        database_url="postgresql+psycopg://user:pass@example.com/db",
+        allow_sqlite_fallback=False,
+        environment="production",
+    )
+
+    payload = health_payload(
+        storage=storage,
+        db_connected=True,
+        redis_status="healthy",
+        alembic_revision="0037_social_comment_profiles",
+    )
+
+    assert payload["git_commit"] == "198e746"
+    assert payload["build_version"] == "v50.1"
+    assert payload["deployed_at"] == "2026-06-19T12:00:00Z"
+    assert payload["alembic_revision"] == "0037_social_comment_profiles"
+    assert "user:pass" not in str(payload)
+    assert "DATABASE_URL" not in str(payload)
+
+
+def test_health_payload_redacts_suspicious_metadata(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "git_commit", "secret-token")
+    monkeypatch.setattr(settings, "app_version", "DATABASE_URL=postgres://user:pass@example/db")
+    monkeypatch.setattr(settings, "deployed_at", "redis://:password@example")
+    storage = storage_status(
+        database_url="postgresql+psycopg://user:pass@example.com/db",
+        allow_sqlite_fallback=False,
+        environment="production",
+    )
+
+    payload = health_payload(storage=storage, db_connected=True, redis_status="healthy")
+
+    assert payload["git_commit"] == "unknown"
+    assert payload["build_version"] == "unknown"
+    assert payload["deployed_at"] == "unknown"
+    for marker in SECRET_MARKERS:
+        assert marker not in str(payload)
 
 
 def test_health_payload_degrades_sqlite_fallback_in_production() -> None:

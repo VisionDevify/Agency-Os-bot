@@ -4,7 +4,7 @@ Sprint 26 adds an owner-only Production Observability screen:
 
 Settings -> Production Observability
 
-The screen shows safe operational metadata only:
+The screen shows safe operational metadata only. It uses the same safe build metadata as `/health`:
 
 - app display name
 - environment
@@ -39,7 +39,7 @@ It does not show:
 - owner Telegram id
 - raw environment variables
 
-If build metadata is missing, the screen renders `Unknown` instead of failing.
+If build metadata is missing, the screen renders `unknown` instead of failing.
 
 Railway logs are not pulled into the app. View deployment and runtime logs in the Railway dashboard.
 
@@ -52,7 +52,7 @@ Optional environment variables:
 - `DEPLOYED_AT`
 - `RAILWAY_DEPLOYMENT_ID`
 
-These values are safe labels for operators. They must not contain secrets.
+Set `GIT_COMMIT`, `APP_VERSION`, and `DEPLOYED_AT` in Railway for deploy verification. These values are safe labels for operators. They must not contain secrets, URLs, tokens, or dumped environment values. Suspicious values are hidden as `unknown`.
 
 ## Bot Heartbeat
 

@@ -53,6 +53,17 @@ API service variables:
 - `APP_SECRET_KEY`
 - `ENCRYPTION_KEY`
 - `OWNER_TELEGRAM_ID`
+- `GIT_COMMIT`
+- `APP_VERSION`
+- `DEPLOYED_AT`
+
+Safe build metadata variables:
+
+- `GIT_COMMIT`: short or full git commit SHA deployed to Railway.
+- `APP_VERSION`: human-readable release/build label.
+- `DEPLOYED_AT`: deployment timestamp, preferably ISO 8601.
+
+These values are returned by `/health` and Production Observability so operators can prove what code is running. They must never contain secrets, URLs, tokens, or dumped environment values.
 
 ## API Service
 
@@ -81,10 +92,23 @@ curl https://<api-service-domain>/health
 Expected response:
 
 ```json
-{"status":"ok","api":"healthy","db":"healthy","db_backend":"postgresql","redis":"healthy"}
+{
+  "app_name": "Fortuna OS",
+  "environment": "production",
+  "git_commit": "198e746",
+  "build_version": "v50.1",
+  "deployed_at": "2026-06-19T12:00:00Z",
+  "alembic_revision": "0037_social_comment_profiles",
+  "status": "ok",
+  "api": "healthy",
+  "db": "healthy",
+  "db_backend": "postgresql",
+  "db_durable": true,
+  "redis": "healthy"
+}
 ```
 
-If PostgreSQL or Redis are not attached yet, `/health` must say so. Emergency SQLite in Railway returns `status=degraded`, `db=degraded`, and `db_backend=sqlite_fallback`. Do not treat a production bot as durable until `db_backend=postgresql` and `redis=healthy`.
+If `GIT_COMMIT`, `APP_VERSION`, or `DEPLOYED_AT` are missing, `/health` returns `unknown` for those safe metadata fields. If PostgreSQL or Redis are not attached yet, `/health` must say so. Emergency SQLite in Railway returns `status=degraded`, `db=degraded`, and `db_backend=sqlite_fallback`. Do not treat a production bot as durable until `db_backend=postgresql`, `db_durable=true`, and `redis=healthy`.
 
 ## Bot Worker Service
 

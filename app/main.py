@@ -7,7 +7,7 @@ from app.db.migrations import run_migrations
 from app.db.session import SessionLocal
 from app.services.heartbeats import record_heartbeat
 from app.services.persistence import health_payload, storage_status
-from app.services.system_truth import reconcile_stale_system_warnings
+from app.services.system_truth import current_alembic_revision, reconcile_stale_system_warnings
 
 app = FastAPI(title=settings.app_display_name)
 app.include_router(router)
@@ -31,10 +31,12 @@ async def health() -> dict[str, object]:
     storage = storage_status()
     db_connected = False
     redis_status = "unknown"
+    alembic_revision = "unknown"
     if SessionLocal is not None:
         try:
             with SessionLocal() as session:
                 session.execute(text("select 1"))
+                alembic_revision = current_alembic_revision(session).lower()
                 db_connected = True
                 try:
                     db_heartbeat_status = "degraded" if storage.backend == "sqlite_fallback" and storage.is_production else "healthy"
@@ -84,4 +86,9 @@ async def health() -> dict[str, object]:
                         session.commit()
                 except Exception:
                     pass
-    return health_payload(storage=storage, db_connected=db_connected, redis_status=redis_status)
+    return health_payload(
+        storage=storage,
+        db_connected=db_connected,
+        redis_status=redis_status,
+        alembic_revision=alembic_revision,
+    )

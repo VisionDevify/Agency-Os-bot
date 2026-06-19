@@ -42,7 +42,7 @@ Telegram verification should use only the Fortuna OS bot and approved Fortuna OS
 
 ## Current Observability Limits
 
-- Public `/health` remains intentionally safe and non-secret. Use the owner-only Production Observability screen for backend durability, Alembic revision, bot heartbeat, latest audit/event, latest automation run, latest intelligence run, and notification target readiness.
+- Public `/health` remains intentionally safe and non-secret. It now includes safe build proof fields (`git_commit`, `build_version`, `deployed_at`) plus `alembic_revision`, backend durability, and Redis status. Use the owner-only Production Observability screen for deeper bot heartbeat, latest audit/event, latest automation run, latest intelligence run, and notification target readiness.
 - Owner-only `/integrity` verifies DB backend, revision, owner/role records, audit/event writes, key tables, Redis, and polling guard status.
 - Railway deployment logs are still inspected through Railway UI unless a future safe status integration is added.
 - Notification group delivery remains pending until Fortuna OS groups/channels are created and registered.
