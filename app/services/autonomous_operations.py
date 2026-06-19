@@ -13,6 +13,7 @@ from app.services.auth import USER_STATUS_ACTIVE, user_has_permission
 from app.services.events import emit_event
 from app.services.permissions import RoleName
 from app.services.recommendations import generate_recommendations, upsert_recommendation
+from app.services.system_truth import reconcile_stale_system_warnings
 
 def _now() -> datetime:
     return datetime.now(UTC)
@@ -536,6 +537,7 @@ def run_daily_autonomous_cycle(session: Session, *, actor: User) -> OperationsWo
         actor=actor,
     )
     steps = [
+        ("truth_reconciliation", lambda: reconcile_stale_system_warnings(session, actor=actor)),
         ("readiness_scan", lambda: run_readiness_autopilot(session, actor=actor)),
         ("recommendation_refresh", lambda: generate_recommendations(session, actor=actor)),
     ]

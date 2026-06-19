@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any
 
-from alembic.config import Config
-from alembic.script import ScriptDirectory
 from sqlalchemy import desc, func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -24,6 +21,13 @@ from app.services.heartbeats import list_heartbeats, system_status_summary
 from app.services.bot_instances import bot_instance_diagnostics
 from app.services.persistence import storage_status
 from app.services.notifications import notification_routing_mode_summary, purpose_aliases
+from app.services.system_truth import (
+    AlembicRevisionStatus,
+    alembic_revision_status,
+    current_alembic_revision,
+    expected_alembic_head,
+    system_truth,
+)
 
 REQUIRED_NOTIFICATION_PURPOSES: tuple[tuple[str, str], ...] = (
     ("hq", "Fortuna HQ"),
@@ -32,47 +36,11 @@ REQUIRED_NOTIFICATION_PURPOSES: tuple[tuple[str, str], ...] = (
 )
 
 
-@dataclass(frozen=True)
-class AlembicRevisionStatus:
-    current: str
-    expected_head: str
-    status: str
-
-
 def _unknown(value: Any) -> str:
     if value is None:
         return "Unknown"
     text = str(value).strip()
     return text or "Unknown"
-
-
-def current_alembic_revision(session: Session) -> str:
-    try:
-        result = session.execute(text("select version_num from alembic_version")).scalar_one_or_none()
-    except SQLAlchemyError:
-        return "Unknown"
-    return _unknown(result)
-
-
-def expected_alembic_head() -> str:
-    try:
-        config = Config("alembic.ini")
-        script = ScriptDirectory.from_config(config)
-        return _unknown(script.get_current_head())
-    except Exception:
-        return "Unknown"
-
-
-def alembic_revision_status(session: Session) -> AlembicRevisionStatus:
-    current = current_alembic_revision(session)
-    expected = expected_alembic_head()
-    if current == "Unknown" or expected == "Unknown":
-        status = "Unknown"
-    elif current == expected:
-        status = "Current"
-    else:
-        status = "Mismatch"
-    return AlembicRevisionStatus(current=current, expected_head=expected, status=status)
 
 
 def notification_target_readiness(session: Session) -> list[dict[str, object]]:
@@ -101,6 +69,7 @@ def production_observability_summary(session: Session) -> dict[str, object]:
     revision = alembic_revision_status(session)
     storage = storage_status()
     status = system_status_summary(session)
+    truth = system_truth(session)
     heartbeats = {heartbeat.service_name: heartbeat for heartbeat in list_heartbeats(session)}
     bot_heartbeat = heartbeats.get("bot")
     redis_heartbeat = heartbeats.get("redis")
@@ -146,12 +115,12 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         latest_db_write = latest_event.created_at
     redis_connected = status["redis_status"] == "healthy"
     polling_guard_active = bot_metadata.get("polling_guard") == "redis_lock" and bot_metadata.get("redis_lock_status") == "held"
-    if storage.risk == "ready" and redis_connected:
-        production_risk = "Production Ready"
+    if truth.database_ready and truth.redis_healthy:
+        production_risk = "ready"
     elif storage.risk == "unsafe":
-        production_risk = "Unsafe"
+        production_risk = "unsafe"
     else:
-        production_risk = "Degraded"
+        production_risk = "degraded"
 
     return {
         "app_display_name": settings.app_display_name,
@@ -171,6 +140,7 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         "storage_driver": storage.scheme,
         "storage_durable": storage.durable,
         "storage_risk": production_risk,
+        "storage_risk_label": "Production Ready" if production_risk == "ready" else production_risk.title(),
         "storage_warning": storage.warning or "None",
         "sqlite_fallback_allowed": storage.sqlite_fallback_allowed,
         "sqlite_file_location": storage.file_location,
@@ -197,6 +167,13 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         "bot_polling_warning": bot_diagnostics["preflight_reason"] if not bot_diagnostics["preflight_allowed"] else "None",
         "active_bot_instance_count": bot_diagnostics["active_instance_count"],
         "duplicate_bot_instance_count": bot_diagnostics["duplicate_instance_count"],
+        "system_truth_status": truth.production_status,
+        "system_truth_ready": truth.production_ready,
+        "system_truth_current_issues": list(truth.current_issues),
+        "system_truth_current_issue_codes": list(truth.current_issue_codes),
+        "system_truth_readiness_score": truth.setup_readiness_score,
+        "system_truth_placeholder_proxy_count": truth.proxy_placeholder_count,
+        "system_truth_real_proxy_count": truth.real_proxy_count,
         "last_audit_action": latest_audit.action if latest_audit else "None",
         "last_audit_at": latest_audit.created_at if latest_audit else None,
         "last_event_type": latest_event.event_type if latest_event else "None",

@@ -7,6 +7,7 @@ from app.bot.menu import callback_for, page_controls
 from app.services.integrity import run_integrity_check
 from app.services.bot_instances import bot_instance_diagnostics
 from app.services.observability import production_observability_summary
+from app.services.system_truth import reconcile_stale_system_warnings
 from app.services.help_brain import (
     latest_ui_self_test_run,
     notification_pilot_status,
@@ -288,6 +289,7 @@ def render_production_observability_page(
     *,
     details: bool = False,
 ) -> Screen:
+    reconcile_stale_system_warnings(session, actor=user)
     summary = production_observability_summary(session)
     migration_status = summary["alembic_status"]
     migration_line = (
@@ -300,20 +302,27 @@ def render_production_observability_page(
         marker = "Configured" if item["configured"] else "Missing"
         notification_lines.append(f"- {item['label']}: {marker} ({item['active_count']} active)")
 
-    issues: list[str] = []
-    if summary["storage_risk"] != "ready" or not summary["storage_durable"]:
-        issues.append("Storage is not production-ready.")
-    if summary["redis_status"] != "healthy" or not summary["redis_connected"]:
-        issues.append("Redis is not healthy.")
-    if migration_status == "Mismatch":
-        issues.append("Database revision needs attention.")
-    if not summary["bot_polling_allowed"] or summary["duplicate_bot_instance_count"]:
-        issues.append("Bot polling safety needs attention.")
-    if summary["failed_notification_count"]:
-        issues.append("Notification delivery failures exist.")
+    issues = list(summary["system_truth_current_issues"])
     status = "Healthy" if not issues else "Needs Attention"
-    recommended_action = "No action needed." if not issues else issues[0]
+    recommended_action = "Continue setup." if not issues else issues[0]
     if not details:
+        checked_lines = (
+            [
+                "- PostgreSQL is durable",
+                "- Redis is healthy",
+                "- One bot instance is active",
+                "- Migrations are current",
+            ]
+            if not issues
+            else [f"- {issue}" for issue in issues[:4]]
+        )
+        summary_line = (
+            "Fortuna checked this. Everything is running."
+            if not issues
+            else "Fortuna found one thing that needs attention."
+            if len(issues) == 1
+            else "Fortuna found a few things that need attention."
+        )
         return Screen(
             text="\n".join(
                 [
@@ -325,10 +334,11 @@ def render_production_observability_page(
                     f"Issues Found: {len(issues)}",
                     f"Last Check: {format_user_datetime(user, datetime.now(UTC))}",
                     "",
+                    "Fortuna checked:",
+                    *checked_lines,
+                    "",
                     "Summary:",
-                    (
-                        "Fortuna checked the API, bot, database, Redis, migrations, notifications, and proxy monitoring."
-                    ),
+                    summary_line,
                     "",
                     "Recommended Action:",
                     recommended_action,
@@ -352,7 +362,7 @@ def render_production_observability_page(
         f"Backend: {summary['storage_backend']}",
         f"Driver: {summary['storage_driver']}",
         f"Durable: {_yes_no(summary['storage_durable']) if summary['storage_durable'] is not None else 'unknown'}",
-        f"Risk: {summary['storage_risk']}",
+        f"Risk: {summary['storage_risk_label']}",
         f"Warning: {summary['storage_warning']}",
         f"SQLite Fallback Allowed: {_yes_no(summary['sqlite_fallback_allowed'])}",
         f"SQLite Location: {summary['sqlite_file_location']}",
@@ -379,6 +389,7 @@ def render_production_observability_page(
         f"Polling Allowed: {_yes_no(summary['bot_polling_allowed'])}",
         f"Active Bot Instances: {summary['active_bot_instance_count']}",
         f"Duplicate Bot Instances: {summary['duplicate_bot_instance_count']}",
+        f"Current Truth Issues: {', '.join(summary['system_truth_current_issue_codes']) or 'None'}",
         f"Polling Warning: {summary['bot_polling_warning']}",
         f"Bot Started: {summary['bot_started_at']}",
         f"Last Polling Loop: {summary['last_polling_loop_at']}",
@@ -423,6 +434,7 @@ def render_production_observability_page(
     return Screen(text="\n".join(lines), reply_markup=_observability_details_markup())
 
 def render_integrity_page(session: Session, user: User | None = None) -> Screen:
+    reconcile_stale_system_warnings(session, actor=user)
     result = run_integrity_check(session, actor=user)
     marker = "PASS" if result["overall"] == "pass" else "WARNING" if result["overall"] == "warning" else "FAIL"
     lines = [

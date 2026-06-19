@@ -7,6 +7,7 @@ from app.db.migrations import run_migrations
 from app.db.session import SessionLocal
 from app.services.heartbeats import record_heartbeat
 from app.services.persistence import health_payload, storage_status
+from app.services.system_truth import reconcile_stale_system_warnings
 
 app = FastAPI(title=settings.app_display_name)
 app.include_router(router)
@@ -16,6 +17,13 @@ app.include_router(router)
 async def startup() -> None:
     if SessionLocal is not None:
         run_migrations()
+        try:
+            with SessionLocal() as session:
+                reconcile_stale_system_warnings(session)
+                session.commit()
+        except Exception:
+            # Startup health must not be blocked by best-effort stale warning cleanup.
+            pass
 
 
 @app.get("/health")

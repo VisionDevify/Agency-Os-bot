@@ -18,8 +18,8 @@ from app.models.user import User
 from app.services.auth import audit_action
 from app.services.bot_instances import active_bot_instance_heartbeats
 from app.services.events import emit_event
-from app.services.observability import alembic_revision_status
 from app.services.persistence import storage_status
+from app.services.system_truth import alembic_revision_status
 
 
 @dataclass(frozen=True)
