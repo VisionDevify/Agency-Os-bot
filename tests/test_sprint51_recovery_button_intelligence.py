@@ -38,6 +38,14 @@ def _callback_for_label(screen: Screen, label_part: str) -> str | None:
     return None
 
 
+def _callback_for_exact_label(screen: Screen, label: str) -> str | None:
+    for row in screen.reply_markup.inline_keyboard:
+        for button in row:
+            if button.text == label:
+                return button.callback_data
+    return None
+
+
 def test_shared_status_uses_worst_active_condition() -> None:
     result = compute_shared_status(
         [
@@ -154,6 +162,18 @@ def test_help_navigation_preserves_source_context() -> None:
         assert _callback_for_label(topic, "Back") == "nav:recovery_center"
         assert "Ask Fortuna" in _button_labels(proxy_help)
         assert parent_page_for("help_from:recovery_center:topic:proxy_setup") == "recovery_center"
+
+
+def test_recovery_center_navigation_renders_recovery_screen() -> None:
+    with session_scope() as session:
+        owner = _owner(session)
+        principal = _principal(owner)
+
+        recovery = screen_for_page("recovery_center", principal, session=session, user=owner)
+
+        assert "Recovery Center" in recovery.text
+        assert "More" not in recovery.text.splitlines()[0]
+        assert _callback_for_exact_label(recovery, "Back") == "nav:owner_advanced"
 
 
 def test_button_issue_summary_drives_observability_and_today() -> None:

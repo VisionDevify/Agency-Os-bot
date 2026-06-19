@@ -45,24 +45,41 @@ class FakeBot:
 
 
 class FakeMessage:
-    def __init__(self, chat_id: int, message_id: int = 100) -> None:
+    def __init__(
+        self,
+        chat_id: int,
+        message_id: int = 100,
+        *,
+        edit_error: Exception | None = None,
+        answer_error: Exception | None = None,
+    ) -> None:
         self.chat = FakeChat(chat_id)
         self.message_id = message_id
+        self.edit_error = edit_error
+        self.answer_error = answer_error
         self.sent: list[FakeSentMessage] = []
         self.edited: list[str] = []
 
     async def answer(self, text: str, reply_markup=None):
+        if self.answer_error is not None:
+            raise self.answer_error
         sent = FakeSentMessage(self.chat.id, 1000 + len(self.sent))
         self.sent.append(sent)
         return sent
 
     async def edit_text(self, text: str, reply_markup=None):
+        if self.edit_error is not None:
+            raise self.edit_error
         self.edited.append(text)
 
 
 class FakeCallback:
     def __init__(self, message: FakeMessage) -> None:
         self.message = message
+        self.answered: list[tuple[str | None, bool]] = []
+
+    async def answer(self, text: str | None = None, show_alert: bool = False):
+        self.answered.append((text, show_alert))
 
 
 def _screen(text: str = "Home") -> Screen:
@@ -164,6 +181,76 @@ def test_callback_navigation_updates_active_message_tracking() -> None:
         assert callback.message.edited == ["Proxy Vault"]
         assert record.message_type == TEMPORARY_NAVIGATION
         assert record.page == "proxies"
+
+
+def test_duplicate_callback_message_not_modified_is_harmless() -> None:
+    with session_scope() as session:
+        owner = setup_owner_if_needed(session, telegram_user_id=1, owner_telegram_id=1)
+        callback = FakeCallback(
+            FakeMessage(10, message_id=24, edit_error=RuntimeError("Bad Request: message is not modified"))
+        )
+
+        asyncio.run(
+            _edit_or_send_callback_screen(
+                callback,
+                _screen("Proxy Vault"),
+                session=session,
+                user=owner,
+                page="proxies",
+            )
+        )
+
+        assert callback.message.sent == []
+        assert callback.answered == []
+        assert session.query(BotChatMessage).filter_by(message_id=24).count() == 0
+
+
+def test_stale_callback_edit_sends_fresh_screen() -> None:
+    with session_scope() as session:
+        owner = setup_owner_if_needed(session, telegram_user_id=1, owner_telegram_id=1)
+        callback = FakeCallback(
+            FakeMessage(10, message_id=25, edit_error=RuntimeError("Bad Request: message to edit not found"))
+        )
+
+        asyncio.run(
+            _edit_or_send_callback_screen(
+                callback,
+                _screen("Recovery Center"),
+                session=session,
+                user=owner,
+                page="recovery_center",
+            )
+        )
+
+        assert callback.message.sent
+        record = session.query(BotChatMessage).filter_by(chat_id=10, message_id=1000).one()
+        assert record.message_type == TEMPORARY_NAVIGATION
+        assert record.page == "recovery_center"
+
+
+def test_callback_edit_and_fallback_send_failure_does_not_raise() -> None:
+    with session_scope() as session:
+        owner = setup_owner_if_needed(session, telegram_user_id=1, owner_telegram_id=1)
+        callback = FakeCallback(
+            FakeMessage(
+                10,
+                message_id=26,
+                edit_error=RuntimeError("Bad Request: message can't be edited"),
+                answer_error=RuntimeError("telegram send failed"),
+            )
+        )
+
+        asyncio.run(
+            _edit_or_send_callback_screen(
+                callback,
+                _screen("Recovery Center"),
+                session=session,
+                user=owner,
+                page="recovery_center",
+            )
+        )
+
+        assert callback.answered == [("Fortuna had trouble updating that message. Use /start to refresh.", True)]
 
 
 def test_error_fallback_is_labeled_but_not_cleanup_candidate() -> None:

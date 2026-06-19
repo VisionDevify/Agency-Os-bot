@@ -1326,6 +1326,8 @@ def screen_for_page(
         or normalized == "integrity"
         or normalized == "integrity:details"
         or normalized == "owner_advanced"
+        or normalized == "recovery_center"
+        or normalized.startswith("recovery:")
         or normalized == "today_priorities"
         or normalized == "setup_progress"
         or normalized == "assistant_next"

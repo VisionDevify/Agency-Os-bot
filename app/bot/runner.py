@@ -456,6 +456,25 @@ async def _send_tracked_navigation_message(message: Message, session, *, user: U
     )
 
 
+def _callback_error_text(exc: BaseException) -> str:
+    return str(exc).casefold()
+
+
+def _is_harmless_callback_edit_race(exc: BaseException) -> bool:
+    text = _callback_error_text(exc)
+    return "message is not modified" in text
+
+
+async def _safe_callback_answer(
+    callback: CallbackQuery,
+    text: str | None = None,
+    *,
+    show_alert: bool = False,
+) -> None:
+    with contextlib.suppress(Exception):
+        await callback.answer(text, show_alert=show_alert)
+
+
 async def _edit_or_send_callback_screen(
     callback: CallbackQuery,
     screen,
@@ -478,17 +497,28 @@ async def _edit_or_send_callback_screen(
                 message_type=message_type,
                 page=page,
             )
-    except Exception:
+    except Exception as exc:
+        if _is_harmless_callback_edit_race(exc):
+            logger.info("Ignoring harmless Telegram callback edit race for page %s", page)
+            return
         logger.warning("Unable to edit callback message; sending fallback screen", exc_info=True)
-        sent = await callback.message.answer(screen.text, reply_markup=screen.reply_markup)
-        if session is not None:
-            track_bot_message(
-                session,
-                chat_id=sent.chat.id,
-                user=user,
-                message_id=sent.message_id,
-                message_type=message_type,
-                page=page,
+        try:
+            sent = await callback.message.answer(screen.text, reply_markup=screen.reply_markup)
+            if session is not None:
+                track_bot_message(
+                    session,
+                    chat_id=sent.chat.id,
+                    user=user,
+                    message_id=sent.message_id,
+                    message_type=message_type,
+                    page=page,
+                )
+        except Exception:
+            logger.exception("Unable to send callback fallback screen")
+            await _safe_callback_answer(
+                callback,
+                "Fortuna had trouble updating that message. Use /start to refresh.",
+                show_alert=True,
             )
 
 
@@ -1481,12 +1511,12 @@ async def text_input(message: Message) -> None:
 @dp.callback_query(F.data.startswith("nav:"))
 async def navigate(callback: CallbackQuery) -> None:
     if callback.message is None:
-        await callback.answer()
+        await _safe_callback_answer(callback)
         return
 
     page = callback.data.removeprefix("nav:") if callback.data else "menu"
     if SessionLocal is None:
-        await callback.answer("Database is not configured.", show_alert=True)
+        await _safe_callback_answer(callback, "Database is not configured.", show_alert=True)
         return
 
     with SessionLocal() as session:
@@ -1520,7 +1550,7 @@ async def navigate(callback: CallbackQuery) -> None:
                     user=user,
                     page=page,
                 )
-                await callback.answer("Access disabled.", show_alert=True)
+                await _safe_callback_answer(callback, "Access disabled.", show_alert=True)
                 session.commit()
                 return
             if user.status == USER_STATUS_DENIED:
@@ -1541,7 +1571,7 @@ async def navigate(callback: CallbackQuery) -> None:
                     user=user,
                     page=page,
                 )
-                await callback.answer("Access denied.", show_alert=True)
+                await _safe_callback_answer(callback, "Access denied.", show_alert=True)
                 session.commit()
                 return
             if user.status == USER_STATUS_PENDING:
@@ -1556,9 +1586,9 @@ async def navigate(callback: CallbackQuery) -> None:
                             user=user,
                             page=page,
                         )
-                        await callback.answer()
+                        await _safe_callback_answer(callback)
                     except ValueError:
-                        await callback.answer("Unable to save onboarding preference.", show_alert=True)
+                        await _safe_callback_answer(callback, "Unable to save onboarding preference.", show_alert=True)
                     session.commit()
                     return
                 audit_action(
@@ -1578,7 +1608,7 @@ async def navigate(callback: CallbackQuery) -> None:
                     user=user,
                     page=page,
                 )
-                await callback.answer("Access pending.", show_alert=True)
+                await _safe_callback_answer(callback, "Access pending.", show_alert=True)
                 session.commit()
                 return
             chat_id = callback.message.chat.id
@@ -1615,7 +1645,7 @@ async def navigate(callback: CallbackQuery) -> None:
                 if target is None or not target.is_active or target.purpose != "testing" or raw_chat_id is None:
                     if attempt is not None:
                         mark_delivery_skipped(session, attempt, actor=user, reason="test target not eligible")
-                    await callback.answer("Test sends require an active testing target.", show_alert=True)
+                    await _safe_callback_answer(callback, "Test sends require an active testing target.", show_alert=True)
                     session.commit()
                     return
                 try:
@@ -1628,11 +1658,11 @@ async def navigate(callback: CallbackQuery) -> None:
                     logger.warning("Unable to send test notification to configured target")
             if page == "notification_targets:routing_test":
                 await _send_pending_routing_smoke_tests(callback.bot, session, user)
-            await callback.answer()
+            await _safe_callback_answer(callback)
             session.commit()
         except PermissionError:
             session.commit()
-            await callback.answer("You do not have permission to open this page.", show_alert=True)
+            await _safe_callback_answer(callback, "You do not have permission to open this page.", show_alert=True)
         except Exception as exc:
             await _handle_callback_failure(callback, session, user=user, page=page, exc=exc)
 
