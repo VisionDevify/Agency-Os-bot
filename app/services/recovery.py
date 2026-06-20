@@ -37,9 +37,29 @@ BACKUP_FRESHNESS_TARGET_HOURS = 24
 RESTORE_TEST_STALE_DAYS = 30
 BACKUP_FAILURE_LOOKBACK_DAYS = 7
 BACKUP_COPY_LOOKBACK_DAYS = 7
+RECOVERY_JOB_TIMEOUT_MINUTES = 15
 SUCCESS_BACKUP_STATUSES = {"success", "succeeded"}
-TERMINAL_BACKUP_STATUSES = {"success", "succeeded", "failed", "skipped", "manual_required", "not_configured"}
-TERMINAL_RESTORE_STATUSES = {"verified_only", "verified", "passed", "succeeded", "failed", "skipped", "not_available"}
+RUNNING_BACKUP_STATUSES = {"pending", "running"}
+RUNNING_RESTORE_STATUSES = {"pending", "running"}
+TERMINAL_BACKUP_STATUSES = {
+    "success",
+    "succeeded",
+    "failed",
+    "timed_out",
+    "skipped",
+    "manual_required",
+    "not_configured",
+}
+TERMINAL_RESTORE_STATUSES = {
+    "verified_only",
+    "verified",
+    "passed",
+    "succeeded",
+    "failed",
+    "timed_out",
+    "skipped",
+    "not_available",
+}
 
 
 @dataclass(frozen=True)
@@ -96,6 +116,163 @@ def _backup_is_terminal(run: BackupRun | None) -> bool:
 
 def _restore_is_terminal(run: RestoreTestRun | None) -> bool:
     return bool(run and run.status in TERMINAL_RESTORE_STATUSES)
+
+
+def _job_timeout_cutoff(now: datetime | None = None) -> datetime:
+    return (now or _now()) - timedelta(minutes=RECOVERY_JOB_TIMEOUT_MINUTES)
+
+
+def mark_stale_recovery_jobs(session: Session, *, now: datetime | None = None) -> tuple[int, int]:
+    """Close old in-progress recovery jobs so screens do not show invisible work forever."""
+    current = now or _now()
+    cutoff = _job_timeout_cutoff(current)
+    backup_count = 0
+    restore_count = 0
+    for run in session.scalars(
+        select(BackupRun).where(BackupRun.status.in_(tuple(RUNNING_BACKUP_STATUSES)), BackupRun.started_at < cutoff)
+    ).all():
+        run.status = "timed_out"
+        run.finished_at = current
+        run.error_summary = "Backup job timed out before verification completed."
+        run.result_summary = "Fortuna did not record a verified backup artifact for this run."
+        backup_count += 1
+    for run in session.scalars(
+        select(RestoreTestRun).where(
+            RestoreTestRun.status.in_(tuple(RUNNING_RESTORE_STATUSES)),
+            RestoreTestRun.started_at < cutoff,
+        )
+    ).all():
+        run.status = "timed_out"
+        run.finished_at = current
+        run.error_summary = "Restore validation timed out before verification completed."
+        run.result_summary = "Fortuna did not record passed restore evidence for this run."
+        run.checksum_verified = False
+        run.decrypt_verified = False
+        run.full_restore_performed = False
+        restore_count += 1
+    if backup_count or restore_count:
+        session.flush()
+    return backup_count, restore_count
+
+
+def active_backup_job(session: Session, *, now: datetime | None = None) -> BackupRun | None:
+    mark_stale_recovery_jobs(session, now=now)
+    cutoff = _job_timeout_cutoff(now)
+    return session.scalar(
+        select(BackupRun)
+        .where(BackupRun.status.in_(tuple(RUNNING_BACKUP_STATUSES)), BackupRun.started_at >= cutoff)
+        .order_by(desc(BackupRun.started_at), desc(BackupRun.id))
+        .limit(1)
+    )
+
+
+def active_restore_job(session: Session, *, now: datetime | None = None) -> RestoreTestRun | None:
+    mark_stale_recovery_jobs(session, now=now)
+    cutoff = _job_timeout_cutoff(now)
+    return session.scalar(
+        select(RestoreTestRun)
+        .where(RestoreTestRun.status.in_(tuple(RUNNING_RESTORE_STATUSES)), RestoreTestRun.started_at >= cutoff)
+        .order_by(desc(RestoreTestRun.started_at), desc(RestoreTestRun.id))
+        .limit(1)
+    )
+
+
+def latest_recovery_job_summary(session: Session, *, now: datetime | None = None) -> dict[str, Any]:
+    backup_timed_out, restore_timed_out = mark_stale_recovery_jobs(session, now=now)
+    backup = active_backup_job(session, now=now)
+    restore = active_restore_job(session, now=now)
+    latest_backup = _latest_backup(session)
+    latest_restore = _latest_restore_test(session)
+    active = backup or restore
+    return {
+        "active": active is not None,
+        "active_type": "backup" if backup is not None else "restore" if restore is not None else "none",
+        "active_status": active.status if active is not None else "none",
+        "active_started_at": active.started_at if active is not None else None,
+        "latest_backup_status": latest_backup.status if latest_backup is not None else "none",
+        "latest_backup_at": latest_backup.started_at if latest_backup is not None else None,
+        "latest_restore_status": latest_restore.status if latest_restore is not None else "none",
+        "latest_restore_at": latest_restore.started_at if latest_restore is not None else None,
+        "timed_out_marked": backup_timed_out + restore_timed_out,
+    }
+
+
+def start_backup_job(session: Session, *, actor: User | None, backup_type: str = "manual") -> tuple[BackupRun, bool]:
+    _require_owner_or_admin(session, actor)
+    existing = active_backup_job(session)
+    if existing is not None:
+        return existing, False
+    target = select_active_storage_target(session)
+    run = BackupRun(
+        run_identifier=_new_run_identifier("backup"),
+        backup_type=backup_type,
+        status="running",
+        started_at=_now(),
+        finished_at=None,
+        storage_target=target.name if target is not None else "external_storage",
+        encrypted=False,
+        result_summary="Backup job is running.",
+        created_by_user_id=actor.id if actor else None,
+    )
+    session.add(run)
+    session.flush()
+    audit_action(
+        session,
+        actor=actor,
+        action="backup.job_started",
+        resource_type="backup_run",
+        resource_id=str(run.id),
+        status="running",
+        details={"backup_type": backup_type, "run_identifier": run.run_identifier},
+    )
+    emit_event(
+        session,
+        actor=actor,
+        event_name="backup.job_started",
+        resource_type="backup_run",
+        resource_id=str(run.id),
+        status="running",
+        payload={"backup_type": backup_type},
+    )
+    return run, True
+
+
+def start_restore_job(session: Session, *, actor: User | None) -> tuple[RestoreTestRun, bool]:
+    _require_owner_or_admin(session, actor)
+    existing = active_restore_job(session)
+    if existing is not None:
+        return existing, False
+    run = RestoreTestRun(
+        run_identifier=_new_run_identifier("restore"),
+        status="running",
+        started_at=_now(),
+        finished_at=None,
+        result_summary="Restore validation is running.",
+        checksum_verified=False,
+        decrypt_verified=False,
+        full_restore_performed=False,
+    )
+    session.add(run)
+    session.flush()
+    audit_action(
+        session,
+        actor=actor,
+        action="restore_test.job_started",
+        resource_type="restore_test_run",
+        resource_id=str(run.id),
+        status="running",
+        details={"run_identifier": run.run_identifier},
+    )
+    emit_event(
+        session,
+        actor=actor,
+        event_name="restore_test.job_started",
+        resource_type="restore_test_run",
+        resource_id=str(run.id),
+        status="running",
+        payload={},
+    )
+    return run, True
 
 
 def _require_owner_or_admin(session: Session, actor: User | None) -> None:
@@ -257,7 +434,10 @@ def recovery_risk_assessment(session: Session, *, now: datetime | None = None) -
     copies = backup_copy_count(session, now=current)
     failure_since = current - timedelta(days=BACKUP_FAILURE_LOOKBACK_DAYS)
     recent_failure_count = session.scalar(
-        select(func.count(BackupRun.id)).where(BackupRun.status == "failed", BackupRun.started_at >= failure_since)
+        select(func.count(BackupRun.id)).where(
+            BackupRun.status.in_(("failed", "timed_out")),
+            BackupRun.started_at >= failure_since,
+        )
     ) or 0
 
     risk = 0
@@ -278,8 +458,8 @@ def recovery_risk_assessment(session: Session, *, now: datetime | None = None) -
             risk += 15
             evidence.append("Backup is more than 72 hours old.")
 
-    if latest_any is not None and latest_any.status == "failed":
-        evidence.append("The most recent backup attempt failed.")
+    if latest_any is not None and latest_any.status in {"failed", "timed_out"}:
+        evidence.append("The most recent backup attempt did not complete successfully.")
         risk += 10
 
     if recent_failure_count:
@@ -574,8 +754,18 @@ def record_backup_run(
     return run
 
 
-def run_backup(session: Session, *, actor: User | None, backup_type: str = "manual") -> BackupRun:
+def run_backup(
+    session: Session,
+    *,
+    actor: User | None,
+    backup_type: str = "manual",
+    run_identifier: str | None = None,
+) -> BackupRun:
     _require_owner_or_admin(session, actor)
+    if run_identifier is not None:
+        existing = session.scalar(select(BackupRun).where(BackupRun.run_identifier == run_identifier))
+        if _backup_is_terminal(existing):
+            return existing
     target = select_active_storage_target(session)
     started = _now()
     encrypted = bool(settings.encryption_key.get_secret_value())
@@ -585,6 +775,7 @@ def run_backup(session: Session, *, actor: User | None, backup_type: str = "manu
             session,
             actor=actor,
             backup_type=backup_type,
+            run_identifier=run_identifier,
             status="not_configured",
             storage_target="external_storage",
             encrypted=False,
@@ -598,6 +789,7 @@ def run_backup(session: Session, *, actor: User | None, backup_type: str = "manu
             session,
             actor=actor,
             backup_type=backup_type,
+            run_identifier=run_identifier,
             status="failed",
             storage_target=target.name,
             encrypted=False,
@@ -606,7 +798,7 @@ def run_backup(session: Session, *, actor: User | None, backup_type: str = "manu
             finished_at=_now(),
         )
     else:
-        identifier = _new_run_identifier("backup")
+        identifier = run_identifier or _new_run_identifier("backup")
         try:
             plain_payload = _backup_payload(session, backup_type, target.name)
             encrypted_payload = encrypt_bytes(plain_payload)
@@ -657,6 +849,7 @@ def run_backup(session: Session, *, actor: User | None, backup_type: str = "manu
                 session,
                 actor=actor,
                 backup_type=backup_type,
+                run_identifier=run_identifier,
                 status="failed",
                 storage_target=target.name,
                 encrypted=encrypted,

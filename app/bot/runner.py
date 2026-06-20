@@ -31,10 +31,12 @@ from app.bot.screens import (
     render_proxy_import_success_page,
     render_problem_report_saved_page,
     render_botstatus_page,
+    render_backup_job_started_page,
     render_callback_error_page,
     render_callback_failure_review_page,
     render_debug_last_error_page,
     render_integrity_page,
+    render_restore_job_started_page,
     render_ui_self_test_page,
 )
 from app.core.config import settings
@@ -43,6 +45,7 @@ from app.db.session import SessionLocal
 from app.models.account import AccountAuthSession
 from app.models.button_issue import ButtonIssue
 from app.models.opportunity import CREATOR_WATCH_PRIORITIES, OPPORTUNITY_PRIORITIES, POST_WATCH_TYPES, CreatorWatch, PostWatch
+from app.models.recovery import BackupRun, RestoreTestRun
 from app.models.reporting import NotificationDeliveryAttempt
 from app.models.user import User
 from app.services.auth import (
@@ -119,6 +122,7 @@ from app.services.callback_protection import (
     callback_fingerprint,
     classify_telegram_error,
 )
+from app.services.recovery import run_backup, run_restore_test, start_backup_job, start_restore_job
 from app.services.chat_cleanup import (
     TEMPORARY_ERROR,
     TEMPORARY_NAVIGATION,
@@ -191,6 +195,77 @@ PENDING_MODEL_EDITS: dict[int, dict[str, int | str | None]] = {}
 PENDING_PROXY_WIZARDS: dict[int, dict[str, str]] = {}
 PENDING_PROXY_LOCATION_EDITS: dict[int, int] = {}
 PENDING_PROBLEM_REPORTS: dict[int, dict[str, int | str | None]] = {}
+
+
+def _mark_backup_job_failed(run_identifier: str, error_summary: str) -> None:
+    if SessionLocal is None:
+        return
+    with SessionLocal() as session:
+        run = session.scalar(select(BackupRun).where(BackupRun.run_identifier == run_identifier))
+        if run is not None and run.status in {"pending", "running"}:
+            run.status = "failed"
+            run.finished_at = datetime.now(UTC)
+            run.error_summary = error_summary
+            run.result_summary = "Backup did not finish with verified artifact evidence."
+            session.commit()
+
+
+def _mark_restore_job_failed(run_identifier: str, error_summary: str) -> None:
+    if SessionLocal is None:
+        return
+    with SessionLocal() as session:
+        run = session.scalar(select(RestoreTestRun).where(RestoreTestRun.run_identifier == run_identifier))
+        if run is not None and run.status in {"pending", "running"}:
+            run.status = "failed"
+            run.finished_at = datetime.now(UTC)
+            run.error_summary = error_summary
+            run.result_summary = "Restore validation did not finish with verified evidence."
+            run.checksum_verified = False
+            run.decrypt_verified = False
+            run.full_restore_performed = False
+            session.commit()
+
+
+def _execute_backup_job_sync(run_identifier: str, actor_id: int | None, backup_type: str = "manual") -> None:
+    if SessionLocal is None:
+        return
+    with SessionLocal() as session:
+        actor = session.get(User, actor_id) if actor_id is not None else None
+        run_backup(session, actor=actor, backup_type=backup_type, run_identifier=run_identifier)
+        session.commit()
+
+
+def _execute_restore_job_sync(run_identifier: str, actor_id: int | None) -> None:
+    if SessionLocal is None:
+        return
+    with SessionLocal() as session:
+        actor = session.get(User, actor_id) if actor_id is not None else None
+        run_restore_test(session, actor=actor, run_identifier=run_identifier)
+        session.commit()
+
+
+async def _run_backup_job_background(run_identifier: str, actor_id: int | None, backup_type: str = "manual") -> None:
+    try:
+        await asyncio.to_thread(_execute_backup_job_sync, run_identifier, actor_id, backup_type)
+    except Exception as exc:
+        logger.exception("Recovery backup background job failed safely")
+        await asyncio.to_thread(
+            _mark_backup_job_failed,
+            run_identifier,
+            f"Backup failed safely: {type(exc).__name__}.",
+        )
+
+
+async def _run_restore_job_background(run_identifier: str, actor_id: int | None) -> None:
+    try:
+        await asyncio.to_thread(_execute_restore_job_sync, run_identifier, actor_id)
+    except Exception as exc:
+        logger.exception("Recovery restore background job failed safely")
+        await asyncio.to_thread(
+            _mark_restore_job_failed,
+            run_identifier,
+            f"Restore validation failed safely: {type(exc).__name__}.",
+        )
 
 
 class _PollingConflictLogHandler(logging.Handler):
@@ -2058,6 +2133,45 @@ async def _navigate_locked(callback: CallbackQuery, page: str) -> None:
                 page=page,
             ):
                 await _safe_callback_answer(callback, "One moment.")
+                session.commit()
+                return
+            if page == "recovery:backup:run":
+                run, started = start_backup_job(session, actor=user)
+                screen = render_backup_job_started_page(run, reused=not started)
+                run_identifier = run.run_identifier
+                actor_id = user.id
+                session.commit()
+                if started:
+                    asyncio.create_task(_run_backup_job_background(run_identifier, actor_id))
+                await _edit_or_send_callback_screen(
+                    callback,
+                    screen,
+                    session=session,
+                    user=user,
+                    page=page,
+                )
+                await _safe_callback_answer(callback, "Backup started." if started else "Backup is already running.")
+                session.commit()
+                return
+            if page == "recovery:restore:test":
+                test, started = start_restore_job(session, actor=user)
+                screen = render_restore_job_started_page(test, reused=not started)
+                run_identifier = test.run_identifier
+                actor_id = user.id
+                session.commit()
+                if started:
+                    asyncio.create_task(_run_restore_job_background(run_identifier, actor_id))
+                await _edit_or_send_callback_screen(
+                    callback,
+                    screen,
+                    session=session,
+                    user=user,
+                    page=page,
+                )
+                await _safe_callback_answer(
+                    callback,
+                    "Restore validation started." if started else "Restore validation is already running.",
+                )
                 session.commit()
                 return
             chat_title = getattr(callback.message.chat, "title", None)

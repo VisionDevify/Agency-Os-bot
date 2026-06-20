@@ -8,7 +8,7 @@ from app.services.integrity import run_integrity_check
 from app.services.bot_instances import bot_instance_diagnostics
 from app.services.observability import production_observability_summary
 from app.services.button_health import button_health_summary, run_button_issue_scan
-from app.services.recovery import recovery_risk_assessment
+from app.services.recovery import latest_recovery_job_summary, recovery_risk_assessment
 from app.services.audit import sanitize_details
 from app.services.system_truth import reconcile_stale_system_warnings, system_truth
 from app.services.chat_cleanup import chat_cleanup_metrics, get_or_create_chat_cleanup_preference
@@ -611,6 +611,11 @@ def render_production_observability_page(
     issues = list(summary.get("observability_current_issues") or summary["system_truth_current_issues"])
     issue_codes = list(summary["system_truth_current_issue_codes"])
     recovery_alerts = list(summary.get("recovery_alerts") or [])
+    recovery_workflow_line = (
+        "Idle"
+        if not summary.get("recovery_job_active")
+        else f"{str(summary['recovery_job_active_type']).title()} {summary['recovery_job_active_status']}"
+    )
     status = str(summary.get("shared_status_label") or ("Healthy" if not issues else "Needs Attention"))
     recommended_action = str(summary.get("recommended_action") or "Continue setup.")
     if not details:
@@ -627,6 +632,7 @@ def render_production_observability_page(
             f"{'Healthy' if summary['recovery_status'] == 'healthy' else 'Needs attention'} - {summary['recovery_backup_health']}",
             f"Last Backup: {summary['recovery_last_backup']}",
             f"Restore Test: {summary['recovery_restore_test_status']}",
+            f"Workflow: {recovery_workflow_line}",
             f"Next: {summary['recovery_next_best_move']}",
             "",
             "Platform Connections:",
@@ -797,6 +803,12 @@ def render_production_observability_page(
         f"Last Backup: {summary['recovery_last_backup']}",
         f"External Storage Configured: {_yes_no(summary['recovery_external_storage_configured'])}",
         f"Restore Test: {summary['recovery_restore_test_status']}",
+        f"Recovery Job Active: {_yes_no(bool(summary['recovery_job_active']))}",
+        f"Recovery Job Type: {summary['recovery_job_active_type']}",
+        f"Recovery Job Status: {summary['recovery_job_active_status']}",
+        f"Latest Backup Job: {summary['recovery_job_latest_backup_status']} at {_observability_time(summary['recovery_job_latest_backup_at'], user)}",
+        f"Latest Restore Job: {summary['recovery_job_latest_restore_status']} at {_observability_time(summary['recovery_job_latest_restore_at'], user)}",
+        f"Timed Out Jobs Marked: {summary['recovery_job_timed_out_marked']}",
         f"Recovery Confidence: {summary['recovery_confidence']}",
         f"Recovery Risk: {summary['recovery_risk_score']}/100 ({summary['recovery_risk_level']})",
         f"Recovery Alerts: {', '.join(summary['recovery_alerts']) or 'None'}",
@@ -914,6 +926,7 @@ def render_botstatus_page(
     details: bool = False,
 ) -> Screen:
     diagnostics = bot_instance_diagnostics(session, current_instance_id=current_instance_id)
+    recovery_job = latest_recovery_job_summary(session)
     warning = "None"
     if diagnostics.get("polling_conflict_active"):
         warning = "Polling conflict detected. Another process is using the same Telegram bot token."
@@ -924,7 +937,15 @@ def render_botstatus_page(
     elif diagnostics["risk"] != "ready":
         warning = str(diagnostics["risk"])
 
+    recovery_job_warning = None
+    if recovery_job["timed_out_marked"]:
+        recovery_job_warning = "A recovery job timed out and needs review."
+    elif recovery_job["active"]:
+        recovery_job_warning = f"Recovery {recovery_job['active_type']} job is running."
+
     issue_count = 0 if warning == "None" else 1
+    if recovery_job_warning and recovery_job["timed_out_marked"]:
+        issue_count += 1
     if not details:
         is_conflict = bool(diagnostics.get("polling_conflict_active"))
         status = "Healthy" if issue_count == 0 else ("Critical" if is_conflict else "Needs Attention")
@@ -934,12 +955,14 @@ def render_botstatus_page(
             else (
                 "Stop the duplicate worker or rotate the bot token after confirming the source."
                 if is_conflict
-                else warning
+                else recovery_job_warning or warning
             )
         )
         summary = (
             "Polling conflict detected. Another process is using the same Telegram bot token, so Fortuna cannot reliably receive updates."
             if is_conflict
+            else "Fortuna checked polling. A recovery workflow needs review."
+            if recovery_job_warning and recovery_job["timed_out_marked"]
             else "Fortuna checked polling, Redis guardrails, database durability, and duplicate bot instances."
         )
         return Screen(
@@ -955,6 +978,9 @@ def render_botstatus_page(
                     "",
                     "Summary:",
                     summary,
+                    "",
+                    "Recovery Workflow:",
+                    recovery_job_warning or "No recovery job is blocking Telegram.",
                     "",
                     "Recommended Action:",
                     recommended_action,
@@ -993,6 +1019,12 @@ def render_botstatus_page(
         f"Latest Conflict: {diagnostics['latest_conflict_at']}",
         f"Conflict Source: {diagnostics['latest_conflict_source']}",
         f"Warning: {warning}",
+        f"Recovery Job Active: {_yes_no(bool(recovery_job['active']))}",
+        f"Recovery Job Type: {recovery_job['active_type']}",
+        f"Recovery Job Status: {recovery_job['active_status']}",
+        f"Latest Backup Status: {recovery_job['latest_backup_status']}",
+        f"Latest Restore Status: {recovery_job['latest_restore_status']}",
+        f"Recovery Timed Out Marked: {recovery_job['timed_out_marked']}",
         "",
         "No tokens, raw URLs, proxy passwords, or chat IDs are shown here.",
     ]
@@ -1256,15 +1288,23 @@ def render_ui_self_test_page(
     latest = latest_ui_self_test_run(session)
     button_health = button_health_summary(session)
     recovery = recovery_risk_assessment(session)
+    recovery_job = latest_recovery_job_summary(session)
     truth = system_truth(session)
     cleanup = chat_cleanup_metrics(session)
     recovery_issue_count = 0 if recovery.risk_level == "Low" else 1
+    recovery_job_issue_count = 1 if recovery_job["timed_out_marked"] else 0
     bot_issue_count = 0 if truth.bot_polling_safe else 1
     cleanup_issue_count = 1 if cleanup.old_menu_risk else 0
     questions = recent_help_questions(session, limit=3)
     if latest is None:
         status = "Not Run Yet"
-        issues_found = button_health.open_issue_count + button_health.telegram_ui_issue_count + recovery_issue_count + bot_issue_count
+        issues_found = (
+            button_health.open_issue_count
+            + button_health.telegram_ui_issue_count
+            + recovery_issue_count
+            + recovery_job_issue_count
+            + bot_issue_count
+        )
         last_check = "Not run yet"
         summary = "Fortuna has not checked the Telegram screen renderers yet."
         recommended_action = "Run the self-test now." if issues_found == 0 else "Review active recovery or button issues."
@@ -1278,6 +1318,7 @@ def render_ui_self_test_page(
             + button_health.open_issue_count
             + button_health.telegram_ui_issue_count
             + recovery_issue_count
+            + recovery_job_issue_count
             + bot_issue_count
         )
         systems_checked = latest.screens_checked
@@ -1286,9 +1327,17 @@ def render_ui_self_test_page(
             status = "Critical"
             summary = "Telegram polling needs attention before Fortuna can reliably receive updates."
             recommended_action = "Open Bot Status and stop the duplicate poller."
+        elif recovery_job["timed_out_marked"]:
+            status = "Needs Attention"
+            summary = "A recovery workflow timed out and needs review."
+            recommended_action = "Open Recovery Center."
         elif recovery.risk_level == "Critical":
             status = "Critical"
             summary = "Recovery needs setup before Fortuna can call the system fully safe."
+            recommended_action = recovery.next_best_move
+        elif recovery.status == "needs_review":
+            status = "Needs Review"
+            summary = "Recovery has verified backup evidence, but full restore protection is not complete yet."
             recommended_action = recovery.next_best_move
         elif button_health.open_issue_count or button_health.telegram_ui_issue_count or cleanup_issue_count:
             status = "Needs Review"
@@ -1371,6 +1420,12 @@ def render_ui_self_test_page(
             "Recovery Truth:",
             f"Risk: {recovery.risk_score}/100 ({recovery.risk_level})",
             f"Next: {recovery.next_best_move}",
+            f"Recovery Job Active: {_yes_no(bool(recovery_job['active']))}",
+            f"Recovery Job Type: {recovery_job['active_type']}",
+            f"Recovery Job Status: {recovery_job['active_status']}",
+            f"Latest Backup: {recovery_job['latest_backup_status']}",
+            f"Latest Restore: {recovery_job['latest_restore_status']}",
+            f"Timed Out Jobs Marked: {recovery_job['timed_out_marked']}",
             "",
             "Button and Navigation Health:",
             f"Overall: {button_health.overall_label}",

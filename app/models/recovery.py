@@ -8,7 +8,17 @@ from app.models.mixins import TimestampMixin
 
 
 BACKUP_RUN_TYPES = ("manual", "nightly", "pre_deploy", "restore_test")
-BACKUP_RUN_STATUSES = ("pending", "running", "success", "succeeded", "failed", "skipped", "manual_required", "not_configured")
+BACKUP_RUN_STATUSES = (
+    "pending",
+    "running",
+    "success",
+    "succeeded",
+    "failed",
+    "timed_out",
+    "skipped",
+    "manual_required",
+    "not_configured",
+)
 BACKUP_TARGET_TYPES = (
     "local_runtime",
     "manual_export",
@@ -26,6 +36,7 @@ RESTORE_TEST_STATUSES = (
     "passed",
     "succeeded",
     "failed",
+    "timed_out",
     "skipped",
     "not_available",
 )
@@ -39,7 +50,7 @@ class BackupRun(TimestampMixin, Base):
             name="ck_backup_runs_type",
         ),
         CheckConstraint(
-            "status in ('pending', 'running', 'success', 'succeeded', 'failed', 'skipped', 'manual_required', 'not_configured')",
+            "status in ('pending', 'running', 'success', 'succeeded', 'failed', 'timed_out', 'skipped', 'manual_required', 'not_configured')",
             name="ck_backup_runs_status",
         ),
         Index("ix_backup_runs_run_identifier", "run_identifier", unique=True),
@@ -107,7 +118,7 @@ class RestoreTestRun(TimestampMixin, Base):
     __tablename__ = "restore_test_runs"
     __table_args__ = (
         CheckConstraint(
-            "status in ('pending', 'running', 'verified_only', 'verified', 'passed', 'succeeded', 'failed', 'skipped', 'not_available')",
+            "status in ('pending', 'running', 'verified_only', 'verified', 'passed', 'succeeded', 'failed', 'timed_out', 'skipped', 'not_available')",
             name="ck_restore_test_runs_status",
         ),
         Index("ix_restore_test_runs_run_identifier", "run_identifier", unique=True),

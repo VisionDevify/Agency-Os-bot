@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from sqlalchemy import desc, select
 
 from app.bot.menu import callback_for, page_controls
-from app.models.recovery import BackupStorageTarget
+from app.models.recovery import BackupRun, BackupStorageTarget, RestoreTestRun
 from app.services.backup_storage import backup_s3_environment_state, backup_storage_targets
-from app.services.recovery import backup_history, recovery_risk_assessment, run_backup, run_restore_test
+from app.services.recovery import active_backup_job, active_restore_job, backup_history, recovery_risk_assessment
 
 from .formatting import *
 
@@ -122,12 +123,32 @@ def render_recovery_center_page(session: Session, user: User | None = None, *, d
     )
 
 
-def render_backup_run_page(session: Session, user: User | None = None) -> Screen:
-    run = run_backup(session, actor=user)
-    status = "✅ Backup verified" if run.status in {"success", "succeeded"} else "🟡 Backup needs action"
+def _latest_backup_run(session: Session) -> BackupRun | None:
+    history = backup_history(session, limit=1)
+    return history[0] if history else None
+
+
+def render_backup_run_page(session: Session, user: User | None = None, run: BackupRun | None = None) -> Screen:
+    run = run or active_backup_job(session) or _latest_backup_run(session)
+    if run is None:
+        lines = [
+            "🔄 Run Backup",
+            "",
+            "No backup has started yet.",
+            "",
+            "Next:",
+            "Tap Run Backup from Recovery Center.",
+        ]
+        return Screen("\n".join(lines), _recovery_menu(back_to="recovery_center"))
+    if run.status == "running":
+        status = "🟡 Backup running"
+    else:
+        status = "✅ Backup verified" if run.status in {"success", "succeeded"} else "🟡 Backup needs action"
     next_step = (
         "Run a restore test."
         if run.status in {"success", "succeeded"}
+        else "Backup is running. You can still use Fortuna while it finishes."
+        if run.status == "running"
         else run.error_summary or run.result_summary or "Review backup storage and run a manual export."
     )
     lines = [
@@ -141,6 +162,21 @@ def render_backup_run_page(session: Session, user: User | None = None) -> Screen
         "",
         "Next:",
         next_step,
+    ]
+    return Screen("\n".join(lines), _recovery_menu(back_to="recovery_center"))
+
+
+def render_backup_job_started_page(run: BackupRun, *, reused: bool = False) -> Screen:
+    title = "🔄 Backup already running" if reused else "🔄 Backup started"
+    lines = [
+        title,
+        "",
+        "Fortuna is creating and verifying the encrypted backup.",
+        "",
+        "You can keep using Fortuna while this runs.",
+        "",
+        "Next:",
+        "Open Backup History in a minute to confirm the result.",
     ]
     return Screen("\n".join(lines), _recovery_menu(back_to="recovery_center"))
 
@@ -159,9 +195,27 @@ def render_backup_history_page(session: Session, user: User | None = None) -> Sc
     return Screen("\n".join(lines), _recovery_menu(back_to="recovery_center"))
 
 
-def render_restore_test_page(session: Session, user: User | None = None) -> Screen:
-    test = run_restore_test(session, actor=user)
-    if test.status == "not_available":
+def render_restore_test_page(session: Session, user: User | None = None, test: RestoreTestRun | None = None) -> Screen:
+    test = test or active_restore_job(session)
+    if test is None:
+        test = session.scalar(
+            select(RestoreTestRun).order_by(desc(RestoreTestRun.started_at), desc(RestoreTestRun.id)).limit(1)
+        )
+    if test is None:
+        lines = [
+            "🧪 Restore Test",
+            "",
+            "No restore validation has started yet.",
+            "",
+            "Next:",
+            "Tap Test Restore from Recovery Center.",
+        ]
+        return Screen("\n".join(lines), _recovery_menu(back_to="recovery_center"))
+    if test.status == "running":
+        title = "🧪 Restore validation running"
+        summary = "Fortuna is verifying the latest backup file."
+        next_step = "You can keep using Fortuna while this finishes."
+    elif test.status == "not_available":
         title = "🧪 Restore Test"
         summary = test.error_summary or "No backup is available yet."
         next_step = "Run your first backup."
@@ -186,6 +240,21 @@ def render_restore_test_page(session: Session, user: User | None = None) -> Scre
         "",
         "Next:",
         next_step,
+    ]
+    return Screen("\n".join(lines), _recovery_menu(back_to="recovery_center"))
+
+
+def render_restore_job_started_page(test: RestoreTestRun, *, reused: bool = False) -> Screen:
+    title = "🧪 Restore validation already running" if reused else "🧪 Restore validation started"
+    lines = [
+        title,
+        "",
+        "Fortuna is checking the latest backup file.",
+        "",
+        "You can keep using Fortuna while this runs.",
+        "",
+        "Next:",
+        "Open Test Restore again in a minute to see the result.",
     ]
     return Screen("\n".join(lines), _recovery_menu(back_to="recovery_center"))
 

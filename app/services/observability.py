@@ -26,7 +26,7 @@ from app.services.persistence import storage_status
 from app.services.notifications import notification_routing_mode_summary, purpose_aliases
 from app.services.notification_intelligence import alert_health_summary
 from app.services.platform_connections import platform_connections_overview
-from app.services.recovery import recovery_risk_assessment
+from app.services.recovery import latest_recovery_job_summary, recovery_risk_assessment
 from app.services.shared_status import StatusCondition, compute_shared_status
 from app.services.system_truth import (
     AlembicRevisionStatus,
@@ -111,6 +111,7 @@ def production_observability_summary(session: Session) -> dict[str, object]:
     bot_diagnostics = bot_instance_diagnostics(session)
     latest_self_test = _latest(session, UISelfTestRun, desc(UISelfTestRun.created_at), desc(UISelfTestRun.id))
     recovery = recovery_risk_assessment(session)
+    recovery_job = latest_recovery_job_summary(session)
     buttons = button_health_summary(session)
     cleanup = chat_cleanup_metrics(session)
     platform_overview = platform_connections_overview(session)
@@ -156,6 +157,13 @@ def production_observability_summary(session: Session) -> dict[str, object]:
                 recovery.next_best_move if recovery_status != "healthy" else None,
             ),
             StatusCondition(
+                "recovery_workflow",
+                "needs_attention" if recovery_job["timed_out_marked"] else "needs_review" if recovery_job["active"] else "healthy",
+                "Recovery workflow job state.",
+                1 if recovery_job["active"] or recovery_job["timed_out_marked"] else 0,
+                "Check Recovery Center." if recovery_job["active"] or recovery_job["timed_out_marked"] else None,
+            ),
+            StatusCondition(
                 "button_health",
                 button_scan_status,
                 "Button and navigation scan results.",
@@ -181,6 +189,10 @@ def production_observability_summary(session: Session) -> dict[str, object]:
     observability_issues = list(truth.current_issues)
     if recovery_status != "healthy":
         observability_issues.append(f"Recovery: {recovery.next_best_move}")
+    if recovery_job["active"]:
+        observability_issues.append(f"Recovery Workflow: {str(recovery_job['active_type']).title()} is running.")
+    if recovery_job["timed_out_marked"]:
+        observability_issues.append("Recovery Workflow: a stale recovery job was marked timed out.")
     button_issue_count = buttons.open_issue_count + buttons.telegram_ui_issue_count
     if button_issue_count:
         observability_issues.append(f"Navigation/Button Health: {button_issue_count} open issue(s).")
@@ -292,6 +304,15 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         "recovery_next_best_move": recovery.next_best_move,
         "recovery_status": recovery_status,
         "recovery_issue_count": recovery_issue_count,
+        "recovery_job_active": recovery_job["active"],
+        "recovery_job_active_type": recovery_job["active_type"],
+        "recovery_job_active_status": recovery_job["active_status"],
+        "recovery_job_active_started_at": recovery_job["active_started_at"],
+        "recovery_job_latest_backup_status": recovery_job["latest_backup_status"],
+        "recovery_job_latest_backup_at": recovery_job["latest_backup_at"],
+        "recovery_job_latest_restore_status": recovery_job["latest_restore_status"],
+        "recovery_job_latest_restore_at": recovery_job["latest_restore_at"],
+        "recovery_job_timed_out_marked": recovery_job["timed_out_marked"],
         "button_health_status": buttons.overall_status,
         "button_health_open_issue_count": button_issue_count,
         "button_health_technical_issue_count": buttons.technical_issue_count,
