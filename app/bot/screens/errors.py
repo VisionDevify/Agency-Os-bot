@@ -130,11 +130,23 @@ def render_button_health_report_page(
     health = run_button_issue_scan(session, actor=user) if run_now or not details else button_health_summary(session)
     review = callback_failure_review(session, limit=3)
     if not details:
-        title = "🟢 Button Health" if health.open_issue_count == 0 else "🟡 Button Health"
+        total_issues = health.open_issue_count + health.telegram_ui_issue_count
+        title = "🟢 Button Health" if health.overall_status == "healthy" else "🟡 Button Health"
         technical = "✅ No crashes found." if health.technical_issue_count == 0 else f"⚠ {health.technical_issue_count} technical issue(s)."
-        navigation = "✅ Navigation looks clear." if health.navigation_issue_count == 0 else f"⚠ {health.navigation_issue_count} path(s) need review."
+        if health.telegram_ui_status != "healthy":
+            navigation = "⚠ Old menu cleanup needs review."
+        elif health.navigation_issue_count == 0:
+            navigation = "✅ Navigation looks clear."
+        else:
+            navigation = f"⚠ {health.navigation_issue_count} path(s) need review."
         ux = "✅ Button labels look clear." if health.ux_issue_count == 0 else f"⚠ {health.ux_issue_count} confusing button(s) found."
-        recommended_action = "No action needed." if health.open_issue_count == 0 else "Review button issues."
+        recommended_action = (
+            "Run Chat Cleanup."
+            if health.telegram_ui_status != "healthy"
+            else "No action needed."
+            if total_issues == 0
+            else "Review button issues."
+        )
         last_check = format_user_datetime(user, datetime.now(UTC))
         return Screen(
             text="\n".join(
@@ -150,7 +162,7 @@ def render_button_health_report_page(
                     "UX:",
                     ux,
                     "",
-                    f"Issues Found: {health.open_issue_count}",
+                    f"Issues Found: {total_issues}",
                     f"Last Check: {last_check}",
                     "",
                     "Recommended Action:",
@@ -159,9 +171,9 @@ def render_button_health_report_page(
             ),
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
-                    [InlineKeyboardButton(text="Run Again", callback_data=callback_for("button_health:run"))],
-                    [InlineKeyboardButton(text="View Issues", callback_data=callback_for("button_health:details"))],
-                    [InlineKeyboardButton(text="Technical Details", callback_data=callback_for("button_health:details"))],
+                    [InlineKeyboardButton(text="🧹 Clean Menus", callback_data=callback_for("settings:chat_cleanup:clean"))],
+                    [InlineKeyboardButton(text="🔄 Run Check", callback_data=callback_for("button_health:run"))],
+                    [InlineKeyboardButton(text="🔎 Details", callback_data=callback_for("button_health:details"))],
                     *page_controls(back_to="settings"),
                 ]
             ),
@@ -178,6 +190,11 @@ def render_button_health_report_page(
         f"Technical Issues: {health.technical_issue_count}",
         f"Navigation Issues: {health.navigation_issue_count}",
         f"UX Issues: {health.ux_issue_count}",
+        "",
+        "Telegram UI Cleanup:",
+        f"Status: {health.telegram_ui_status}",
+        f"Evidence: {health.telegram_ui_evidence}",
+        f"Next: {health.telegram_ui_next_action}",
         "",
         f"Health Score: {report.score}%",
         f"Working: {len(report.working)}",

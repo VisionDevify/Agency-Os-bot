@@ -11,7 +11,7 @@ from app.services.button_health import button_health_summary, run_button_issue_s
 from app.services.recovery import recovery_risk_assessment
 from app.services.audit import sanitize_details
 from app.services.system_truth import reconcile_stale_system_warnings, system_truth
-from app.services.chat_cleanup import get_or_create_chat_cleanup_preference
+from app.services.chat_cleanup import chat_cleanup_metrics, get_or_create_chat_cleanup_preference
 from app.services.help_brain import (
     latest_ui_self_test_run,
     notification_pilot_status,
@@ -291,7 +291,13 @@ def render_denied() -> Screen:
     return Screen(text="Access denied.", reply_markup=main_menu())
 
 
-def render_chat_cleanup_page(session: Session, user: User | None, chat_id: int | None) -> Screen:
+def render_chat_cleanup_page(
+    session: Session,
+    user: User | None,
+    chat_id: int | None,
+    *,
+    details: bool = False,
+) -> Screen:
     if user is None or chat_id is None:
         enabled = True
         mode = "Clean on /start"
@@ -299,30 +305,63 @@ def render_chat_cleanup_page(session: Session, user: User | None, chat_id: int |
         preference = get_or_create_chat_cleanup_preference(session, user=user, chat_id=chat_id)
         enabled = preference.clean_on_start
         mode = "Clean on /start" if enabled else "Keep menu history"
-    status = "Enabled" if enabled else "Keeping history"
-    explanation = (
-        "Old temporary menus will be cleaned when you use /start."
-        if enabled
-        else "Fortuna will leave old menu messages in place when you use /start."
-    )
-    toggle_label = "Keep Menu History" if enabled else "Clean on /start"
+    metrics = chat_cleanup_metrics(session)
+    status = "Active" if enabled else "Keeping history"
+    toggle_label = "📜 Keep Menu History" if enabled else "🧹 Clean on /start"
+    if details:
+        lines = [
+            "🔎 Chat Cleanup Details",
+            "",
+            f"Mode: {mode}",
+            f"Status: {status}",
+            f"Latest Cleanup: {format_user_datetime(user, metrics.latest_cleanup_at) if metrics.latest_cleanup_at else 'Not run yet'}",
+            f"Total Candidates: {metrics.total_candidates}",
+            f"Attempted: {metrics.attempted_count}",
+            f"Deleted: {metrics.deleted_count}",
+            f"Preserved: {metrics.preserved_count}",
+            f"Failed: {metrics.failed_count}",
+            f"Remaining: {metrics.remaining_count}",
+            f"Extra Active Menus: {metrics.multiple_active_count}",
+            f"Stale Callback Risk: {metrics.stale_callback_count}",
+            f"Cleanup Lock Reuse: {metrics.concurrency_reuse_count}",
+        ]
+        return Screen(
+            text="\n".join(lines),
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="🧹 Clean Now", callback_data=callback_for("settings:chat_cleanup:clean"))],
+                    [InlineKeyboardButton(text="Executive Summary", callback_data=callback_for("settings:chat_cleanup"))],
+                    *page_controls(back_to="settings:chat_cleanup"),
+                ]
+            ),
+        )
     lines = [
         "🧹 Chat Cleanup",
         "",
+        "Status:",
+        status,
         f"Mode: {mode}",
-        f"Status: {status}",
+        "",
+        "What it does:",
+        "Removes old Fortuna menu screens when you use /start.",
+        "",
+        "Preserves:",
         "Preserve reports and alerts: Always on",
-        "",
-        explanation,
-        "",
-        "Clean mode removes old Fortuna menu screens when you use /start, so the bot feels like an app instead of a cluttered chat.",
         "Alerts, reports, approvals, exports, and delivery messages are preserved.",
+        "",
+        "What Fortuna noticed:",
+        metrics.evidence,
+        "",
+        "Next Best Move:",
+        metrics.next_action if metrics.old_menu_risk else "Ready when you are.",
     ]
     return Screen(
         text="\n".join(lines),
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
+                [InlineKeyboardButton(text="🧹 Clean Now", callback_data=callback_for("settings:chat_cleanup:clean"))],
                 [InlineKeyboardButton(text=toggle_label, callback_data=callback_for("settings:chat_cleanup:toggle"))],
+                [InlineKeyboardButton(text="🔎 Details", callback_data=callback_for("settings:chat_cleanup:details"))],
                 *page_controls(back_to="settings"),
             ]
         ),
@@ -602,6 +641,15 @@ def render_production_observability_page(
             "Navigation:",
             f"{summary['button_health_open_issue_count']} open button/navigation issue(s).",
         ]
+        if summary["chat_cleanup_status"] != "healthy":
+            recovery_lines.extend(
+                [
+                    "",
+                    "Telegram UI:",
+                    f"{summary['chat_cleanup_label']} - {summary['chat_cleanup_evidence']}",
+                    f"Next: {summary['chat_cleanup_next_action']}",
+                ]
+            )
         if recovery_alerts:
             recovery_lines.insert(2, f"Alert: {recovery_alerts[0]}")
         summary_line = (
@@ -726,14 +774,21 @@ def render_production_observability_page(
         f"Technical Issues: {summary['button_health_technical_issue_count']}",
         f"Navigation Issues: {summary['button_health_navigation_issue_count']}",
         f"UX Issues: {summary['button_health_ux_issue_count']}",
+        f"Telegram UI Status: {summary['button_health_telegram_ui_status']}",
         f"Last Button Scan: {_observability_time(summary['button_health_last_scan_at'], user)}",
         "",
         "Chat Cleanup:",
+        f"Status: {summary['chat_cleanup_label']}",
+        f"Evidence: {summary['chat_cleanup_evidence']}",
+        f"Next: {summary['chat_cleanup_next_action']}",
         f"Last Cleanup: {_observability_time(summary['chat_cleanup_latest_at'], user)}",
+        f"Total Candidates: {summary['chat_cleanup_total_candidates']}",
         f"Attempted: {summary['chat_cleanup_attempted_count']}",
         f"Deleted: {summary['chat_cleanup_deleted_count']}",
         f"Preserved: {summary['chat_cleanup_preserved_count']}",
         f"Failed: {summary['chat_cleanup_failed_count']}",
+        f"Remaining: {summary['chat_cleanup_remaining_count']}",
+        f"Extra Active Menus: {summary['chat_cleanup_multiple_active_count']}",
         f"Reused Active Batch: {summary['chat_cleanup_reuse_count']}",
         f"Inactive Temporary Menus: {summary['chat_cleanup_stale_count']}",
         "",
@@ -1202,12 +1257,14 @@ def render_ui_self_test_page(
     button_health = button_health_summary(session)
     recovery = recovery_risk_assessment(session)
     truth = system_truth(session)
+    cleanup = chat_cleanup_metrics(session)
     recovery_issue_count = 0 if recovery.risk_level == "Low" else 1
     bot_issue_count = 0 if truth.bot_polling_safe else 1
+    cleanup_issue_count = 1 if cleanup.old_menu_risk else 0
     questions = recent_help_questions(session, limit=3)
     if latest is None:
         status = "Not Run Yet"
-        issues_found = button_health.open_issue_count + recovery_issue_count + bot_issue_count
+        issues_found = button_health.open_issue_count + button_health.telegram_ui_issue_count + recovery_issue_count + bot_issue_count
         last_check = "Not run yet"
         summary = "Fortuna has not checked the Telegram screen renderers yet."
         recommended_action = "Run the self-test now." if issues_found == 0 else "Review active recovery or button issues."
@@ -1215,7 +1272,14 @@ def render_ui_self_test_page(
     else:
         failures = len(latest.failures_json or [])
         warnings = len(latest.warnings_json or [])
-        issues_found = failures + warnings + button_health.open_issue_count + recovery_issue_count + bot_issue_count
+        issues_found = (
+            failures
+            + warnings
+            + button_health.open_issue_count
+            + button_health.telegram_ui_issue_count
+            + recovery_issue_count
+            + bot_issue_count
+        )
         systems_checked = latest.screens_checked
         last_check = format_user_datetime(actor, latest.created_at) if latest.created_at else "unknown time"
         if not truth.bot_polling_safe:
@@ -1226,10 +1290,10 @@ def render_ui_self_test_page(
             status = "Critical"
             summary = "Recovery needs setup before Fortuna can call the system fully safe."
             recommended_action = recovery.next_best_move
-        elif button_health.open_issue_count:
+        elif button_health.open_issue_count or button_health.telegram_ui_issue_count or cleanup_issue_count:
             status = "Needs Review"
-            summary = f"Fortuna found {button_health.open_issue_count} button or navigation issue(s)."
-            recommended_action = "Open Button Health."
+            summary = "Old menu cleanup or button navigation needs review."
+            recommended_action = "Open Button Health." if button_health.open_issue_count else cleanup.next_action
         elif failures:
             status = "Needs Attention"
             summary = f"Fortuna found {failures} screen failure{'s' if failures != 1 else ''}."
@@ -1314,6 +1378,13 @@ def render_ui_self_test_page(
             f"Technical: {button_health.technical_issue_count}",
             f"Navigation: {button_health.navigation_issue_count}",
             f"UX: {button_health.ux_issue_count}",
+            "",
+            "Telegram UI Cleanup:",
+            f"Status: {cleanup.label}",
+            f"Evidence: {cleanup.evidence}",
+            f"Remaining: {cleanup.remaining_count}",
+            f"Extra Active Menus: {cleanup.multiple_active_count}",
+            f"Next: {cleanup.next_action}",
         ]
     )
     lines.extend(["", "Recent Help Questions:"])

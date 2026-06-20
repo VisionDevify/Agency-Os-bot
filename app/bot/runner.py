@@ -124,10 +124,10 @@ from app.services.chat_cleanup import (
     TEMPORARY_NAVIGATION,
     TEMPORARY_STATUS,
     chat_cleanup_enabled,
+    classify_navigation_callback,
     classify_delete_exception,
     complete_cleanup_run,
     current_active_navigation_message,
-    is_stale_navigation_callback,
     mark_cleanup_started,
     mark_message_delete_failed,
     mark_message_deleted,
@@ -568,11 +568,16 @@ async def _cleanup_navigation_messages_on_start(
             return reset_navigation_session(session, chat_id=chat_id, user=None)
 
         run = start_cleanup_run(session, chat_id=chat_id, user=user)
+        all_candidates = temporary_cleanup_messages(session, chat_id=chat_id, limit=None)
+        total_candidates = len(all_candidates)
+        navigation_version = reset_navigation_session(session, chat_id=chat_id, user=None)
+        session.flush()
         attempted = 0
         deleted = 0
         failed = 0
         deadline = time.monotonic() + max(0.5, float(time_budget_seconds))
-        for record in temporary_cleanup_messages(session, chat_id=chat_id, limit=cleanup_limit):
+        candidates = all_candidates if cleanup_limit is None else all_candidates[: max(0, int(cleanup_limit))]
+        for record in candidates:
             if attempted > 0 and time.monotonic() >= deadline:
                 logger.info("Stopping foreground chat cleanup early to keep /start responsive")
                 break
@@ -588,8 +593,15 @@ async def _cleanup_navigation_messages_on_start(
                 if status not in {"already_missing"}:
                     failed += 1
                 logger.info("Unable to delete old Fortuna temporary message: %s", status)
-        complete_cleanup_run(session, run, attempted_count=attempted, deleted_count=deleted, failed_count=failed)
-        return reset_navigation_session(session, chat_id=chat_id, user=None)
+        complete_cleanup_run(
+            session,
+            run,
+            attempted_count=attempted,
+            deleted_count=deleted,
+            failed_count=failed,
+            total_candidates=total_candidates,
+        )
+        return navigation_version
     finally:
         await CALLBACK_LOCKS.release(cleanup_lock)
 
@@ -1981,12 +1993,13 @@ async def _navigate_locked(callback: CallbackQuery, page: str) -> None:
                 session.commit()
                 return
             chat_id = callback.message.chat.id
-            if is_stale_navigation_callback(
+            navigation_state = classify_navigation_callback(
                 session,
                 chat_id=chat_id,
                 user=user,
                 message_id=callback.message.message_id,
-            ):
+            )
+            if navigation_state.is_stale:
                 screen = render_main_menu(session=session, user=user)
                 navigation_version = reset_navigation_session(session, chat_id=chat_id, user=user)
                 try:
@@ -2013,6 +2026,28 @@ async def _navigate_locked(callback: CallbackQuery, page: str) -> None:
                         recommended_fix="Inspect Telegram send permissions and stale callback handling.",
                     )
                 await _safe_callback_answer(callback, "That menu is old. I opened a fresh Home for you.")
+                session.commit()
+                return
+            if page == "settings:chat_cleanup:clean":
+                navigation_version = await _cleanup_navigation_messages_on_start(
+                    callback.bot,
+                    session,
+                    user=user,
+                    chat_id=chat_id,
+                )
+                screen = render_main_menu(session=session, user=user)
+                sent = await callback.message.answer(screen.text, reply_markup=screen.reply_markup)
+                track_bot_message(
+                    session,
+                    chat_id=sent.chat.id,
+                    user=user,
+                    message_id=sent.message_id,
+                    message_label=TEMPORARY_NAVIGATION,
+                    screen="menu",
+                    active_navigation=True,
+                    navigation_version=navigation_version,
+                )
+                await _safe_callback_answer(callback, "Cleaned old menus where Telegram allowed it.")
                 session.commit()
                 return
             if not await _mark_navigation_callback_if_new(

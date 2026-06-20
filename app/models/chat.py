@@ -129,6 +129,8 @@ class ChatCleanupRun(TimestampMixin, Base):
     deleted_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     preserved_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     failed_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    total_candidates: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    remaining_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     concurrency_reuse_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     user = relationship("User")

@@ -102,6 +102,8 @@ Canonical message labels:
 
 Only `temporary_*` labels are eligible for automatic cleanup.
 
+Telegram Web and browser automation must target the latest active bot message, not the first visible button text. Old visible menu boxes can remain when Telegram refuses deletion or cleanup is still pending; those menus are historical UI and should be ignored unless specifically testing stale callback protection. See `docs/telegram_live_testing.md`.
+
 ## Social Intelligence Architecture
 
 Fortuna may analyze compliant, human-provided, official, exported, or approved public social data. Fortuna must not scrape private data, bypass platform limits, or automate platform actions.

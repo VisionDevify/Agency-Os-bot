@@ -50,8 +50,45 @@ class CleanupMetrics:
     deleted_count: int
     preserved_count: int
     failed_count: int
+    total_candidates: int
+    remaining_count: int
     concurrency_reuse_count: int
     stale_callback_count: int
+    multiple_active_count: int
+    status: str
+    evidence: str
+    next_action: str
+
+    @property
+    def old_menu_risk(self) -> bool:
+        return self.status != "healthy"
+
+    @property
+    def label(self) -> str:
+        return {
+            "healthy": "Healthy",
+            "needs_review": "Needs Review",
+            "needs_attention": "Needs Attention",
+            "critical": "Critical",
+        }[self.status]
+
+
+@dataclass(frozen=True)
+class CallbackNavigationState:
+    classification: str
+    active_message_id: int | None
+    active_navigation_version: int | None
+    callback_message_id: int
+    callback_label: str | None
+    evidence: str
+
+    @property
+    def is_stale(self) -> bool:
+        return self.classification in {"stale_old_menu", "unknown_untracked"}
+
+    @property
+    def is_current(self) -> bool:
+        return self.classification == "current"
 
 
 def normalize_message_label(label: str | None) -> str:
@@ -137,6 +174,17 @@ def current_active_navigation_message(
         .order_by(desc(BotChatMessage.navigation_version), desc(BotChatMessage.updated_at), desc(BotChatMessage.id))
         .limit(1)
     )
+
+
+def active_navigation_message_count(session: Session, *, chat_id: int | None = None) -> int:
+    conditions = [
+        BotChatMessage.active_navigation.is_(True),
+        BotChatMessage.message_label == TEMPORARY_NAVIGATION,
+        BotChatMessage.deletion_status == "active",
+    ]
+    if chat_id is not None:
+        conditions.append(BotChatMessage.chat_id == chat_id)
+    return session.scalar(select(func.count(BotChatMessage.id)).where(*conditions)) or 0
 
 
 def next_navigation_version(session: Session, *, chat_id: int, user: User | None) -> int:
@@ -269,19 +317,93 @@ def is_stale_navigation_callback(
     user: User,
     message_id: int,
 ) -> bool:
+    return classify_navigation_callback(
+        session,
+        chat_id=chat_id,
+        user=user,
+        message_id=message_id,
+    ).is_stale
+
+
+def classify_navigation_callback(
+    session: Session,
+    *,
+    chat_id: int,
+    user: User,
+    message_id: int,
+) -> CallbackNavigationState:
     current = current_active_navigation_message(session, chat_id=chat_id, user=user)
-    if current is None:
-        return False
     callback_record = session.scalar(
         select(BotChatMessage).where(BotChatMessage.chat_id == chat_id, BotChatMessage.message_id == message_id)
     )
+    if callback_record is not None and is_persistent_label(callback_record.message_label):
+        return CallbackNavigationState(
+            classification="persistent_action",
+            active_message_id=current.message_id if current else None,
+            active_navigation_version=current.navigation_version if current else None,
+            callback_message_id=message_id,
+            callback_label=callback_record.message_label,
+            evidence="Callback belongs to a persistent message, so cleanup does not invalidate it.",
+        )
+    if current is None:
+        return CallbackNavigationState(
+            classification="unknown_untracked",
+            active_message_id=None,
+            active_navigation_version=None,
+            callback_message_id=message_id,
+            callback_label=callback_record.message_label if callback_record else None,
+            evidence="No active navigation message is currently tracked for this chat.",
+        )
     if callback_record is None:
-        return current.message_id != message_id
+        classification = "current" if current.message_id == message_id else "unknown_untracked"
+        evidence = (
+            "Callback message matches the active message but has no tracking row."
+            if classification == "current"
+            else "Callback came from an untracked message while a newer active message exists."
+        )
+        return CallbackNavigationState(
+            classification=classification,
+            active_message_id=current.message_id,
+            active_navigation_version=current.navigation_version,
+            callback_message_id=message_id,
+            callback_label=None,
+            evidence=evidence,
+        )
     if not callback_record.active_navigation:
-        return True
+        return CallbackNavigationState(
+            classification="stale_old_menu",
+            active_message_id=current.message_id,
+            active_navigation_version=current.navigation_version,
+            callback_message_id=message_id,
+            callback_label=callback_record.message_label,
+            evidence="Callback message is tracked as inactive navigation.",
+        )
     if callback_record.navigation_version != current.navigation_version:
-        return True
-    return callback_record.message_id != current.message_id
+        return CallbackNavigationState(
+            classification="stale_old_menu",
+            active_message_id=current.message_id,
+            active_navigation_version=current.navigation_version,
+            callback_message_id=message_id,
+            callback_label=callback_record.message_label,
+            evidence="Callback navigation version is older than the active session.",
+        )
+    if callback_record.message_id != current.message_id:
+        return CallbackNavigationState(
+            classification="stale_old_menu",
+            active_message_id=current.message_id,
+            active_navigation_version=current.navigation_version,
+            callback_message_id=message_id,
+            callback_label=callback_record.message_label,
+            evidence="Callback message is not the active navigation message.",
+        )
+    return CallbackNavigationState(
+        classification="current",
+        active_message_id=current.message_id,
+        active_navigation_version=current.navigation_version,
+        callback_message_id=message_id,
+        callback_label=callback_record.message_label,
+        evidence="Callback belongs to the active navigation message.",
+    )
 
 
 def start_cleanup_run(session: Session, *, chat_id: int, user: User | None) -> ChatCleanupRun:
@@ -355,15 +477,28 @@ def complete_cleanup_run(
     attempted_count: int,
     deleted_count: int,
     failed_count: int,
+    total_candidates: int | None = None,
 ) -> None:
     run.attempted_count = attempted_count
     run.deleted_count = deleted_count
     run.failed_count = failed_count
+    if total_candidates is not None:
+        run.total_candidates = total_candidates
     run.preserved_count = (
         session.scalar(
             select(func.count(BotChatMessage.id)).where(
                 BotChatMessage.chat_id == run.chat_id,
                 BotChatMessage.message_label.in_(PRESERVED_MESSAGE_LABELS),
+            )
+        )
+        or 0
+    )
+    run.remaining_count = (
+        session.scalar(
+            select(func.count(BotChatMessage.id)).where(
+                BotChatMessage.chat_id == run.chat_id,
+                BotChatMessage.message_label.in_(TEMPORARY_MESSAGE_LABELS),
+                ~BotChatMessage.deletion_status.in_(TERMINAL_DELETION_STATUSES),
             )
         )
         or 0
@@ -395,12 +530,55 @@ def chat_cleanup_metrics(session: Session) -> CleanupMetrics:
         )
         or 0
     )
+    active_groups = session.execute(
+        select(BotChatMessage.chat_id, BotChatMessage.user_id, func.count(BotChatMessage.id))
+        .where(
+            BotChatMessage.message_label == TEMPORARY_NAVIGATION,
+            BotChatMessage.active_navigation.is_(True),
+            BotChatMessage.deletion_status == "active",
+        )
+        .group_by(BotChatMessage.chat_id, BotChatMessage.user_id)
+    ).all()
+    multiple_active_count = sum(max(0, int(count) - 1) for _chat_id, _user_id, count in active_groups)
+    remaining_count = (
+        session.scalar(
+            select(func.count(BotChatMessage.id)).where(
+                BotChatMessage.message_label.in_(TEMPORARY_MESSAGE_LABELS),
+                ~BotChatMessage.deletion_status.in_(TERMINAL_DELETION_STATUSES),
+                BotChatMessage.active_navigation.is_(False),
+            )
+        )
+        or 0
+    )
+    failed_count = latest.failed_count if latest else 0
+    if multiple_active_count:
+        status = "needs_attention"
+        evidence = f"{multiple_active_count} extra active navigation message(s) are tracked."
+        next_action = "Run Chat Cleanup."
+    elif failed_count >= 3:
+        status = "needs_review"
+        evidence = f"{failed_count} recent cleanup deletion failure(s) were recorded."
+        next_action = "Open Chat Cleanup settings."
+    elif remaining_count:
+        status = "needs_review"
+        evidence = f"{remaining_count} old temporary menu message(s) remain tracked for cleanup."
+        next_action = "Run /clean or /start again."
+    else:
+        status = "healthy"
+        evidence = "One active Telegram menu session is tracked and no old temporary menus are pending cleanup."
+        next_action = "No cleanup action needed."
     return CleanupMetrics(
         latest_cleanup_at=latest.completed_at if latest and latest.completed_at else None,
         attempted_count=latest.attempted_count if latest else 0,
         deleted_count=latest.deleted_count if latest else 0,
         preserved_count=latest.preserved_count if latest else 0,
-        failed_count=latest.failed_count if latest else 0,
+        failed_count=failed_count,
+        total_candidates=latest.total_candidates if latest else remaining_count,
+        remaining_count=max(latest.remaining_count, remaining_count) if latest else remaining_count,
         concurrency_reuse_count=latest.concurrency_reuse_count if latest else 0,
         stale_callback_count=stale_count,
+        multiple_active_count=multiple_active_count,
+        status=status,
+        evidence=evidence,
+        next_action=next_action,
     )

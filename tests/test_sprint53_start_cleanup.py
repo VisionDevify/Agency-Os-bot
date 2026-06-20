@@ -233,7 +233,7 @@ def test_chat_cleanup_failures_surface_in_observability_from_tracking_schema() -
         summary = production_observability_summary(session)
 
         assert summary["chat_cleanup_failed_count"] == 3
-        assert "Chat Cleanup: 3 recent deletion failure(s)." in summary["observability_current_issues"]
+        assert "Telegram UI Cleanup: Open Chat Cleanup settings." in summary["observability_current_issues"]
 
 
 def test_command_status_screens_are_tracked_as_temporary_messages() -> None:
@@ -283,5 +283,7 @@ def test_start_cleanup_uses_bounded_foreground_batch() -> None:
 
         run = session.query(ChatCleanupRun).one()
         assert run.attempted_count == 2
+        assert run.total_candidates == 5
+        assert run.remaining_count == 3
         assert len(bot.deleted) == 2
         assert session.query(BotChatMessage).filter_by(chat_id=10, deletion_status="active").count() == 3

@@ -1406,6 +1406,6 @@ def screen_for_page(
         or normalized.startswith("platforms")
     ):
         if normalized.startswith("settings:chat_cleanup"):
-            return render_chat_cleanup_page(session, user, chat_id)
+            return render_chat_cleanup_page(session, user, chat_id, details=normalized.endswith(":details"))
         return render_page(normalized, session=session, user=user)
     return render_main_menu(session=session, user=user)

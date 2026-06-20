@@ -138,6 +138,7 @@ def production_observability_summary(session: Session) -> dict[str, object]:
     operations_status = "healthy" if truth.production_ready else ("critical" if production_risk == "unsafe" else "needs_attention")
     recovery_status = recovery.status
     recovery_issue_count = len(recovery.alerts) or (0 if recovery_status == "healthy" else 1)
+    button_scan_status = buttons.overall_status if buttons.open_issue_count else "healthy"
     shared_status = compute_shared_status(
         [
             StatusCondition(
@@ -156,17 +157,17 @@ def production_observability_summary(session: Session) -> dict[str, object]:
             ),
             StatusCondition(
                 "button_health",
-                buttons.overall_status,
+                button_scan_status,
                 "Button and navigation scan results.",
                 buttons.open_issue_count,
                 "Open Button Health." if buttons.open_issue_count else None,
             ),
             StatusCondition(
                 "chat_cleanup",
-                "needs_review" if cleanup.failed_count >= 3 else "healthy",
-                "Chat cleanup protects Telegram menu history.",
-                cleanup.failed_count if cleanup.failed_count >= 3 else 0,
-                "Open Chat Cleanup settings." if cleanup.failed_count >= 3 else None,
+                cleanup.status,
+                cleanup.evidence,
+                1 if cleanup.old_menu_risk else 0,
+                cleanup.next_action if cleanup.old_menu_risk else None,
             ),
             StatusCondition(
                 "alert_health",
@@ -180,10 +181,11 @@ def production_observability_summary(session: Session) -> dict[str, object]:
     observability_issues = list(truth.current_issues)
     if recovery_status != "healthy":
         observability_issues.append(f"Recovery: {recovery.next_best_move}")
-    if buttons.open_issue_count:
-        observability_issues.append(f"Navigation/Button Health: {buttons.open_issue_count} open issue(s).")
-    if cleanup.failed_count >= 3:
-        observability_issues.append(f"Chat Cleanup: {cleanup.failed_count} recent deletion failure(s).")
+    button_issue_count = buttons.open_issue_count + buttons.telegram_ui_issue_count
+    if button_issue_count:
+        observability_issues.append(f"Navigation/Button Health: {button_issue_count} open issue(s).")
+    if cleanup.old_menu_risk:
+        observability_issues.append(f"Telegram UI Cleanup: {cleanup.next_action}")
     if alert_health.status != "healthy":
         observability_issues.append(f"Alert Health: {alert_health.next_action}")
 
@@ -291,18 +293,26 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         "recovery_status": recovery_status,
         "recovery_issue_count": recovery_issue_count,
         "button_health_status": buttons.overall_status,
-        "button_health_open_issue_count": buttons.open_issue_count,
+        "button_health_open_issue_count": button_issue_count,
         "button_health_technical_issue_count": buttons.technical_issue_count,
         "button_health_navigation_issue_count": buttons.navigation_issue_count,
         "button_health_ux_issue_count": buttons.ux_issue_count,
+        "button_health_telegram_ui_status": buttons.telegram_ui_status,
         "button_health_last_scan_at": buttons.last_scan_at,
         "chat_cleanup_latest_at": cleanup.latest_cleanup_at,
         "chat_cleanup_attempted_count": cleanup.attempted_count,
         "chat_cleanup_deleted_count": cleanup.deleted_count,
         "chat_cleanup_preserved_count": cleanup.preserved_count,
         "chat_cleanup_failed_count": cleanup.failed_count,
+        "chat_cleanup_total_candidates": cleanup.total_candidates,
+        "chat_cleanup_remaining_count": cleanup.remaining_count,
+        "chat_cleanup_multiple_active_count": cleanup.multiple_active_count,
         "chat_cleanup_reuse_count": cleanup.concurrency_reuse_count,
         "chat_cleanup_stale_count": cleanup.stale_callback_count,
+        "chat_cleanup_status": cleanup.status,
+        "chat_cleanup_label": cleanup.label,
+        "chat_cleanup_evidence": cleanup.evidence,
+        "chat_cleanup_next_action": cleanup.next_action,
         "platform_connections_total": platform_overview["total"],
         "platform_connections_ready": platform_overview["ready"],
         "platform_connections_waiting": platform_overview["waiting"],

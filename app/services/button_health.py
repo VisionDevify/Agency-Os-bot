@@ -18,6 +18,7 @@ from app.services.callbacks import (
     run_callback_health_smoke_test,
     safe_exception_message,
 )
+from app.services.chat_cleanup import chat_cleanup_metrics
 from app.services.events import emit_event
 from app.services.friction import create_friction_item
 from app.services.permissions import PermissionPrincipal, RoleName
@@ -49,6 +50,10 @@ class ButtonHealthSummary:
     navigation_issue_count: int
     ux_issue_count: int
     last_scan_at: datetime | None
+    telegram_ui_status: str = "healthy"
+    telegram_ui_issue_count: int = 0
+    telegram_ui_evidence: str = "Telegram UI cleanup has not been checked yet."
+    telegram_ui_next_action: str = "No cleanup action needed."
     issues: tuple[ButtonIssue, ...] = field(default_factory=tuple)
 
     @property
@@ -210,11 +215,20 @@ def button_health_summary(session: Session) -> ButtonHealthSummary:
     technical_status = _status_for_count(len(technical), worst(technical))
     navigation_status = _status_for_count(len(navigation), worst(navigation))
     ux_status = _status_for_count(len(ux), worst(ux))
+    cleanup = chat_cleanup_metrics(session)
+    telegram_ui_issue_count = 1 if cleanup.old_menu_risk else 0
     shared = compute_shared_status(
         [
             StatusCondition("technical", technical_status, "Technical button renderer issues.", len(technical)),
             StatusCondition("navigation", navigation_status, "Navigation button issues.", len(navigation)),
             StatusCondition("ux", ux_status, "Button UX issues.", len(ux)),
+            StatusCondition(
+                "telegram_ui",
+                cleanup.status,
+                cleanup.evidence,
+                telegram_ui_issue_count,
+                cleanup.next_action if cleanup.old_menu_risk else None,
+            ),
         ]
     )
     return ButtonHealthSummary(
@@ -226,6 +240,10 @@ def button_health_summary(session: Session) -> ButtonHealthSummary:
         technical_issue_count=len(technical),
         navigation_issue_count=len(navigation),
         ux_issue_count=len(ux),
+        telegram_ui_status=cleanup.status,
+        telegram_ui_issue_count=telegram_ui_issue_count,
+        telegram_ui_evidence=cleanup.evidence,
+        telegram_ui_next_action=cleanup.next_action,
         last_scan_at=last_scan,
         issues=issues,
     )
