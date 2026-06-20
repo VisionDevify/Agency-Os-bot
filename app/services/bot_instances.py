@@ -1,18 +1,25 @@
 from __future__ import annotations
 
+import hashlib
+import os
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.models.event_log import EventLog
 from app.models.system import SystemHeartbeat
+from app.services.events import emit_event
 from app.services.heartbeats import record_heartbeat
 from app.services.persistence import StorageStatus, storage_status
+from app.services.recommendations import upsert_recommendation
 
 BOT_INSTANCE_PREFIX = "bot_instance:"
+POLLING_CONFLICT_EVENT = "telegram.polling_conflict_detected"
+POLLING_CONFLICT_RECOMMENDATION_TYPE = "bot_polling_conflict"
 _GENERATED_INSTANCE_ID: str | None = None
 
 
@@ -43,6 +50,59 @@ def mask_instance_id(instance_id: str | None) -> str:
 
 def bot_instance_service_name(instance_id: str | None = None) -> str:
     return f"{BOT_INSTANCE_PREFIX}{instance_id or bot_instance_id()}"
+
+
+def telegram_polling_lock_key(bot_token: str | None = None) -> str:
+    """Return a token-scoped Redis owner key without exposing the token."""
+    token = (bot_token or "").strip()
+    if token:
+        identifier = hashlib.sha256(token.encode("utf-8")).hexdigest()[:16]
+    else:
+        identifier = "unknown"
+    return f"telegram_polling_owner:{identifier}"
+
+
+def _service_role() -> str:
+    for key in ("FORTUNA_RUNTIME_ROLE", "FORTUNA_SERVICE_ROLE", "SERVICE_ROLE", "PROCESS_TYPE"):
+        value = os.getenv(key)
+        if value:
+            return value.strip().lower().replace(" ", "_")
+    service_name = (
+        os.getenv("RAILWAY_SERVICE_NAME")
+        or os.getenv("RAILWAY_SERVICE_SLUG")
+        or os.getenv("RAILWAY_SERVICE")
+        or ""
+    ).strip().lower()
+    if "worker" in service_name or "telegram" in service_name:
+        return "worker"
+    if "api" in service_name or "web" in service_name:
+        return "api"
+    return "combined" if not any(key.startswith("RAILWAY_") for key in os.environ) else "api"
+
+
+def polling_owner_metadata(
+    *,
+    instance_id: str | None = None,
+    polling_allowed: bool,
+    polling_active: bool,
+    polling_lock_owner: str | None = None,
+    source: str = "startup",
+) -> dict[str, str]:
+    identifier = instance_id or bot_instance_id()
+    storage = storage_status()
+    return {
+        "source": source,
+        "instance_id_masked": mask_instance_id(identifier),
+        "service_role": _service_role(),
+        "environment": storage.environment,
+        "process_id": str(os.getpid()),
+        "started_at": datetime.now(UTC).isoformat(),
+        "polling_allowed": str(polling_allowed),
+        "polling_active": str(polling_active),
+        "polling_lock_owner": polling_lock_owner or "unknown",
+        "deployment_commit": settings.git_commit or "unknown",
+        "service_name": os.getenv("RAILWAY_SERVICE_NAME") or os.getenv("RAILWAY_SERVICE_SLUG") or "unknown",
+    }
 
 
 def polling_preflight(storage: StorageStatus | None = None) -> PollingPreflight:
@@ -77,6 +137,69 @@ def record_bot_instance_heartbeat(
         status=status,
         metadata=safe_metadata,
     )
+
+
+def record_polling_conflict(
+    session: Session,
+    *,
+    instance_id: str | None = None,
+    reason: str = "Another process is using the same Telegram bot token.",
+    source: str = "telegram_conflict",
+    conflict_source: str = "unknown",
+    polling_lock_owner: str | None = None,
+) -> None:
+    identifier = instance_id or bot_instance_id()
+    now = datetime.now(UTC).isoformat()
+    metadata = {
+        **polling_owner_metadata(
+            instance_id=identifier,
+            polling_allowed=True,
+            polling_active=False,
+            polling_lock_owner=polling_lock_owner,
+            source=source,
+        ),
+        "latest_polling_conflict_at": now,
+        "latest_polling_conflict_reason": reason,
+        "latest_polling_conflict_source": conflict_source,
+        "polling_conflict_active": "true",
+    }
+    record_heartbeat(session, service_name="bot", status="critical", metadata=metadata)
+    record_bot_instance_heartbeat(session, instance_id=identifier, status="critical", metadata=metadata)
+    emit_event(
+        session,
+        actor=None,
+        event_name=POLLING_CONFLICT_EVENT,
+        resource_type="telegram_bot",
+        resource_id="polling",
+        status="failed",
+        payload={
+            "reason": reason,
+            "source": source,
+            "conflict_source": conflict_source,
+            "instance_id_masked": mask_instance_id(identifier),
+        },
+    )
+    upsert_recommendation(
+        session,
+        actor=None,
+        recommendation_type=POLLING_CONFLICT_RECOMMENDATION_TYPE,
+        title="Stop duplicate Telegram poller",
+        description=(
+            "Another process is using the same Telegram bot token. Stop the duplicate worker "
+            "or rotate the bot token before relying on Telegram updates."
+        ),
+        severity="critical",
+        entity_type="telegram_bot",
+        entity_id="polling",
+        metadata={"source": source, "conflict_source": conflict_source, "detected_at": now},
+    )
+
+
+def clear_polling_conflict_metadata(metadata: dict | None) -> dict:
+    safe = dict(metadata or {})
+    safe["polling_conflict_active"] = "false"
+    safe["latest_polling_conflict_reason"] = "None"
+    return safe
 
 
 def active_bot_instance_heartbeats(
@@ -116,10 +239,16 @@ def bot_instance_diagnostics(session: Session, *, current_instance_id: str | Non
         duplicates = duplicate_bot_instances(session, current_instance_id=identifier)
     bot_heartbeat = session.scalar(select(SystemHeartbeat).where(SystemHeartbeat.service_name == "bot"))
     metadata = bot_heartbeat.metadata_json if bot_heartbeat else {}
+    latest_conflict = session.scalar(
+        select(EventLog).where(EventLog.event_type == POLLING_CONFLICT_EVENT).order_by(desc(EventLog.created_at))
+    )
     preflight = polling_preflight(current)
     redis_configured = bool(settings.redis_url)
     duplicate_count = len(duplicates)
-    if not preflight.allowed:
+    conflict_active = str(metadata.get("polling_conflict_active", "false")).lower() == "true"
+    if conflict_active:
+        risk = "critical"
+    elif not preflight.allowed:
         risk = "blocked"
     elif duplicate_count:
         risk = "warning"
@@ -138,6 +267,20 @@ def bot_instance_diagnostics(session: Session, *, current_instance_id: str | Non
         "polling_guard": metadata.get("polling_guard", "unknown"),
         "last_update_at": metadata.get("last_telegram_update_at", "Unknown"),
         "last_polling_loop_at": metadata.get("last_polling_loop_at", "Unknown"),
+        "polling_allowed": metadata.get("polling_allowed", str(preflight.allowed)),
+        "polling_active": metadata.get("polling_active", "unknown"),
+        "polling_lock_owner": metadata.get("polling_lock_owner", "unknown"),
+        "service_role": metadata.get("service_role", "unknown"),
+        "process_id": metadata.get("process_id", "unknown"),
+        "deployment_commit": metadata.get("deployment_commit", settings.git_commit or "unknown"),
+        "service_name": metadata.get("service_name", "unknown"),
+        "polling_conflict_active": conflict_active,
+        "latest_conflict_at": metadata.get(
+            "latest_polling_conflict_at",
+            latest_conflict.created_at.isoformat() if latest_conflict and latest_conflict.created_at else "None",
+        ),
+        "latest_conflict_reason": metadata.get("latest_polling_conflict_reason", "None"),
+        "latest_conflict_source": metadata.get("latest_polling_conflict_source", "unknown"),
         "db_backend": current.backend,
         "db_durable": current.durable,
         "environment": current.environment,

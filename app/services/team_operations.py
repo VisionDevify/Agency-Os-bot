@@ -431,14 +431,15 @@ class BotPollingGuard:
         self,
         redis_url: str | None,
         *,
-        key: str = "agency_os:bot_polling_lock",
+        key: str = "telegram_polling_owner:fortuna",
         ttl_seconds: int = 300,
+        owner_id: str | None = None,
         client: Redis | None = None,
     ) -> None:
         self.redis_url = redis_url
         self.key = key
         self.ttl_seconds = ttl_seconds
-        self.token = str(uuid4())
+        self.token = owner_id or str(uuid4())
         self.client = client
         self.enabled = bool(redis_url)
 
@@ -451,6 +452,16 @@ class BotPollingGuard:
         if not self.enabled:
             return True
         return bool(self._client().set(self.key, self.token, nx=True, ex=self.ttl_seconds))
+
+    def current_owner(self) -> str | None:
+        if not self.enabled:
+            return None
+        value = self._client().get(self.key)
+        if value is None:
+            return None
+        if isinstance(value, bytes):
+            return value.decode("utf-8", errors="replace")
+        return str(value)
 
     def refresh(self) -> bool:
         if not self.enabled:

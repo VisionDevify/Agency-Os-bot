@@ -10,7 +10,7 @@ from app.services.observability import production_observability_summary
 from app.services.button_health import button_health_summary, run_button_issue_scan
 from app.services.recovery import recovery_risk_assessment
 from app.services.audit import sanitize_details
-from app.services.system_truth import reconcile_stale_system_warnings
+from app.services.system_truth import reconcile_stale_system_warnings, system_truth
 from app.services.chat_cleanup import get_or_create_chat_cleanup_preference
 from app.services.help_brain import (
     latest_ui_self_test_run,
@@ -465,7 +465,10 @@ def _observability_issue_blocks(summary: dict) -> list[str]:
     for index, issue in enumerate(issues[:3]):
         code = codes[index] if index < len(codes) else ""
         if code == "bot_polling":
-            if "More than one" in issue:
+            if "Polling conflict" in issue:
+                found = "Another process is using the same Telegram bot token."
+                next_step = "Stop the duplicate worker or rotate the bot token after confirming the source."
+            elif "More than one" in issue:
                 found = "More than one active bot instance was detected."
                 next_step = "Open Bot Status and stop any old worker or deployment that is still polling."
             elif "Redis polling lock" in issue or "Redis" in issue:
@@ -845,7 +848,9 @@ def render_botstatus_page(
 ) -> Screen:
     diagnostics = bot_instance_diagnostics(session, current_instance_id=current_instance_id)
     warning = "None"
-    if not diagnostics["preflight_allowed"]:
+    if diagnostics.get("polling_conflict_active"):
+        warning = "Polling conflict detected. Another process is using the same Telegram bot token."
+    elif not diagnostics["preflight_allowed"]:
         warning = str(diagnostics["preflight_reason"])
     elif diagnostics["multiple_active_instances"]:
         warning = "Multiple active bot instance heartbeats detected."
@@ -854,8 +859,22 @@ def render_botstatus_page(
 
     issue_count = 0 if warning == "None" else 1
     if not details:
-        status = "Healthy" if issue_count == 0 else "Needs Attention"
-        recommended_action = "No action needed." if issue_count == 0 else warning
+        is_conflict = bool(diagnostics.get("polling_conflict_active"))
+        status = "Healthy" if issue_count == 0 else ("Critical" if is_conflict else "Needs Attention")
+        recommended_action = (
+            "No action needed."
+            if issue_count == 0
+            else (
+                "Stop the duplicate worker or rotate the bot token after confirming the source."
+                if is_conflict
+                else warning
+            )
+        )
+        summary = (
+            "Polling conflict detected. Another process is using the same Telegram bot token, so Fortuna cannot reliably receive updates."
+            if is_conflict
+            else "Fortuna checked polling, Redis guardrails, database durability, and duplicate bot instances."
+        )
         return Screen(
             text="\n".join(
                 [
@@ -868,7 +887,7 @@ def render_botstatus_page(
                     f"Last Check: {format_user_datetime(user, datetime.now(UTC))}",
                     "",
                     "Summary:",
-                    "Fortuna checked polling, Redis guardrails, database durability, and duplicate bot instances.",
+                    summary,
                     "",
                     "Recommended Action:",
                     recommended_action,
@@ -892,6 +911,11 @@ def render_botstatus_page(
         f"Redis Configured: {_yes_no(diagnostics['redis_configured'])}",
         f"Polling Guard: {diagnostics['polling_guard']}",
         f"Redis Lock: {diagnostics['redis_lock_status']}",
+        f"Polling Active: {_yes_no(str(diagnostics['polling_active']).lower() == 'true')}",
+        f"Polling Owner: {diagnostics['polling_lock_owner']}",
+        f"Service Role: {diagnostics['service_role']}",
+        f"Service Name: {diagnostics['service_name']}",
+        f"Deployment Commit: {diagnostics['deployment_commit']}",
         f"DB Backend: {diagnostics['db_backend']}",
         f"Durable DB: {_yes_no(diagnostics['db_durable']) if diagnostics['db_durable'] is not None else 'unknown'}",
         f"Environment: {diagnostics['environment']}",
@@ -899,6 +923,8 @@ def render_botstatus_page(
         f"Duplicate Instances: {diagnostics['duplicate_instance_count']}",
         f"Last Telegram Update: {diagnostics['last_update_at']}",
         f"Last Polling Loop: {diagnostics['last_polling_loop_at']}",
+        f"Latest Conflict: {diagnostics['latest_conflict_at']}",
+        f"Conflict Source: {diagnostics['latest_conflict_source']}",
         f"Warning: {warning}",
         "",
         "No tokens, raw URLs, proxy passwords, or chat IDs are shown here.",
@@ -1163,11 +1189,13 @@ def render_ui_self_test_page(
     latest = latest_ui_self_test_run(session)
     button_health = button_health_summary(session)
     recovery = recovery_risk_assessment(session)
+    truth = system_truth(session)
     recovery_issue_count = 0 if recovery.risk_level == "Low" else 1
+    bot_issue_count = 0 if truth.bot_polling_safe else 1
     questions = recent_help_questions(session, limit=3)
     if latest is None:
         status = "Not Run Yet"
-        issues_found = button_health.open_issue_count + recovery_issue_count
+        issues_found = button_health.open_issue_count + recovery_issue_count + bot_issue_count
         last_check = "Not run yet"
         summary = "Fortuna has not checked the Telegram screen renderers yet."
         recommended_action = "Run the self-test now." if issues_found == 0 else "Review active recovery or button issues."
@@ -1175,10 +1203,14 @@ def render_ui_self_test_page(
     else:
         failures = len(latest.failures_json or [])
         warnings = len(latest.warnings_json or [])
-        issues_found = failures + warnings + button_health.open_issue_count + recovery_issue_count
+        issues_found = failures + warnings + button_health.open_issue_count + recovery_issue_count + bot_issue_count
         systems_checked = latest.screens_checked
         last_check = format_user_datetime(actor, latest.created_at) if latest.created_at else "unknown time"
-        if recovery.risk_level == "Critical":
+        if not truth.bot_polling_safe:
+            status = "Critical"
+            summary = "Telegram polling needs attention before Fortuna can reliably receive updates."
+            recommended_action = "Open Bot Status and stop the duplicate poller."
+        elif recovery.risk_level == "Critical":
             status = "Critical"
             summary = "Recovery needs setup before Fortuna can call the system fully safe."
             recommended_action = recovery.next_best_move

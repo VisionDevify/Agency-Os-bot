@@ -72,6 +72,7 @@ Protections include:
 - Safe edit-or-send wrapper.
 - Global callback exception boundary.
 - Stale navigation session/version handling.
+- Token-scoped Telegram polling ownership through Redis, with `TelegramConflictError` surfaced as critical evidence in `/botstatus`, `/selftest`, and Production Observability.
 
 Navigation idempotency must be narrow and short-lived. Back, Home, Help, Refresh, and Main Menu should not become stuck behind broad "Already handled" blocking.
 

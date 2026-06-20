@@ -6,6 +6,7 @@ import time
 from datetime import UTC, datetime
 
 from aiogram import Bot, Dispatcher
+from aiogram.exceptions import TelegramConflictError
 from aiogram import F
 from aiogram.filters import Command, CommandStart
 from aiogram.types import CallbackQuery, Message
@@ -92,10 +93,14 @@ from app.services.setup_wizard import (
 from app.services.heartbeats import record_heartbeat
 from app.services.bot_instances import (
     bot_instance_id,
+    clear_polling_conflict_metadata,
     duplicate_bot_instances,
     mask_instance_id,
     polling_preflight,
+    polling_owner_metadata,
+    record_polling_conflict,
     record_bot_instance_heartbeat,
+    telegram_polling_lock_key,
 )
 from app.services.persistence import storage_status
 from app.services.notifications import (
@@ -188,6 +193,38 @@ PENDING_PROXY_LOCATION_EDITS: dict[int, int] = {}
 PENDING_PROBLEM_REPORTS: dict[int, dict[str, int | str | None]] = {}
 
 
+class _PollingConflictLogHandler(logging.Handler):
+    """Capture aiogram getUpdates conflicts that are logged and retried internally."""
+
+    def __init__(self) -> None:
+        super().__init__(level=logging.ERROR)
+        self._last_recorded_at = 0.0
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            message = record.getMessage()
+        except Exception:
+            message = ""
+        if "terminated by other getUpdates request" not in message and "TelegramConflictError" not in message:
+            return
+        now = time.monotonic()
+        if now - self._last_recorded_at < 60:
+            return
+        self._last_recorded_at = now
+        if SessionLocal is None:
+            return
+        with contextlib.suppress(Exception):
+            with SessionLocal() as session:
+                record_polling_conflict(
+                    session,
+                    instance_id=CURRENT_BOT_INSTANCE_ID,
+                    source="aiogram_polling_log",
+                    conflict_source="telegram_getupdates",
+                    polling_lock_owner=mask_instance_id(CURRENT_BOT_INSTANCE_ID),
+                )
+                session.commit()
+
+
 async def _acquire_polling_guard(
     guard: BotPollingGuard,
     *,
@@ -207,6 +244,24 @@ async def _acquire_polling_guard(
     return False
 
 
+async def _idle_without_polling(reason: str, *, status: str = "blocked") -> None:
+    logger.error("Fortuna OS bot worker is not polling: %s", reason)
+    while True:
+        if SessionLocal is not None:
+            with contextlib.suppress(Exception):
+                with SessionLocal() as session:
+                    _record_bot_heartbeat(
+                        session,
+                        status=status,
+                        source="polling_disabled",
+                        polling_allowed="False",
+                        polling_active="False",
+                        polling_block_reason=reason,
+                    )
+                    session.commit()
+        await asyncio.sleep(300)
+
+
 def _principal_from_user(user: User) -> PermissionPrincipal:
     role = RoleName.OWNER if user.is_owner else RoleName.VIEWER
     return PermissionPrincipal(telegram_id=user.telegram_id, is_owner=user.is_owner, role=role)
@@ -216,7 +271,15 @@ def _bot_heartbeat_metadata(source: str, **extra: str) -> dict[str, str]:
     now = datetime.now(UTC).isoformat()
     storage = storage_status()
     has_redis = bool(settings.redis_url)
+    owner_metadata = polling_owner_metadata(
+        instance_id=CURRENT_BOT_INSTANCE_ID,
+        polling_allowed=True,
+        polling_active=source in {"startup", "polling_loop"} or source.startswith("telegram_"),
+        polling_lock_owner=mask_instance_id(CURRENT_BOT_INSTANCE_ID) if has_redis else "not_configured",
+        source=source,
+    )
     metadata = {
+        **owner_metadata,
         "source": source,
         "instance_id_masked": mask_instance_id(CURRENT_BOT_INSTANCE_ID),
         "primary_polling_enabled": str(settings.bot_primary_instance),
@@ -228,6 +291,7 @@ def _bot_heartbeat_metadata(source: str, **extra: str) -> dict[str, str]:
         "polling_guard": "redis_lock" if has_redis else "disabled_no_redis",
         "redis_lock_status": "held" if has_redis else "not_configured",
     }
+    metadata = clear_polling_conflict_metadata(metadata)
     if source == "startup":
         metadata["bot_started_at"] = now
     elif source == "polling_loop":
@@ -2030,15 +2094,40 @@ async def main() -> None:
                         session,
                         status="blocked",
                         source="startup_blocked",
+                        polling_allowed="False",
+                        polling_active="False",
                         polling_block_reason=preflight.reason,
                     )
                     session.commit()
-        raise RuntimeError(preflight.reason)
+        await _idle_without_polling(preflight.reason)
+        return
 
-    guard = BotPollingGuard(settings.redis_url)
+    lock_key = telegram_polling_lock_key(token)
+    guard = BotPollingGuard(
+        settings.redis_url,
+        key=lock_key,
+        owner_id=mask_instance_id(CURRENT_BOT_INSTANCE_ID),
+    )
     if not await _acquire_polling_guard(guard):
-        raise RuntimeError("Another Fortuna OS bot polling instance appears active after waiting")
+        lock_owner = guard.current_owner() or "unknown"
+        reason = "Another Fortuna OS bot polling instance owns the Redis polling lock."
+        if SessionLocal is not None:
+            with contextlib.suppress(Exception):
+                with SessionLocal() as session:
+                    record_polling_conflict(
+                        session,
+                        instance_id=CURRENT_BOT_INSTANCE_ID,
+                        reason=reason,
+                        source="redis_polling_lock",
+                        conflict_source="redis_lock_owner",
+                        polling_lock_owner=lock_owner,
+                    )
+                    session.commit()
+        await _idle_without_polling(reason, status="critical")
+        return
     refresh_task: asyncio.Task | None = None
+    conflict_handler = _PollingConflictLogHandler()
+    logging.getLogger("aiogram").addHandler(conflict_handler)
 
     async def refresh_guard() -> None:
         while True:
@@ -2075,7 +2164,23 @@ async def main() -> None:
                 session.commit()
         refresh_task = asyncio.create_task(refresh_guard())
         await dp.start_polling(bot)
+    except TelegramConflictError:
+        reason = "Another process is using the same Telegram bot token."
+        if SessionLocal is not None:
+            with contextlib.suppress(Exception):
+                with SessionLocal() as session:
+                    record_polling_conflict(
+                        session,
+                        instance_id=CURRENT_BOT_INSTANCE_ID,
+                        reason=reason,
+                        source="telegram_conflict_exception",
+                        conflict_source="telegram_getupdates",
+                        polling_lock_owner=mask_instance_id(CURRENT_BOT_INSTANCE_ID),
+                    )
+                    session.commit()
+        await _idle_without_polling(reason, status="critical")
     finally:
+        logging.getLogger("aiogram").removeHandler(conflict_handler)
         if refresh_task is not None:
             refresh_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
