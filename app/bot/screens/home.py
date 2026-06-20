@@ -8,6 +8,7 @@ from app.services.fortuna_personality import dynamic_greeting, screen_lines
 from app.services.productization import best_next_action, setup_steps
 from app.services.system_truth import reconcile_stale_system_warnings, system_truth
 from app.services.button_health import button_health_summary
+from app.services.decision_engine import generate_coo_briefing
 
 def _owner_display_name(user: User) -> str:
     return user.display_name or user.username or "there"
@@ -382,6 +383,8 @@ def render_first_workspace_flow_page(session: Session, user: User | None = None)
 
 
 def render_today_priorities_page(session: Session, user: User | None = None) -> Screen:
+    briefing = generate_coo_briefing(session, actor=user)
+    top = briefing.top_priority
     actions = todays_top_5_actions(session, actor=user)
     recent_actions = recent_operations_activity(session)
     approvals = pending_approvals(session)
@@ -390,22 +393,46 @@ def render_today_priorities_page(session: Session, user: User | None = None) -> 
     button_health = button_health_summary(session)
     button_needs_review = button_health.open_issue_count > 0 and button_health.overall_status in {"needs_review", "needs_attention", "critical"}
     next_action = (
-        "Open Button Health."
+        top.next_best_move
+        if top is not None
+        else "Open Button Health."
         if button_needs_review
-        else actions[0].title if actions else (recommendations[0].title if recommendations else "Nothing urgent here.")
+        else "Nothing urgent here."
     )
-    buttons = [(f"Open {index}: {action.title[:24]}", action.action_page) for index, action in enumerate(actions[:3], start=1)]
+    buttons = []
+    if top is not None:
+        buttons.append(("✨ Do This Next", top.action_page))
     if button_needs_review:
-        buttons.insert(0, ("Review Button Health", "button_health"))
+        buttons.append(("🧭 Button Health", "button_health"))
     lines = [
+        "🌅 What Matters Today",
+        "",
         "Today's Priorities",
         "",
         "Recommended Next Action:",
         next_action,
         "",
-        "Top 5 Actions:",
+        "🎯 First:",
     ]
-    if actions:
+    if top is not None:
+        lines.extend([top.title, "", "Why:", top.risk])
+    else:
+        lines.append("- Nothing urgent here.")
+    lines.extend(["", "✅ Stable:"])
+    if any(decision.category == "system_health" for decision in briefing.risks):
+        lines.append("- Production health needs review in Observability.")
+    else:
+        lines.append("- No active production blocker is competing with the top priority.")
+    lines.extend(["", "🧘 Can Wait:"])
+    if briefing.can_wait:
+        lines.extend(f"- {decision.title}" for decision in briefing.can_wait[:3])
+    else:
+        lines.append("- No optional setup item is competing for attention.")
+    lines.extend(["", "Top 5 Actions:"])
+    if briefing.decisions:
+        for index, decision in enumerate(briefing.decisions[:5], start=1):
+            lines.append(f"{index}. {decision.title}")
+    elif actions:
         for index, action in enumerate(actions[:5], start=1):
             lines.append(f"{index}. {action.title}")
     else:

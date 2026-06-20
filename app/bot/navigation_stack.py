@@ -22,6 +22,8 @@ MORE_CHILDREN = {
     "production_observability",
     "users",
     "executive_mode",
+    "coo",
+    "coo:briefing",
     "recovery_center",
     "team_intelligence",
     "platforms",
@@ -52,6 +54,12 @@ def parent_page_for(page: str | None) -> str:
         return "start_here"
     if current == "coo:readiness":
         return "agency_activation"
+    if current in {"coo", "coo:briefing"}:
+        return "owner_advanced"
+    if current in {"coo:briefing:details", "decision:top", "decision:details"}:
+        return "coo:briefing"
+    if current.startswith("coo:"):
+        return "coo"
     if current in MORE_CHILDREN:
         return "owner_advanced"
     if current.startswith("intelligence:trends"):
@@ -102,7 +110,7 @@ def root_page_for(page: str | None) -> str:
         return ROOT_SCREEN
     if current.startswith("settings:chat_cleanup"):
         return "settings"
-    if current in MORE_CHILDREN or current.startswith(("intelligence", "automations", "reports", "settings", "recovery", "team_intelligence", "platforms")):
+    if current in MORE_CHILDREN or current.startswith(("coo", "decision", "intelligence", "automations", "reports", "settings", "recovery", "team_intelligence", "platforms")):
         return "owner_advanced"
     if current.startswith(("proxy:", "proxies:")):
         return "proxies"

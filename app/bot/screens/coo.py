@@ -1,4 +1,41 @@
 from .formatting import *
+from app.services.decision_engine import (
+    Decision,
+    generate_coo_briefing,
+    generate_decisions,
+    record_decision_interaction,
+    top_decision,
+)
+
+
+def _decision_status_icon(status: str) -> str:
+    return {
+        "healthy": "🟢",
+        "needs_review": "🟡",
+        "needs_attention": "🟠",
+        "critical": "🔴",
+    }.get(status, "🟡")
+
+
+def _decision_summary(decision: Decision) -> list[str]:
+    return [
+        decision.title,
+        "",
+        "Why:",
+        decision.risk,
+        "",
+        "Impact:",
+        decision.impact,
+        "",
+        "Confidence:",
+        decision.confidence.title(),
+        "",
+        "Evidence:",
+        decision.evidence_summary,
+        "",
+        "Next:",
+        decision.next_best_move,
+    ]
 
 def render_coo_dashboard_page(session: Session, user: User | None = None) -> Screen:
     priorities = top_priorities(session, actor=user, limit=5)
@@ -118,36 +155,128 @@ def render_my_work_page(session: Session, user: User) -> Screen:
         lines.append("- Nothing assigned right now. Check with your manager if you expected work.")
     return Screen("\n".join(lines), my_work_menu())
 
-def render_coo_briefing_page(session: Session, user: User | None = None) -> Screen:
-    briefing = coo_briefing(session, actor=user)
-    issues_found = len(briefing["needs_attention"]) + len(briefing["blocked"])
-    next_action = briefing["next_actions"][0] if briefing["next_actions"] else "Nothing urgent. Run a COO scan after new changes."
+def render_coo_briefing_page(session: Session, user: User | None = None, *, details: bool = False) -> Screen:
+    briefing = generate_coo_briefing(session, actor=user)
+    top = briefing.top_priority
+    if details:
+        lines = [
+            "🔎 Decision Details",
+            "",
+            f"Generated: {format_user_datetime(user, briefing.generated_at)}",
+            "",
+            "Ranked decisions:",
+        ]
+        if not briefing.decisions:
+            lines.append("- No evidence-backed decisions yet.")
+        for index, decision in enumerate(briefing.decisions[:8], start=1):
+            lines.extend(
+                [
+                    "",
+                    f"{index}. {decision.severity_icon} {decision.title}",
+                    f"Category: {decision.category_label}",
+                    f"Priority: {decision.priority_rank}/100",
+                    f"Confidence: {decision.confidence.title()}",
+                    f"Can wait: {'Yes' if decision.can_wait else 'No'}",
+                    f"Impact: {decision.impact}",
+                    f"Risk: {decision.risk}",
+                    f"Evidence: {decision.evidence_summary}",
+                    f"Sources: {', '.join(decision.source_records)}",
+                ]
+            )
+        return Screen("\n".join(lines), decision_details_menu())
+
     lines = [
-        "Fortuna COO Briefing",
+        "👑 COO Briefing",
         "",
-        f"Status: {'Healthy' if issues_found == 0 else 'Needs Attention'}",
-        f"Readiness: {briefing['readiness_score']}%",
-        f"Issues Found: {issues_found}",
+        "Status:",
+        f"{_decision_status_icon(briefing.overall_status)} {briefing.overall_label}",
         "",
-        "Recommended Action:",
-        next_action,
+        "What changed:",
+        *[f"• {item}" for item in briefing.what_changed],
         "",
-        "What changed?",
+        "🎯 Top Priority",
     ]
-    lines.extend(f"- {item}" for item in briefing["what_changed"][:5])
-    lines.append("")
-    lines.append("What needs attention?")
-    lines.extend(f"- {item}" for item in briefing["needs_attention"][:5]) if briefing["needs_attention"] else lines.append("- No urgent attention items.")
-    lines.append("")
-    lines.append("What is blocked?")
-    lines.extend(f"- {item}" for item in briefing["blocked"][:5]) if briefing["blocked"] else lines.append("- No setup blockers.")
-    lines.append("")
-    lines.append("What should happen next?")
-    lines.extend(f"- {item}" for item in briefing["next_actions"][:5]) if briefing["next_actions"] else lines.append("- Run a COO scan after new changes.")
-    lines.append("")
-    lines.append("Delegation:")
-    lines.extend(f"- {item}" for item in briefing["delegate"][:3]) if briefing["delegate"] else lines.append("- Team load looks balanced enough for now.")
+    if top is None:
+        lines.extend(["Nothing urgent here.", "", "Why:", "Fortuna has enough evidence to stay quiet right now."])
+    else:
+        lines.extend(
+            [
+                top.title,
+                "",
+                "Why:",
+                top.risk,
+            ]
+        )
+    lines.extend(["", "Risks:"])
+    if briefing.risks:
+        lines.extend(f"• {decision.title}" for decision in briefing.risks[:3])
+    else:
+        lines.append("• No active high-risk blocker found.")
+    lines.extend(["", "Opportunities:"])
+    if briefing.opportunities:
+        lines.extend(f"• {decision.title}" for decision in briefing.opportunities[:3])
+    else:
+        lines.append("• No urgent opportunity needs attention.")
+    lines.extend(["", "🧘 Can Wait"])
+    if briefing.can_wait:
+        lines.extend(f"• {decision.title}" for decision in briefing.can_wait[:3])
+    else:
+        lines.append("• Nothing optional is competing for attention.")
+    lines.extend(
+        [
+            "",
+            "✨ Next Best Move",
+            briefing.next_best_move,
+            "",
+            "Fortuna recommends what matters first. Humans still decide.",
+        ]
+    )
     return Screen("\n".join(lines), coo_briefing_menu())
+
+
+def render_decision_top_priority_page(session: Session, user: User | None = None) -> Screen:
+    decision = top_decision(session, actor=user)
+    if decision is None:
+        lines = [
+            "🎯 Top Priority",
+            "",
+            "Nothing urgent here.",
+            "",
+            "Why:",
+            "Fortuna did not find an evidence-backed blocker that should interrupt you.",
+            "",
+            "✨ Next Best Move",
+            "Keep operating from Today.",
+        ]
+        return Screen("\n".join(lines), decision_top_priority_menu("today_priorities"))
+    record_decision_interaction(session, decision=decision, action="opened", actor=user)
+    lines = ["🎯 Top Priority", "", *_decision_summary(decision)]
+    return Screen("\n".join(lines), decision_top_priority_menu(decision.action_page))
+
+
+def render_decision_details_page(session: Session, user: User | None = None) -> Screen:
+    decisions = generate_decisions(session, actor=user)
+    lines = [
+        "🔎 Decision Details",
+        "",
+        "Fortuna ranked these using evidence, urgency, risk, and impact.",
+    ]
+    if not decisions:
+        lines.append("")
+        lines.append("Not enough evidence yet.")
+    for index, decision in enumerate(decisions[:8], start=1):
+        lines.extend(
+            [
+                "",
+                f"{index}. {decision.severity_icon} {decision.title}",
+                f"Priority: {decision.priority_rank}/100",
+                f"Category: {decision.category_label}",
+                f"Confidence: {decision.confidence.title()}",
+                f"Next: {decision.next_best_move}",
+                f"Evidence: {decision.evidence_summary}",
+            ]
+        )
+    return Screen("\n".join(lines), decision_details_menu())
 
 def render_load_balancer_page(session: Session) -> Screen:
     load = team_load_balancer(session)

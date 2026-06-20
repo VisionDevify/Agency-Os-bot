@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from .formatting import *
+from app.services.decision_engine import generate_decisions, upsert_decision_recommendations
 
 def render_reports_home() -> Screen:
     return Screen(text="Reports\nBriefings, dashboards, and accountability.", reply_markup=reports_menu())
@@ -351,12 +352,44 @@ def _friendly_recommendation_title(recommendation: Recommendation) -> str:
 
 
 def render_recommendations_page(session: Session, user: User | None = None) -> Screen:
+    decision_recommendations = upsert_decision_recommendations(session, actor=user)
     generate_recommendations(session, actor=user)
     recommendations = list_recommendations(session, status="open", limit=20)
+    decisions = generate_decisions(session, actor=user)
+    top_decision = next((decision for decision in decisions if not decision.can_wait), None)
     record_report_view(session, actor=user, report_name="recommendations")
     lines = ["\U0001f534 Start Here", ""]
     buttons: list[tuple[str, str]] = []
-    if not recommendations:
+    if top_decision is not None:
+        lines.extend(
+            [
+                top_decision.title,
+                "",
+                "Why",
+                top_decision.risk,
+                "",
+                "Impact",
+                top_decision.impact,
+                "",
+                "Confidence",
+                top_decision.confidence.title(),
+                "",
+                "Evidence",
+                top_decision.evidence_summary,
+                "",
+                "Next",
+                top_decision.next_best_move,
+                "",
+                "\U0001f7e1 Later",
+            ]
+        )
+        buttons.append(("Fix This", "nav:decision:top"))
+        later = [decision for decision in decisions if decision is not top_decision][:4]
+        if later:
+            lines.extend(f"- {decision.title}" for decision in later)
+        else:
+            lines.append("- Nothing else urgent.")
+    elif not recommendations:
         lines.extend(["Nothing urgent here.", "", "Fortuna will keep watching for blockers.", "", "Ready when you are."])
     else:
         top = recommendations[0]
@@ -401,6 +434,8 @@ def render_recommendations_page(session: Session, user: User | None = None) -> S
                 break
         if later_count == 0:
             lines.append("- Nothing else urgent.")
+    if decision_recommendations:
+        lines.extend(["", "Decision Engine:", f"- Updated {len(decision_recommendations)} evidence-backed recommendation(s)."])
     return Screen(text="\n".join(lines), reply_markup=recommendations_menu(buttons))
 
 def render_recommendation_detail_page(session: Session, recommendation_id: int) -> Screen:

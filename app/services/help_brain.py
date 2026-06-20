@@ -262,6 +262,34 @@ HELP_KB_SEEDS: tuple[dict[str, str], ...] = (
         "content": "Team Intelligence uses task and opportunity outcomes to suggest who is available, overloaded, or a good fit for new work.",
         "related_route": "team_intelligence",
     },
+    {
+        "topic": "coo_briefing",
+        "title": "COO Briefing",
+        "role_scope": "owner,admin,manager",
+        "content": "COO Briefing turns system truth, recovery, notifications, platforms, opportunities, and recent activity into one top priority and one next best move.",
+        "related_route": "coo:briefing",
+    },
+    {
+        "topic": "decision_priorities",
+        "title": "Decision Priorities",
+        "role_scope": "owner,admin,manager",
+        "content": "Fortuna ranks decisions using evidence, urgency, risk, reversibility, business impact, and whether owner action is required. It recommends what matters first, but humans still decide.",
+        "related_route": "coo:briefing",
+    },
+    {
+        "topic": "decision_confidence",
+        "title": "Decision Confidence",
+        "role_scope": "owner,admin,manager",
+        "content": "Confidence tells you how strong the evidence is. High confidence comes from current checks or recent records. Low confidence means Fortuna needs more proof or owner review.",
+        "related_route": "decision:details",
+    },
+    {
+        "topic": "decision_can_wait",
+        "title": "Can Wait",
+        "role_scope": "owner,admin,manager",
+        "content": "Can Wait means the item is prepared or useful later, but it should not distract from the current top priority.",
+        "related_route": "coo:briefing",
+    },
 )
 
 
@@ -312,6 +340,22 @@ def help_article_count(session: Session) -> int:
 
 def detect_help_intent(question: str) -> str:
     text = question.casefold()
+    if "coo briefing" in text or ("briefing" in text and "coo" in text):
+        return "coo_briefing"
+    if "decide priorities" in text or "decides priorities" in text or "rank decisions" in text or "decide priority" in text:
+        return "decision_priorities"
+    if "why" in text and "recovery" in text and "top priority" in text:
+        return "decision_recovery_priority"
+    if "why" in text and "platform" in text and "wait" in text:
+        return "decision_platforms_wait"
+    if "confidence" in text and ("mean" in text or "decision" in text):
+        return "decision_confidence"
+    if "can wait" in text:
+        return "decision_can_wait"
+    if "learn" in text and "decision" in text:
+        return "decision_learning"
+    if "act automatically" in text or ("fortuna" in text and "automatically" in text and "decision" in text):
+        return "decision_human_approval"
     if "platform connection" in text or "platform connections" in text:
         return "platform_connections"
     if "reachable" in text and "connected" in text:
@@ -554,7 +598,64 @@ def help_brain_answer(
     role = _role_label(user)
     next_action = current_page or "help"
 
-    if intent == "platform_connections":
+    if intent == "coo_briefing":
+        answer = (
+            "COO Briefing shows what matters, why it matters, and what should happen next.\n\n"
+            "Why: it compares recovery, bot health, notifications, platform readiness, opportunities, and recent activity so the owner sees one top priority instead of a dashboard wall.\n\n"
+            "Next button to press: COO Briefing."
+        )
+        next_action = "coo:briefing" if _adminish(user) else "help"
+    elif intent == "decision_priorities":
+        answer = (
+            "Fortuna ranks decisions using evidence, urgency, risk, impact, reversibility, and whether owner action is required.\n\n"
+            "Why: the highest-risk item should be handled before optional setup.\n\n"
+            "Next button to press: Top Priority."
+        )
+        next_action = "decision:top" if _adminish(user) else "help"
+    elif intent == "decision_recovery_priority":
+        recovery = recovery_risk_assessment(session) if _adminish(user) else None
+        answer = (
+            "Recovery becomes top priority when backup or restore evidence is missing.\n\n"
+            f"Why: {recovery.next_best_move if recovery else 'Data-loss risk matters before optional setup.'}\n\n"
+            "Next button to press: Recovery Center."
+        )
+        next_action = "recovery_center" if _adminish(user) else "help"
+    elif intent == "decision_platforms_wait":
+        answer = (
+            "Platform connections can wait when credentials are intentionally planned for later and no active workflow depends on them yet.\n\n"
+            "Why: Not connected yet is a setup state, not a production failure.\n\n"
+            "Next button to press: Platform Connections."
+        )
+        next_action = "platforms" if _adminish(user) else "help"
+    elif intent == "decision_confidence":
+        answer = (
+            "Confidence tells you how strong Fortuna's evidence is.\n\n"
+            "Why: current checks and recent records create high confidence; partial or older evidence creates medium or low confidence.\n\n"
+            "Next button to press: Decision Details."
+        )
+        next_action = "decision:details" if _adminish(user) else "help"
+    elif intent == "decision_can_wait":
+        answer = (
+            "Can Wait means Fortuna sees the item, but it should not distract from the top priority.\n\n"
+            "Why: optional setup like final platform logins can be prepared without interrupting recovery or bot-health work.\n\n"
+            "Next button to press: COO Briefing."
+        )
+        next_action = "coo:briefing" if _adminish(user) else "help"
+    elif intent == "decision_learning":
+        answer = (
+            "Fortuna records whether decisions were shown, opened, ignored, acted on, or resolved.\n\n"
+            "Why: over time, that helps Fortuna learn which recommendations actually matter.\n\n"
+            "Next button to press: COO Briefing."
+        )
+        next_action = "coo:briefing" if _adminish(user) else "help"
+    elif intent == "decision_human_approval":
+        answer = (
+            "No. Fortuna recommends decisions, but humans still decide and execute.\n\n"
+            "Why: Fortuna should not auto-execute business decisions, post, comment, like, follow, or bypass platform rules.\n\n"
+            "Next button to press: COO Briefing."
+        )
+        next_action = "coo:briefing" if _adminish(user) else "help"
+    elif intent == "platform_connections":
         answer = (
             "Platform Connections shows each platform in layers: public website, verified login/API/session, stats access, notifications, and activation readiness.\n\n"
             "Why: reachable is not the same as connected, and missing credentials are setup items, not failures.\n\n"

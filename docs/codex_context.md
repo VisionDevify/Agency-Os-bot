@@ -176,6 +176,44 @@ Use shared status vocabulary where possible:
 
 Overall status is the most severe active validated condition. Historical problems must not appear as current issues after live truth proves they are resolved.
 
+## COO Briefing and Decision Engine
+
+The COO Briefing turns current evidence into one calm executive answer: what matters, why it matters, and what should happen next.
+
+Decision Engine rules:
+
+- Every decision must include title, category, severity, priority rank, impact, risk, recommendation, confidence, evidence, source records, next best move, and whether it can wait.
+- Allowed categories are recovery, system health, Telegram bot, navigation, notification, platform connection, opportunity, social intelligence, team, learning, friction, setup, deployment, security, and general.
+- Do not create decisions without evidence. If evidence is missing, say "Not enough evidence yet."
+- Low-value informational items belong in Details, not the main briefing.
+- One top priority should lead the briefing and Today view.
+
+Priority logic:
+
+- Critical recovery gaps, Telegram polling conflicts, bot worker failures, database durability issues, restore verification failures, and broken critical notification routes outrank optional setup.
+- Platform not connected during build or final activation planning is usually `can_wait`, unless the platform is required by an active workflow.
+- Not connected yet is not a failure.
+- The owner should see one next best move, not a pile of equal-looking tasks.
+
+Evidence and confidence:
+
+- High confidence requires direct current evidence, such as live health checks, SystemTruth, Recovery records, ButtonIssue records, notification delivery attempts, platform records, or deployment metadata.
+- Medium confidence is partial or indirect evidence.
+- Low confidence means weak, stale, or missing evidence and should not become top priority unless the severity is critical.
+
+Decision learning:
+
+- Track decision shown, opened, ignored, acted on, and resolved.
+- Learning hooks must not auto-execute business actions.
+- Fortuna recommends; humans decide.
+
+What not to break:
+
+- Recovery must remain evidence-backed and cannot be hidden by a healthy operations status.
+- Telegram polling conflicts must remain visible in decisioning, Observability, `/botstatus`, and `/selftest`.
+- Platform Connections must keep the layered truth model: reachable is not connected, connected is not fresh stats.
+- The COO Briefing, Today, Recommendations, and Help Brain should all use the same priority philosophy.
+
 ## Compliance Rules
 
 Fortuna may observe, summarize, recommend, and route human-reviewed work.

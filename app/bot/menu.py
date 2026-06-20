@@ -74,6 +74,7 @@ def owner_advanced_home_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="Recovery Center", callback_data=callback_for("recovery_center")),
                 InlineKeyboardButton(text="Team Intelligence", callback_data=callback_for("team_intelligence")),
             ],
+            [InlineKeyboardButton(text="👑 COO Briefing", callback_data=callback_for("coo:briefing"))],
             [InlineKeyboardButton(text="🔌 Platform Connections", callback_data=callback_for("platforms"))],
             [InlineKeyboardButton(text="Simple Mode", callback_data=callback_for("menu"))],
             *page_controls(back_to="menu"),
@@ -94,15 +95,17 @@ def start_here_menu() -> InlineKeyboardMarkup:
 
 
 def today_priorities_menu(action_buttons: list[tuple[str, str]] | None = None) -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton(text="What Should I Do Next?", callback_data=callback_for("assistant_next"))]]
+    rows = [[InlineKeyboardButton(text="👑 COO Briefing", callback_data=callback_for("coo:briefing"))]]
+    rows.append([InlineKeyboardButton(text="🎯 Top Priority", callback_data=callback_for("decision:top"))])
     for label, page in (action_buttons or [])[:4]:
         rows.append([InlineKeyboardButton(text=label, callback_data=callback_for(page))])
     rows.extend(
         [
             [
-                InlineKeyboardButton(text="Setup Progress", callback_data=callback_for("setup_progress")),
-                InlineKeyboardButton(text="Recommendations", callback_data=callback_for("reports:executive:recommendations")),
+                InlineKeyboardButton(text="🔔 Notifications", callback_data=callback_for("platforms:notifications")),
+                InlineKeyboardButton(text="🛡 Recovery", callback_data=callback_for("recovery_center")),
             ],
+            [InlineKeyboardButton(text="📱 Platforms", callback_data=callback_for("platforms"))],
             *page_controls(back_to="menu"),
         ]
     )
@@ -357,12 +360,37 @@ def top5_actions_menu(action_buttons: list[tuple[str, str]] | None = None) -> In
 def coo_briefing_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Refresh Briefing", callback_data=callback_for("coo:briefing"))],
+            [InlineKeyboardButton(text="🔄 Refresh", callback_data=callback_for("coo:briefing"))],
+            [InlineKeyboardButton(text="🎯 Top Priority", callback_data=callback_for("decision:top"))],
             [
-                InlineKeyboardButton(text="Readiness", callback_data=callback_for("coo:readiness")),
-                InlineKeyboardButton(text="Manager Queue", callback_data=callback_for("manager_queue")),
+                InlineKeyboardButton(text="🛡 Recovery", callback_data=callback_for("recovery_center")),
+                InlineKeyboardButton(text="📱 Platforms", callback_data=callback_for("platforms")),
             ],
-            *page_controls(back_to="coo"),
+            [
+                InlineKeyboardButton(text="🔔 Notifications", callback_data=callback_for("platforms:notifications")),
+                InlineKeyboardButton(text="🔎 Details", callback_data=callback_for("coo:briefing:details")),
+            ],
+            *page_controls(back_to="owner_advanced"),
+        ]
+    )
+
+
+def decision_top_priority_menu(action_page: str | None = None) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    if action_page:
+        rows.append([InlineKeyboardButton(text="✨ Do This Next", callback_data=callback_for(action_page))])
+    rows.append([InlineKeyboardButton(text="🔎 Decision Details", callback_data=callback_for("decision:details"))])
+    rows.append([InlineKeyboardButton(text="👑 COO Briefing", callback_data=callback_for("coo:briefing"))])
+    rows.extend(page_controls(back_to="coo:briefing"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def decision_details_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Refresh", callback_data=callback_for("coo:briefing"))],
+            [InlineKeyboardButton(text="🎯 Top Priority", callback_data=callback_for("decision:top"))],
+            *page_controls(back_to="coo:briefing"),
         ]
     )
 

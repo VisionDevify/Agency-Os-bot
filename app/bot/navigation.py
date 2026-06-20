@@ -1368,6 +1368,7 @@ def screen_for_page(
         or normalized == "team_onboarding_activation"
         or normalized.startswith("fortuna_action_log")
         or normalized.startswith("coo")
+        or normalized.startswith("decision:")
         or normalized == "executive_mode"
         or normalized == "manager_queue"
         or normalized == "my_work"

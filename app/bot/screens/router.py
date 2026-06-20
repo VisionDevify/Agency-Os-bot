@@ -100,6 +100,12 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_readiness_v2_page(session)
     if page == "coo:briefing" and session is not None:
         return render_coo_briefing_page(session, user)
+    if page == "coo:briefing:details" and session is not None:
+        return render_coo_briefing_page(session, user, details=True)
+    if page == "decision:top" and session is not None:
+        return render_decision_top_priority_page(session, user)
+    if page == "decision:details" and session is not None:
+        return render_decision_details_page(session, user)
     if page == "coo:load" and session is not None:
         return render_load_balancer_page(session)
     if page == "executive_mode" and session is not None:

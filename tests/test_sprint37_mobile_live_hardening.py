@@ -4,6 +4,7 @@ from sqlalchemy import func, select
 from app.bot.navigation import screen_for_page
 from app.bot.screens.errors import render_report_problem_page
 from app.bot.screens.proxies import render_olympix_proxy_paste_page
+from app.core.config import settings
 from app.models.audit import AuditLog
 from app.models.callback_error import CallbackErrorLog
 from app.models.event_log import EventLog
@@ -76,7 +77,8 @@ def test_live_data_safety_blocks_sqlite_fallback_before_real_secret_entry() -> N
         assert "SQLite emergency storage is not allowed for real credentials." in status.blocking_reasons
 
 
-def test_live_data_safety_allows_real_secret_entry_only_when_storage_redis_encryption_and_polling_are_safe() -> None:
+def test_live_data_safety_allows_real_secret_entry_only_when_storage_redis_encryption_and_polling_are_safe(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "redis_url", "redis://example")
     storage = storage_status(
         database_url="postgresql+psycopg://user:pass@example.com/db",
         allow_sqlite_fallback=False,
