@@ -145,6 +145,53 @@ def test_rapid_duplicate_navigation_tap_is_short_debounced(monkeypatch: pytest.M
                 page="opportunities",
             ) is True
 
+            callback.data = "nav:coo:briefing"
+            assert await runner._mark_navigation_callback_if_new(
+                callback,
+                session=session,
+                user=owner,
+                chat_id=10,
+                page="coo:briefing",
+            ) is True
+
+    asyncio.run(run())
+
+
+def test_intelligence_quality_back_target_not_stuck_after_rapid_tap_guard(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def run() -> None:
+        store = RedisIdempotencyStore()
+        monkeypatch.setattr(runner, "CALLBACK_IDEMPOTENCY", store)
+        with session_scope() as session:
+            owner = setup_owner_if_needed(session, telegram_user_id=1, owner_telegram_id=1)
+            track_bot_message(session, chat_id=10, user=owner, message_id=123, screen="intelligence:quality")
+            callback = FakeCallback(FakeMessage(10, message_id=123))
+            callback.from_user = type("User", (), {"id": 1})()
+
+            callback.data = "nav:intelligence:quality"
+            assert await runner._mark_navigation_callback_if_new(
+                callback,
+                session=session,
+                user=owner,
+                chat_id=10,
+                page="intelligence:quality",
+            ) is True
+            assert await runner._mark_navigation_callback_if_new(
+                callback,
+                session=session,
+                user=owner,
+                chat_id=10,
+                page="intelligence:quality",
+            ) is False
+
+            callback.data = "nav:coo:briefing"
+            assert await runner._mark_navigation_callback_if_new(
+                callback,
+                session=session,
+                user=owner,
+                chat_id=10,
+                page="coo:briefing",
+            ) is True
+
     asyncio.run(run())
 
 

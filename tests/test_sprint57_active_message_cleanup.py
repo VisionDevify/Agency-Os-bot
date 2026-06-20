@@ -75,6 +75,44 @@ def test_inactive_old_menu_callback_is_stale_and_cannot_overwrite_active_screen(
         assert is_stale_navigation_callback(session, chat_id=10, user=owner, message_id=fresh.message_id) is False
 
 
+def test_intelligence_quality_back_callback_is_current_active_message() -> None:
+    with session_scope() as session:
+        owner = setup_owner_if_needed(session, telegram_user_id=1, owner_telegram_id=1)
+        active = track_bot_message(
+            session,
+            chat_id=10,
+            user=owner,
+            message_id=502,
+            screen="intelligence:quality",
+        )
+
+        state = classify_navigation_callback(session, chat_id=10, user=owner, message_id=active.message_id)
+
+        assert state.classification == "current"
+        assert state.is_stale is False
+        assert state.active_message_id == active.message_id
+
+
+def test_intelligence_quality_back_remains_current_after_start_cleanup() -> None:
+    with session_scope() as session:
+        owner = setup_owner_if_needed(session, telegram_user_id=1, owner_telegram_id=1)
+        track_bot_message(session, chat_id=10, user=owner, message_id=503, screen="menu", navigation_version=1)
+        new_version = reset_navigation_session(session, chat_id=10, user=owner)
+        active = track_bot_message(
+            session,
+            chat_id=10,
+            user=owner,
+            message_id=504,
+            screen="intelligence:quality",
+            navigation_version=new_version,
+        )
+
+        state = classify_navigation_callback(session, chat_id=10, user=owner, message_id=active.message_id)
+
+        assert state.classification == "current"
+        assert state.active_navigation_version == new_version
+
+
 def test_persistent_alert_callback_remains_valid_even_without_active_navigation() -> None:
     with session_scope() as session:
         owner = setup_owner_if_needed(session, telegram_user_id=1, owner_telegram_id=1)

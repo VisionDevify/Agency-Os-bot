@@ -446,7 +446,7 @@ def intelligence_quality_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="👑 COO Briefing", callback_data=callback_for("coo:briefing")),
                 InlineKeyboardButton(text="🧠 Decision Memory", callback_data=callback_for("decision:memory")),
             ],
-            *page_controls(back_to="intelligence"),
+            *page_controls(back_to="coo:briefing"),
         ]
     )
 

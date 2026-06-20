@@ -41,6 +41,14 @@ def _buttons(screen) -> list[str]:
     return [button.text for row in screen.reply_markup.inline_keyboard for button in row]
 
 
+def _callback_for_label(screen, label: str) -> str | None:
+    for row in screen.reply_markup.inline_keyboard:
+        for button in row:
+            if button.text == label:
+                return button.callback_data
+    return None
+
+
 def _thin_decision() -> Decision:
     return Decision(
         title="Check something",
@@ -239,6 +247,34 @@ def test_intelligence_quality_screen_and_routes_render_cleanly() -> None:
         assert any("Refresh" in button for button in buttons)
         assert "Back" in buttons
         assert "Main Menu" in buttons
+        assert _callback_for_label(screen, "Back") == "nav:coo:briefing"
+        assert _callback_for_label(screen, "Main Menu") == "nav:menu"
+
+
+def test_intelligence_quality_back_returns_to_coo_parent() -> None:
+    with session_scope() as session:
+        owner = _owner(session)
+        principal = _principal(owner)
+
+        screen = screen_for_page("intelligence:quality", principal, session=session, user=owner)
+        back_target = (_callback_for_label(screen, "Back") or "").removeprefix("nav:")
+        parent = screen_for_page(back_target, principal, session=session, user=owner)
+
+        assert back_target == "coo:briefing"
+        assert "COO Briefing" in parent.text
+
+
+def test_intelligence_quality_main_menu_still_returns_home() -> None:
+    with session_scope() as session:
+        owner = _owner(session)
+        principal = _principal(owner)
+
+        screen = screen_for_page("intelligence:quality", principal, session=session, user=owner)
+        main_target = (_callback_for_label(screen, "Main Menu") or "").removeprefix("nav:")
+        home = screen_for_page(main_target, principal, session=session, user=owner)
+
+        assert main_target == "menu"
+        assert "Fortuna OS" in home.text
 
 
 def test_coo_briefing_details_include_quality_scores() -> None:
