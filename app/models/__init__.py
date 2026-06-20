@@ -16,6 +16,7 @@ from app.models.core import Automation, Report
 from app.models.coo import PriorityItem
 from app.models.decision_memory import DecisionMemory
 from app.models.decision_trends import DecisionQualityTrend, PredictiveCOOPrediction
+from app.models.reality_calibration import PredictionOutcome
 from app.models.event_log import EventLog
 from app.models.friction import FrictionItem
 from app.models.help import HelpKnowledgeBase, HelpQuestionLog, UISelfTestRun
@@ -136,6 +137,7 @@ __all__ = [
     "PlaybookRun",
     "PostWatch",
     "PriorityItem",
+    "PredictionOutcome",
     "PredictiveCOOPrediction",
     "Proxy",
     "ProxyHealthCheckResult",

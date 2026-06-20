@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from hashlib import sha256
 from typing import Iterable
@@ -18,6 +18,7 @@ from app.services.decision_engine import DECISION_CATEGORIES, CATEGORY_LABELS, D
 from app.services.events import emit_event
 from app.services.notification_intelligence import alert_health_summary
 from app.services.platform_connections import platform_connections_overview
+from app.services.reality_calibration import safe_adjust_prediction_confidence
 from app.services.recovery import latest_recovery_job_summary, recovery_risk_assessment
 
 
@@ -145,6 +146,38 @@ def _recommendation_score(memory: DecisionMemory) -> int:
 
 def _human_category(category: str) -> str:
     return CATEGORY_LABELS.get(category, category.replace("_", " ").title())
+
+
+def _prediction_category(prediction: Prediction) -> str:
+    key = str(prediction.evidence_key or "").casefold()
+    if key.startswith("general"):
+        return "general"
+    if key.startswith("platform"):
+        return "platform_connection"
+    if key.startswith("friction") or key.startswith("navigation"):
+        return "friction"
+    text = " ".join(
+        str(part or "")
+        for part in (
+            prediction.prediction_title,
+            prediction.prediction_type,
+            prediction.evidence_key,
+            prediction.evidence_summary,
+        )
+    ).casefold()
+    if "platform" in text or "login" in text or "connector" in text:
+        return "platform_connection"
+    if "friction" in text or "navigation" in text or "button" in text:
+        return "friction"
+    if "recovery" in text or "backup" in text or "restore" in text:
+        return "recovery"
+    if "notification" in text or "alert" in text or "routing" in text:
+        return "notification"
+    if "telegram" in text or "polling" in text:
+        return "telegram_bot"
+    if "opportun" in text:
+        return "opportunity"
+    return "general"
 
 
 class DecisionTrendEngine:
@@ -310,6 +343,7 @@ class PredictiveCOOEngine:
         predictions.extend(self._platform_predictions(session))
         predictions.extend(self._notification_predictions(session))
         predictions.extend(self._friction_predictions(trends))
+        predictions = [self._apply_calibration(session, prediction) for prediction in predictions]
         ranked = tuple(self._rank_predictions(predictions))
         for prediction in ranked[:4]:
             self._record_prediction(session, prediction, actor=actor, action="shown")
@@ -487,6 +521,18 @@ class PredictiveCOOEngine:
         }
         confidence_rank = {"high": 0, "medium": 1, "low": 2}
         return sorted(predictions, key=lambda item: (item.can_wait, type_rank.get(item.prediction_type, 9), confidence_rank.get(item.confidence, 9), item.prediction_title))
+
+    def _apply_calibration(self, session: Session, prediction: Prediction) -> Prediction:
+        adjusted = safe_adjust_prediction_confidence(
+            session,
+            confidence=prediction.confidence,
+            category=_prediction_category(prediction),
+            prediction_type=prediction.prediction_type,
+        )
+        if adjusted == prediction.confidence:
+            return prediction
+        suffix = "Reality Check is asking for more evidence before using stronger wording."
+        return replace(prediction, confidence=adjusted, reason=f"{prediction.reason} {suffix}")
 
     def _record_prediction(
         self,

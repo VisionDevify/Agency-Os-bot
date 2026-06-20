@@ -580,6 +580,18 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_prediction_preview_page(session, user, details=True)
     if page.startswith("prediction:feedback:") and session is not None:
         return render_prediction_feedback_page(session, page.split(":")[-1], user)
+    if page.startswith("prediction:outcome:") and session is not None:
+        return render_prediction_outcome_feedback_page(session, page.split(":")[-1], user)
+    if page == "reality:check" and session is not None:
+        return render_reality_check_page(session, user)
+    if page == "reality:check:details" and session is not None:
+        return render_reality_check_page(session, user, details=True)
+    if page == "reality:outcomes" and session is not None:
+        return render_prediction_outcomes_page(session, user)
+    if page == "reality:calibration" and session is not None:
+        return render_calibration_page(session, user)
+    if page == "reality:accuracy" and session is not None:
+        return render_accuracy_by_category_page(session, user)
     if page == "intelligence:runs" and session is not None:
         return render_intelligence_runs_page(session)
     if page.startswith("intelligence:run_detail:") and session is not None:

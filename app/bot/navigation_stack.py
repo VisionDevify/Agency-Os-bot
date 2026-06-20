@@ -70,6 +70,10 @@ def parent_page_for(page: str | None) -> str:
         return "intelligence:quality:trends"
     if current.startswith("prediction:"):
         return "intelligence:quality:trends"
+    if current == "reality:check":
+        return "intelligence:quality"
+    if current.startswith("reality:"):
+        return "reality:check"
     if current.startswith("coo:"):
         return "coo"
     if current in MORE_CHILDREN:

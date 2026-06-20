@@ -13,6 +13,7 @@ from app.services.decision_engine import (
 )
 from app.services.decision_quality import safe_decision_quality_report
 from app.services.decision_trends import safe_predictive_coo_report
+from app.services.reality_calibration import safe_reality_calibration_report
 
 
 def _decision_status_icon(status: str) -> str:
@@ -179,6 +180,7 @@ def render_coo_briefing_page(session: Session, user: User | None = None, *, deta
     briefing = generate_coo_briefing(session, actor=user)
     quality = safe_decision_quality_report(session, briefing.decisions, actor=user)
     prediction_report = safe_predictive_coo_report(session, decisions=briefing.decisions, actor=user)
+    reality = safe_reality_calibration_report(session, actor=user)
     prediction = prediction_report.primary
     top = briefing.top_priority
     if details:
@@ -194,6 +196,7 @@ def render_coo_briefing_page(session: Session, user: User | None = None, *, deta
             f"Briefing Quality: {quality.briefing_quality_score}/100",
             f"Quality Status: {'Unavailable' if not quality.available else quality.status.replace('_', ' ').title()}",
             f"Prediction Status: {'Disabled' if not prediction_report.enabled else 'Unavailable' if not prediction_report.available else prediction_report.status.replace('_', ' ').title()}",
+            f"Reality Check: {'Unavailable' if not reality.available else reality.status.replace('_', ' ').title()}",
             "",
             "Ranked decisions:",
         ]
@@ -283,6 +286,20 @@ def render_coo_briefing_page(session: Session, user: User | None = None, *, deta
                 prediction.reason,
             ]
         )
+    if reality.available and (
+        reality.outcome_counts.get("proven_wrong", 0) or reality.outcome_counts.get("pending", 0)
+    ):
+        lines.extend(
+            [
+                "",
+                "🧪 Reality Check",
+                (
+                    "A prediction was contradicted by evidence."
+                    if reality.outcome_counts.get("proven_wrong", 0)
+                    else "Some predictions are still waiting for evidence."
+                ),
+            ]
+        )
     lines.extend(
         [
             "",
@@ -360,6 +377,9 @@ def render_decision_details_page(session: Session, user: User | None = None) -> 
         )
         if prediction_hint is not None:
             lines.extend(["", "Prediction:", prediction_hint.prediction_title])
+            reality_hint = safe_reality_calibration_report(session, actor=user)
+            if reality_hint.available:
+                lines.extend(["Calibration:", reality_hint.status.replace("_", " ").title()])
     for index, decision in enumerate(decisions[:8], start=1):
         lines.extend(
             [

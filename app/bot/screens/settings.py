@@ -679,6 +679,15 @@ def render_production_observability_page(
                     "Next: Open Intelligence Quality.",
                 ]
             )
+        if summary.get("reality_calibration_meaningful"):
+            recovery_lines.extend(
+                [
+                    "",
+                    "Reality Calibration:",
+                    f"Status: {str(summary['reality_calibration_status']).replace('_', ' ').title()}",
+                    f"Next: {summary['reality_calibration_next_action']}",
+                ]
+            )
         summary_line = (
             "Fortuna checked this. Operations are running, but recovery still needs setup."
             if summary["recovery_status"] != "healthy" and operations_ok
@@ -877,6 +886,14 @@ def render_production_observability_page(
             f"- {finding['title']}: {finding['evidence']}"
             for finding in summary["decision_quality_findings"]
         ],
+        "",
+        "Reality Calibration:",
+        f"Status: {str(summary['reality_calibration_status']).replace('_', ' ').title()}",
+        f"Available: {'Yes' if summary['reality_calibration_available'] else 'No'}",
+        f"Pending: {summary['reality_calibration_pending_count']}",
+        f"Proven Correct: {summary['reality_calibration_correct_count']}",
+        f"Proven Wrong: {summary['reality_calibration_wrong_count']}",
+        f"Next Action: {summary['reality_calibration_next_action']}",
         "",
         "Logs:",
         summary["railway_note"],

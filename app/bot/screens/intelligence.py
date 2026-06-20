@@ -2,6 +2,7 @@ from .formatting import *
 from app.services.decision_engine import generate_decisions
 from app.services.decision_quality import safe_decision_quality_report
 from app.services.decision_trends import record_prediction_feedback, safe_decision_trend_report, safe_predictive_coo_report
+from app.services.reality_calibration import record_prediction_outcome_feedback, safe_reality_calibration_report
 
 
 def _quality_status_label(status: str, *, available: bool = True) -> str:
@@ -35,6 +36,47 @@ def _trend_icon(direction: str) -> str:
         "declining": "🟠",
         "insufficient_data": "⚪",
     }.get(direction, "⚪")
+
+def _outcome_label(outcome: str) -> str:
+    return {
+        "pending": "Pending",
+        "proven_correct": "Proven correct",
+        "proven_wrong": "Proven wrong",
+        "unresolved": "Unresolved",
+        "expired": "Expired",
+        "not_enough_evidence": "Not enough evidence",
+    }.get(outcome, outcome.replace("_", " ").title())
+
+
+def _calibration_label(status: str) -> str:
+    return {
+        "calibrated": "Calibrated",
+        "overconfident": "Overconfident",
+        "underconfident": "Underconfident",
+        "insufficient_data": "Insufficient data",
+    }.get(status, status.replace("_", " ").title())
+
+
+def _calibration_icon(status: str) -> str:
+    return {
+        "calibrated": "🟢",
+        "overconfident": "🟠",
+        "underconfident": "🟡",
+        "insufficient_data": "⚪",
+    }.get(status, "⚪")
+
+
+def _category_label(category: str) -> str:
+    return {
+        "recovery": "Recovery",
+        "telegram_bot": "Telegram Bot",
+        "notification": "Notifications",
+        "platform_connection": "Platforms",
+        "navigation": "Navigation",
+        "friction": "Friction",
+        "opportunity": "Opportunities",
+    }.get(category, category.replace("_", " ").title())
+
 
 def render_intelligence_home(session: Session | None = None) -> Screen:
     lines = ["\U0001f9e0 Fortuna Insights", ""]
@@ -353,6 +395,186 @@ def render_prediction_feedback_page(session: Session, action: str, user: User | 
         "Open Prediction Preview when you want the latest forecast.",
     ]
     return Screen(text="\n".join(lines), reply_markup=prediction_preview_menu())
+
+
+def render_prediction_outcome_feedback_page(session: Session, action: str, user: User | None = None) -> Screen:
+    labels = {
+        "right": ("This looked right", "Fortuna recorded your feedback, but it still needs evidence before calling this proven correct."),
+        "wrong": ("This looked wrong", "Fortuna recorded your feedback, but it needs contradicting evidence before calling this proven wrong."),
+        "add_evidence": ("Evidence note requested", "Fortuna will keep this prediction in review until evidence is attached."),
+        "still_pending": ("Still pending", "Fortuna will keep waiting for real-world evidence."),
+    }
+    label, note = labels.get(action, ("Feedback recorded", "Fortuna recorded your feedback."))
+    outcome = record_prediction_outcome_feedback(session, action=action, actor=user)
+    lines = [
+        "🧪 Prediction Reality Feedback",
+        "",
+        label,
+        "",
+        "What changed:",
+        note,
+        "",
+        "Outcome:",
+        _outcome_label(outcome.outcome) if outcome is not None else "No prediction outcome is ready yet.",
+        "",
+        "✨ Next Best Move",
+        "Open Reality Check when there is new evidence.",
+    ]
+    return Screen(text="\n".join(lines), reply_markup=page_menu(back_to="intelligence:quality:trends"))
+
+
+def render_reality_check_page(
+    session: Session,
+    user: User | None = None,
+    *,
+    details: bool = False,
+) -> Screen:
+    report = safe_reality_calibration_report(session, actor=user)
+    if not report.enabled:
+        lines = [
+            "🧪 Reality Check",
+            "",
+            "Status:",
+            "Disabled",
+            "",
+            "What Fortuna checked:",
+            "- Reality Calibration is disabled.",
+            "",
+            "✨ Next Best Move",
+            "Use Prediction Preview and COO Briefing from current evidence.",
+        ]
+    elif not report.available:
+        lines = [
+            "🧪 Reality Check",
+            "",
+            "Status:",
+            "Unavailable",
+            "",
+            "What Fortuna checked:",
+            "- Prediction evaluation could not finish.",
+            "",
+            "✨ Next Best Move",
+            "Use COO Briefing from current evidence and try again later.",
+        ]
+    else:
+        counts = report.outcome_counts
+        medium = next((bucket for bucket in report.confidence_buckets if bucket.scope_value == "medium"), None)
+        confidence_line = (
+            f"Medium confidence is currently {_calibration_label(medium.calibration_status).lower()}."
+            if medium is not None
+            else "Confidence calibration is still learning."
+        )
+        lines = [
+            "🧪 Reality Check",
+            "",
+            "Status:",
+            report.status.replace("_", " ").title(),
+            "",
+            "What Fortuna checked:",
+            f"- Predictions pending evidence: {counts.get('pending', 0)}",
+            f"- Predictions proven correct: {counts.get('proven_correct', 0)}",
+            f"- Predictions proven wrong: {counts.get('proven_wrong', 0)}",
+            f"- {confidence_line}",
+            "",
+            "✨ Next Best Move",
+            report.next_best_move,
+        ]
+    if details:
+        lines.extend(["", "Details:"])
+        if report.outcomes:
+            for outcome in report.outcomes[:8]:
+                lines.append(
+                    f"- {_outcome_label(outcome.outcome)}: {outcome.category.replace('_', ' ').title()} - {outcome.evidence_summary}"
+                )
+        else:
+            lines.append("- No prediction outcomes have been evaluated yet.")
+        if report.unavailable_reason:
+            lines.extend(["", "Unavailable Reason:", report.unavailable_reason])
+    return Screen(
+        text="\n".join(lines),
+        reply_markup=page_menu(back_to="reality:check") if details else reality_check_menu(),
+    )
+
+
+def render_prediction_outcomes_page(session: Session, user: User | None = None) -> Screen:
+    report = safe_reality_calibration_report(session, actor=user)
+    lines = [
+        "🔮 Prediction Outcomes",
+        "",
+        "Status:",
+        report.status.replace("_", " ").title() if report.available else "Unavailable",
+        "",
+        "What Fortuna checked:",
+    ]
+    if not report.available:
+        lines.append("- Prediction outcomes are unavailable right now.")
+    elif not report.outcomes:
+        lines.append("- No predictions have been evaluated yet.")
+    else:
+        for outcome in report.outcomes[:6]:
+            lines.extend(
+                [
+                    _category_label(outcome.category),
+                    _outcome_label(outcome.outcome),
+                    outcome.evidence_summary,
+                ]
+            )
+    lines.extend(["", "✨ Next Best Move", report.next_best_move])
+    return Screen(text="\n".join(lines), reply_markup=prediction_outcomes_menu())
+
+
+def render_calibration_page(session: Session, user: User | None = None) -> Screen:
+    report = safe_reality_calibration_report(session, actor=user)
+    lines = [
+        "📊 Confidence Calibration",
+        "",
+        "Status:",
+        report.status.replace("_", " ").title() if report.available else "Unavailable",
+        "",
+        "What Fortuna checked:",
+    ]
+    if not report.available:
+        lines.append("- Calibration is unavailable right now.")
+    else:
+        for bucket in report.confidence_buckets:
+            lines.extend(
+                [
+                    f"{bucket.label}:",
+                    _calibration_label(bucket.calibration_status),
+                    bucket.evidence_summary,
+                ]
+            )
+    lines.extend(["", "✨ Next Best Move", report.next_best_move])
+    return Screen(text="\n".join(lines), reply_markup=calibration_menu())
+
+
+def render_accuracy_by_category_page(session: Session, user: User | None = None) -> Screen:
+    report = safe_reality_calibration_report(session, actor=user)
+    important = {"recovery", "telegram_bot", "notification", "platform_connection", "navigation", "friction", "opportunity"}
+    lines = [
+        "🎯 Accuracy by Category",
+        "",
+        "Status:",
+        report.status.replace("_", " ").title() if report.available else "Unavailable",
+        "",
+        "What Fortuna checked:",
+    ]
+    if not report.available:
+        lines.append("- Category calibration is unavailable right now.")
+    else:
+        for bucket in report.category_buckets:
+            if bucket.scope_value not in important:
+                continue
+            lines.extend(
+                [
+                    f"{_calibration_icon(bucket.calibration_status)} {bucket.label}",
+                    _calibration_label(bucket.calibration_status),
+                    bucket.evidence_summary,
+                    f"Next: {bucket.next_improvement}",
+                ]
+            )
+    lines.extend(["", "✨ Next Best Move", report.next_best_move])
+    return Screen(text="\n".join(lines), reply_markup=accuracy_by_category_menu())
 
 def render_intelligence_runs_page(session: Session) -> Screen:
     runs = list_intelligence_runs(session, limit=10)

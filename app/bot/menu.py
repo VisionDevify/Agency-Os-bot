@@ -443,6 +443,7 @@ def decision_memory_menu() -> InlineKeyboardMarkup:
 def intelligence_quality_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [InlineKeyboardButton(text="🧪 Reality Check", callback_data=callback_for("reality:check"))],
             [InlineKeyboardButton(text="🔄 Refresh", callback_data=callback_for("intelligence:quality"))],
             [
                 InlineKeyboardButton(text="📈 Decision Trends", callback_data=callback_for("intelligence:quality:trends")),
@@ -461,6 +462,7 @@ def intelligence_quality_menu() -> InlineKeyboardMarkup:
 def decision_quality_trends_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [InlineKeyboardButton(text="🧪 Reality Check", callback_data=callback_for("reality:check"))],
             [InlineKeyboardButton(text="🔄 Refresh", callback_data=callback_for("intelligence:quality:trends"))],
             [
                 InlineKeyboardButton(text="📊 Category Trends", callback_data=callback_for("intelligence:quality:categories")),
@@ -486,6 +488,14 @@ def category_trends_menu() -> InlineKeyboardMarkup:
 def prediction_preview_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ This Was Right", callback_data=callback_for("prediction:outcome:right")),
+                InlineKeyboardButton(text="❌ This Was Wrong", callback_data=callback_for("prediction:outcome:wrong")),
+            ],
+            [
+                InlineKeyboardButton(text="🧾 Add Evidence", callback_data=callback_for("prediction:outcome:add_evidence")),
+                InlineKeyboardButton(text="🕒 Still Pending", callback_data=callback_for("prediction:outcome:still_pending")),
+            ],
             [InlineKeyboardButton(text="🔄 Refresh", callback_data=callback_for("prediction:preview"))],
             [InlineKeyboardButton(text="🧠 Why Fortuna Thinks This", callback_data=callback_for("prediction:preview:details"))],
             [
@@ -497,6 +507,51 @@ def prediction_preview_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="❌ Dismiss", callback_data=callback_for("prediction:feedback:dismissed")),
             ],
             *page_controls(back_to="intelligence:quality:trends"),
+        ]
+    )
+
+
+def reality_check_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Refresh", callback_data=callback_for("reality:check"))],
+            [
+                InlineKeyboardButton(text="🔮 Prediction Outcomes", callback_data=callback_for("reality:outcomes")),
+                InlineKeyboardButton(text="📊 Calibration", callback_data=callback_for("reality:calibration")),
+            ],
+            [InlineKeyboardButton(text="🎯 Accuracy by Category", callback_data=callback_for("reality:accuracy"))],
+            [InlineKeyboardButton(text="🔎 Details", callback_data=callback_for("reality:check:details"))],
+            *page_controls(back_to="intelligence:quality"),
+        ]
+    )
+
+
+def prediction_outcomes_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Refresh", callback_data=callback_for("reality:outcomes"))],
+            [InlineKeyboardButton(text="📊 Calibration", callback_data=callback_for("reality:calibration"))],
+            *page_controls(back_to="reality:check"),
+        ]
+    )
+
+
+def calibration_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Refresh", callback_data=callback_for("reality:calibration"))],
+            [InlineKeyboardButton(text="🎯 Accuracy by Category", callback_data=callback_for("reality:accuracy"))],
+            *page_controls(back_to="reality:check"),
+        ]
+    )
+
+
+def accuracy_by_category_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Refresh", callback_data=callback_for("reality:accuracy"))],
+            [InlineKeyboardButton(text="📊 Calibration", callback_data=callback_for("reality:calibration"))],
+            *page_controls(back_to="reality:check"),
         ]
     )
 

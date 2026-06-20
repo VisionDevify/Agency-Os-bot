@@ -41,6 +41,7 @@ def test_model_tables_are_registered() -> None:
         OpportunityResult,
         OpportunitySource,
         OutcomeMemory,
+        PredictionOutcome,
         Playbook,
         PlaybookRun,
         PostWatch,
@@ -108,6 +109,7 @@ def test_model_tables_are_registered() -> None:
         "playbook_runs",
         "playbooks",
         "post_watches",
+        "prediction_outcomes",
         "predictive_coo_predictions",
         "proxies",
         "proxy_health_check_results",
@@ -137,6 +139,7 @@ def test_model_tables_are_registered() -> None:
     assert EventLog.__tablename__ == "event_logs"
     assert DecisionMemory.__tablename__ == "decision_memory"
     assert DecisionQualityTrend.__tablename__ == "decision_quality_trends"
+    assert PredictionOutcome.__tablename__ == "prediction_outcomes"
     assert PredictiveCOOPrediction.__tablename__ == "predictive_coo_predictions"
     assert FrictionItem.__tablename__ == "friction_items"
     assert CallbackErrorLog.__tablename__ == "callback_error_logs"

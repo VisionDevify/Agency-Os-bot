@@ -249,6 +249,20 @@ Decision quality trends and Predictive COO:
 - `PREDICTIVE_COO_ENABLED` can disable prediction sections without breaking Decision Engine, COO Briefing, or Today.
 - If trend or prediction calculation fails, show unavailable, log safely, and keep current evidence-based briefing screens working.
 
+Reality calibration:
+
+- `PredictionOutcome` tracks whether a prediction is pending, proven correct, proven wrong, unresolved, expired, or not supported by enough evidence.
+- Default prediction outcome is `pending`; no prediction may be marked correct or wrong without later evidence.
+- `PredictionEvaluationEngine` compares predictions against later Recovery, Platform, Notification, Friction, ButtonIssue, Opportunity, and bot-status records.
+- Owner feedback can record perceived usefulness, but feedback alone does not prove correctness unless supporting evidence is attached.
+- Unsupported prediction types or failed evidence lookups become `not_enough_evidence`; they must not be treated as success.
+- `CalibrationEngine` measures confidence accuracy by confidence level, category, prediction type, and time window.
+- Calibration statuses are only `calibrated`, `overconfident`, `underconfident`, or `insufficient_data`.
+- Confidence adjustment may make future wording more conservative or more precise, but it must never downgrade verified severity, hide current critical issues, or alter production truth.
+- Recovery calibration example: restore-test-path predictions stay pending while backup is verified but full restore evidence is missing; they become correct only after later restore evidence confirms the blocker or after the restore path is addressed.
+- `REALITY_CALIBRATION_ENABLED` can hide Reality Check screens without breaking Prediction Preview, COO Briefing, Today, or the Decision Engine.
+- If evaluation or calibration fails, show Reality Check or Calibration unavailable, log safely, and keep current decisions visible.
+
 ## Compliance Rules
 
 Fortuna may observe, summarize, recommend, and route human-reviewed work.

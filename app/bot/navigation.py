@@ -303,7 +303,7 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         return ("manage_reports", "view_dashboard")
     if page.startswith("recommendation:"):
         return ("manage_reports", "view_dashboard")
-    if page.startswith("intelligence") or page.startswith("prediction:"):
+    if page.startswith("intelligence") or page.startswith("prediction:") or page.startswith("reality:"):
         return ("manage_reports", "view_dashboard")
     if page.startswith("playbook:"):
         return ("manage_reports", "view_dashboard")
@@ -1370,6 +1370,7 @@ def screen_for_page(
         or normalized.startswith("coo")
         or normalized.startswith("decision:")
         or normalized.startswith("prediction:")
+        or normalized.startswith("reality:")
         or normalized == "executive_mode"
         or normalized == "manager_queue"
         or normalized == "my_work"

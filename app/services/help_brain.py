@@ -339,6 +339,27 @@ HELP_KB_SEEDS: tuple[dict[str, str], ...] = (
         "content": "Predictive COO makes conservative, evidence-backed guesses about what may matter next. Predictions are not facts and never replace current verified status.",
         "related_route": "prediction:preview",
     },
+    {
+        "topic": "reality_check",
+        "title": "Reality Check",
+        "role_scope": "owner,admin,manager",
+        "content": "Reality Check compares predictions against later evidence. Fortuna can be wrong, and calibration exists so it can improve instead of sounding certain without proof.",
+        "related_route": "reality:check",
+    },
+    {
+        "topic": "prediction_outcomes",
+        "title": "Prediction Outcomes",
+        "role_scope": "owner,admin,manager",
+        "content": "Prediction outcomes stay pending until later evidence proves them correct, proves them wrong, or shows there is not enough evidence.",
+        "related_route": "reality:outcomes",
+    },
+    {
+        "topic": "confidence_calibration",
+        "title": "Confidence Calibration",
+        "role_scope": "owner,admin,manager",
+        "content": "Confidence Calibration checks whether low, medium, and high confidence predictions matched real outcomes. It can reduce future confidence wording when Fortuna is overconfident.",
+        "related_route": "reality:calibration",
+    },
 )
 
 
@@ -407,6 +428,20 @@ def detect_help_intent(question: str) -> str:
         return "trend_improving"
     if "predictive coo" in text or ("prediction" in text and "coo" in text):
         return "predictive_coo"
+    if "reality check" in text or "can fortuna be wrong" in text:
+        return "reality_check"
+    if "proven correct" in text:
+        return "prediction_proven_correct"
+    if "proven wrong" in text:
+        return "prediction_proven_wrong"
+    if "not enough evidence" in text:
+        return "prediction_not_enough_evidence"
+    if "prediction" in text and "pending" in text:
+        return "prediction_pending"
+    if "owner feedback" in text and "prove" in text:
+        return "owner_feedback_prediction_proof"
+    if "confidence calibration" in text or ("calibration" in text and "confidence" in text):
+        return "confidence_calibration"
     if "predictions facts" in text or ("are predictions" in text and "facts" in text):
         return "prediction_not_facts"
     if "restore testing" in text and ("likely next" in text or "prediction" in text):
@@ -784,6 +819,55 @@ def help_brain_answer(
             "Next button to press: Prediction Preview."
         )
         next_action = "prediction:preview" if _adminish(user) else "help"
+    elif intent == "reality_check":
+        answer = (
+            "Reality Check compares Fortuna's predictions against later evidence.\n\n"
+            "Why: Fortuna can be wrong. Reality Check exists so it can compare predictions against later evidence and improve.\n\n"
+            "Next button to press: Reality Check."
+        )
+        next_action = "reality:check" if _adminish(user) else "help"
+    elif intent == "prediction_proven_correct":
+        answer = (
+            "Proven correct means later evidence supported the prediction.\n\n"
+            "Why: Fortuna cannot mark a prediction correct just because it sounded useful or no one complained.\n\n"
+            "Next button to press: Prediction Outcomes."
+        )
+        next_action = "reality:outcomes" if _adminish(user) else "help"
+    elif intent == "prediction_proven_wrong":
+        answer = (
+            "Proven wrong means later evidence contradicted the prediction.\n\n"
+            "Why: wrong predictions stay visible in calibration so Fortuna can reduce overconfidence instead of hiding misses.\n\n"
+            "Next button to press: Prediction Outcomes."
+        )
+        next_action = "reality:outcomes" if _adminish(user) else "help"
+    elif intent == "prediction_not_enough_evidence":
+        answer = (
+            "Not enough evidence means Reality Check ran, but Fortuna could not prove or disprove the prediction.\n\n"
+            "Why: missing evidence should stay honest instead of becoming fake accuracy.\n\n"
+            "Next button to press: Reality Check."
+        )
+        next_action = "reality:check" if _adminish(user) else "help"
+    elif intent == "prediction_pending":
+        answer = (
+            "A pending prediction is still waiting for later evidence.\n\n"
+            "Why: ignored or unresolved predictions are not automatically wrong, and silence is not proof.\n\n"
+            "Next button to press: Prediction Outcomes."
+        )
+        next_action = "reality:outcomes" if _adminish(user) else "help"
+    elif intent == "owner_feedback_prediction_proof":
+        answer = (
+            "Owner feedback can say a prediction was helpful or looked wrong, but feedback alone does not prove correctness.\n\n"
+            "Why: proven correct needs supporting evidence, and proven wrong needs contradicting evidence.\n\n"
+            "Next button to press: Reality Check."
+        )
+        next_action = "reality:check" if _adminish(user) else "help"
+    elif intent == "confidence_calibration":
+        answer = (
+            "Confidence Calibration checks whether Fortuna's low, medium, and high confidence predictions matched real outcomes.\n\n"
+            "Why: if Fortuna is overconfident, future predictions should use more cautious wording until evidence improves.\n\n"
+            "Next button to press: Calibration."
+        )
+        next_action = "reality:calibration" if _adminish(user) else "help"
     elif intent == "prediction_not_facts":
         answer = (
             "No. Predictions are not facts.\n\n"

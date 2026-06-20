@@ -29,6 +29,7 @@ from app.services.persistence import storage_status
 from app.services.notifications import notification_routing_mode_summary, purpose_aliases
 from app.services.notification_intelligence import alert_health_summary
 from app.services.platform_connections import platform_connections_overview
+from app.services.reality_calibration import safe_reality_calibration_report
 from app.services.recovery import latest_recovery_job_summary, recovery_risk_assessment
 from app.services.shared_status import StatusCondition, compute_shared_status
 from app.services.system_truth import (
@@ -124,6 +125,7 @@ def production_observability_summary(session: Session) -> dict[str, object]:
     decision_quality = safe_decision_quality_report(session, decisions_for_quality)
     decision_trends = safe_decision_trend_report(session)
     predictive_coo = safe_predictive_coo_report(session, decisions=decisions_for_quality)
+    reality_calibration = safe_reality_calibration_report(session)
     decision_quality_meaningful = (
         not decision_quality.available
         or decision_quality.status in {"needs_attention", "critical"}
@@ -135,6 +137,12 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         or any(not prediction.can_wait and prediction.confidence in {"medium", "high"} for prediction in predictive_coo.predictions)
     )
     prediction_observability_status = "needs_review" if prediction_meaningful and predictive_coo.available else "healthy"
+    reality_meaningful = (
+        not reality_calibration.available
+        or reality_calibration.status in {"needs_review", "unavailable"}
+        or bool(reality_calibration.outcome_counts.get("proven_wrong"))
+    )
+    reality_observability_status = "needs_review" if reality_meaningful and reality_calibration.available else "healthy"
     owner_count = session.scalar(select(func.count(User.id)).where(User.is_owner.is_(True))) or 0
     role_count = session.scalar(select(func.count(Role.id))) or 0
     audit_count = session.scalar(select(func.count(AuditLog.id))) or 0
@@ -217,6 +225,13 @@ def production_observability_summary(session: Session) -> dict[str, object]:
                 1 if prediction_meaningful and not predictive_coo.available else 0,
                 "Open Prediction Preview." if prediction_meaningful else None,
             ),
+            StatusCondition(
+                "reality_calibration",
+                reality_observability_status,
+                "Reality Calibration checks prediction outcomes against evidence.",
+                1 if not reality_calibration.available else 0,
+                "Open Reality Check." if reality_meaningful else None,
+            ),
         ]
     )
     observability_issues = list(truth.current_issues)
@@ -240,6 +255,8 @@ def production_observability_summary(session: Session) -> dict[str, object]:
             observability_issues.append("Intelligence Quality: quality check unavailable.")
     if prediction_meaningful and not predictive_coo.available:
         observability_issues.append("Prediction Health: prediction checks are unavailable.")
+    if reality_meaningful and not reality_calibration.available:
+        observability_issues.append("Reality Calibration: calibration checks are unavailable.")
 
     return {
         "app_display_name": build_metadata["app_name"],
@@ -426,4 +443,12 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         "prediction_count": predictive_coo.quality.prediction_count,
         "prediction_confidence_accuracy": predictive_coo.quality.confidence_accuracy,
         "prediction_primary_title": predictive_coo.primary.prediction_title if predictive_coo.primary else "None",
+        "reality_calibration_available": reality_calibration.available,
+        "reality_calibration_enabled": reality_calibration.enabled,
+        "reality_calibration_status": reality_calibration.status,
+        "reality_calibration_meaningful": reality_meaningful,
+        "reality_calibration_pending_count": reality_calibration.outcome_counts.get("pending", 0),
+        "reality_calibration_correct_count": reality_calibration.outcome_counts.get("proven_correct", 0),
+        "reality_calibration_wrong_count": reality_calibration.outcome_counts.get("proven_wrong", 0),
+        "reality_calibration_next_action": reality_calibration.next_best_move,
     }
