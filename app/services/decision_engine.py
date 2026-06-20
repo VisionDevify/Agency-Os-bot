@@ -1,14 +1,18 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
+import re
 
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
+from app.models.button_issue import ButtonIssue
+from app.models.decision_memory import DecisionMemory
 from app.models.event_log import EventLog
 from app.models.opportunity import Opportunity
 from app.models.recommendation import Recommendation
+from app.models.recovery import BackupRun, RestoreTestRun
 from app.models.user import User
 from app.services.audit import sanitize_details
 from app.services.auth import audit_action
@@ -118,6 +122,7 @@ class CooBriefing:
     next_best_move: str
     decisions: tuple[Decision, ...]
     evidence_summary: tuple[str, ...]
+    learning_summary: tuple[str, ...] = ()
 
 
 def _now() -> datetime:
@@ -223,6 +228,396 @@ def _sort_decisions(decisions: list[Decision]) -> tuple[Decision, ...]:
     return tuple(sorted(decisions, key=lambda item: (-item.priority_rank, item.can_wait, item.title)))
 
 
+def decision_memory_key(decision: Decision) -> str:
+    """Stable key for the current evidence-backed decision shape."""
+    title = re.sub(r"[^a-z0-9]+", "-", decision.title.casefold()).strip("-")[:80] or "decision"
+    action = re.sub(r"[^a-z0-9:]+", "-", decision.action_page.casefold()).strip("-")[:80] or "none"
+    return f"{decision.category}:{title}:{action}"[:220]
+
+
+def _recommendation_id_from_sources(decision: Decision) -> int | None:
+    for source in decision.source_records:
+        if source.startswith("Recommendation:"):
+            raw_id = source.split(":", 1)[1]
+            if raw_id.isdigit():
+                return int(raw_id)
+    return None
+
+
+def _get_memory(session: Session, decision: Decision) -> DecisionMemory | None:
+    return session.scalar(select(DecisionMemory).where(DecisionMemory.decision_id == decision_memory_key(decision)).limit(1))
+
+
+def _memory_payload(decision: Decision) -> dict[str, object]:
+    return {
+        "title": decision.title,
+        "category": decision.category,
+        "severity": decision.severity,
+        "priority_rank": decision.priority_rank,
+        "confidence": decision.confidence,
+        "can_wait": decision.can_wait,
+        "next_best_move": decision.next_best_move,
+        "action_page": decision.action_page,
+        "details": sanitize_details(decision.details),
+    }
+
+
+def _sync_memory_from_decision(memory: DecisionMemory, decision: Decision) -> None:
+    memory.recommendation_id = _recommendation_id_from_sources(decision)
+    memory.category = decision.category
+    memory.severity = decision.severity if decision.severity in {"healthy", "needs_review", "needs_attention", "critical"} else "needs_review"
+    memory.priority_rank = decision.priority_rank
+    memory.confidence = decision.confidence if decision.confidence in CONFIDENCE_LEVELS else "medium"
+    memory.evidence_summary = decision.evidence_summary
+    memory.source_records = list(decision.source_records)
+    metadata = dict(memory.metadata_json or {})
+    metadata.update(_memory_payload(decision))
+    memory.metadata_json = sanitize_details(metadata)
+
+
+def get_or_create_decision_memory(
+    session: Session,
+    decision: Decision,
+    *,
+    initial_outcome: str = "shown",
+) -> DecisionMemory:
+    memory = _get_memory(session, decision)
+    if memory is None:
+        memory = DecisionMemory(
+            decision_id=decision_memory_key(decision),
+            recommendation_id=_recommendation_id_from_sources(decision),
+            category=decision.category,
+            severity=decision.severity if decision.severity in {"healthy", "needs_review", "needs_attention", "critical"} else "needs_review",
+            priority_rank=decision.priority_rank,
+            confidence=decision.confidence if decision.confidence in CONFIDENCE_LEVELS else "medium",
+            shown_at=_now(),
+            outcome=initial_outcome if initial_outcome in {"shown", "opened", "acted_on", "ignored", "resolved", "failed", "stale", "dismissed"} else "shown",
+            lifecycle_status="active",
+            usefulness_score=50,
+            evidence_summary=decision.evidence_summary,
+            source_records=list(decision.source_records),
+            metadata_json=_memory_payload(decision),
+        )
+        session.add(memory)
+        session.flush()
+    else:
+        _sync_memory_from_decision(memory, decision)
+    return memory
+
+
+def _adjust_score(score: int, delta: int) -> int:
+    return max(0, min(100, score + delta))
+
+
+def _memory_status_for_action(action: str) -> tuple[str, str]:
+    if action == "opened":
+        return "opened", "opened"
+    if action == "acted_on":
+        return "acted_on", "in_progress"
+    if action == "ignored":
+        return "ignored", "active"
+    if action == "dismissed":
+        return "dismissed", "dismissed"
+    if action == "resolved":
+        return "resolved", "resolved"
+    if action == "failed":
+        return "failed", "stale"
+    if action == "stale":
+        return "stale", "stale"
+    return "shown", "active"
+
+
+def _learning_outcome_for_action(action: str) -> str:
+    return {
+        "acted_on": "partial",
+        "resolved": "success",
+        "dismissed": "ignored",
+        "ignored": "ignored",
+        "opened": "partial",
+        "failed": "failure",
+        "stale": "unknown",
+        "shown": "unknown",
+        "feedback_recorded": "partial",
+    }.get(action, "unknown")
+
+
+def record_decision_memory_event(
+    session: Session,
+    *,
+    decision: Decision,
+    action: str,
+    actor: User | None = None,
+    owner_feedback: str | None = None,
+) -> EventLog:
+    """Record evidence-backed decision memory and emit standard decision events."""
+    feedback_action_map = {
+        "helpful": ("feedback_recorded", 12, "Marked helpful."),
+        "not_helpful": ("feedback_recorded", -12, "Marked not helpful."),
+        "remind_later": ("stale", -2, "Remind later."),
+        "learn_from_this": ("feedback_recorded", 6, "Learn from this."),
+    }
+    canonical_action = action if action in {
+        "shown",
+        "opened",
+        "acted_on",
+        "ignored",
+        "dismissed",
+        "resolved",
+        "failed",
+        "stale",
+    } else "shown"
+    usefulness_delta = 0
+    feedback_note = owner_feedback
+    event_name = canonical_action
+    if action in feedback_action_map:
+        event_name, usefulness_delta, default_note = feedback_action_map[action]
+        feedback_note = owner_feedback or default_note
+        canonical_action = "stale" if action == "remind_later" else "opened"
+
+    memory = get_or_create_decision_memory(session, decision, initial_outcome="shown")
+    now = _now()
+    if memory.shown_at is None:
+        memory.shown_at = now
+    if action == "shown" and memory.outcome not in {"dismissed", "resolved"}:
+        memory.outcome = "shown"
+        memory.lifecycle_status = "active"
+    elif action == "opened":
+        memory.opened_at = memory.opened_at or now
+        memory.outcome = "opened"
+        memory.lifecycle_status = "opened"
+        usefulness_delta += 2
+    elif action == "acted_on":
+        memory.acted_on_at = memory.acted_on_at or now
+        memory.outcome = "acted_on"
+        memory.lifecycle_status = "in_progress"
+        usefulness_delta += 10
+    elif action == "ignored":
+        memory.ignored_at = memory.ignored_at or now
+        memory.outcome = "ignored"
+        memory.lifecycle_status = "active"
+        usefulness_delta -= 3
+    elif action == "dismissed":
+        memory.ignored_at = memory.ignored_at or now
+        memory.outcome = "dismissed"
+        memory.lifecycle_status = "dismissed"
+        usefulness_delta -= 18
+    elif action == "resolved":
+        memory.resolved_at = memory.resolved_at or now
+        memory.outcome = "resolved"
+        memory.lifecycle_status = "resolved"
+        usefulness_delta += 20
+    elif action in {"failed", "stale"}:
+        memory.outcome = action
+        memory.lifecycle_status = "stale"
+        usefulness_delta -= 5 if action == "failed" else 2
+    elif action == "remind_later":
+        memory.outcome = "stale"
+        memory.lifecycle_status = "waiting_for_evidence"
+    elif action in {"helpful", "not_helpful", "learn_from_this"}:
+        if memory.lifecycle_status == "active":
+            memory.lifecycle_status = "opened"
+
+    memory.usefulness_score = _adjust_score(memory.usefulness_score or 50, usefulness_delta)
+    if feedback_note:
+        memory.owner_feedback = feedback_note
+    memory.metadata_json = sanitize_details({**(memory.metadata_json or {}), "last_action": action, "last_feedback": feedback_note})
+    session.add(memory)
+    session.flush()
+
+    event_type = f"decision.{event_name}"
+    event = emit_event(
+        session,
+        actor=actor,
+        event_name=event_type,
+        resource_type="decision",
+        resource_id=memory.decision_id,
+        payload={
+            "decision_id": memory.decision_id,
+            "category": decision.category,
+            "severity": decision.severity,
+            "priority_rank": decision.priority_rank,
+            "confidence": decision.confidence,
+            "evidence_summary": decision.evidence_summary,
+            "owner_feedback": feedback_note,
+        },
+    )
+    create_learning_event(
+        session,
+        actor=actor,
+        event_type=event_type,
+        source_type="system",
+        source_id=memory.decision_id,
+        entity_type="decision",
+        entity_id=memory.decision_id,
+        outcome=_learning_outcome_for_action(event_name),
+        severity="warning" if decision.severity in {"needs_attention", "critical"} else "info",
+        summary=f"Decision {event_name.replace('_', ' ')}: {decision.title}.",
+        details={
+            "category": decision.category,
+            "priority_rank": decision.priority_rank,
+            "confidence": decision.confidence,
+            "evidence": decision.evidence_summary,
+            "usefulness_score": memory.usefulness_score,
+        },
+        confidence_score={"high": 90, "medium": 70, "low": 45}.get(decision.confidence, 70),
+        update_memory=True,
+    )
+    return event
+
+
+def decision_memory_summary(session: Session) -> dict[str, object]:
+    memories = list(session.scalars(select(DecisionMemory)).all())
+    total = len(memories)
+    if not total:
+        return {
+            "total": 0,
+            "opened_rate": 0.0,
+            "acted_on_rate": 0.0,
+            "ignored_rate": 0.0,
+            "resolved_rate": 0.0,
+            "usefulness_score": 0,
+            "meaningful_lines": (),
+        }
+    opened = sum(1 for item in memories if item.opened_at is not None)
+    acted = sum(1 for item in memories if item.acted_on_at is not None or item.outcome == "acted_on")
+    ignored = sum(1 for item in memories if item.outcome in {"ignored", "dismissed"})
+    resolved = sum(1 for item in memories if item.resolved_at is not None or item.outcome == "resolved")
+    avg_usefulness = int(round(sum(item.usefulness_score or 0 for item in memories) / total))
+    lines: list[str] = []
+    recovery_acted = any(item.category == "recovery" and item.outcome in {"acted_on", "resolved"} for item in memories)
+    recovery_waiting = any(item.category == "recovery" and item.lifecycle_status == "waiting_for_evidence" for item in memories)
+    platform_quieted = any(
+        item.category == "platform_connection" and item.outcome in {"dismissed", "stale", "ignored"} for item in memories
+    )
+    if recovery_acted or recovery_waiting:
+        lines.append("Recovery recommendations were acted on and improved the evidence trail.")
+    if platform_quieted:
+        lines.append("Platform login items are being treated as final activation work.")
+    if any(item.severity == "critical" and item.lifecycle_status not in {"resolved", "dismissed"} for item in memories):
+        lines.append("Critical safety recommendations stay visible until resolved.")
+    return {
+        "total": total,
+        "opened_rate": opened / total,
+        "acted_on_rate": acted / total,
+        "ignored_rate": ignored / total,
+        "resolved_rate": resolved / total,
+        "usefulness_score": avg_usefulness,
+        "meaningful_lines": tuple(lines[:3]),
+    }
+
+
+def _apply_memory_adjustments(session: Session, decisions: list[Decision]) -> list[Decision]:
+    adjusted: list[Decision] = []
+    for decision in decisions:
+        memory = _get_memory(session, decision)
+        if memory is None:
+            adjusted.append(decision)
+            continue
+        priority = decision.priority_rank
+        can_wait = decision.can_wait
+        details = dict(decision.details)
+        details["memory_outcome"] = memory.outcome
+        details["memory_lifecycle"] = memory.lifecycle_status
+        details["usefulness_score"] = memory.usefulness_score
+        if decision.severity == "critical":
+            adjusted.append(replace(decision, details=details))
+            continue
+        if memory.lifecycle_status == "resolved":
+            continue
+        if memory.lifecycle_status == "dismissed" and decision.category == "platform_connection":
+            priority = max(1, priority - 18)
+            can_wait = True
+        elif memory.lifecycle_status == "waiting_for_evidence" and decision.category == "platform_connection":
+            priority = max(1, priority - 10)
+            can_wait = True
+        elif memory.outcome == "resolved":
+            continue
+        elif memory.outcome in {"dismissed", "ignored"} and memory.usefulness_score < 35:
+            priority = max(1, priority - 8)
+        elif memory.outcome in {"acted_on", "resolved"} and memory.usefulness_score >= 60:
+            priority = min(100, priority + 5)
+        adjusted.append(replace(decision, priority_rank=priority, can_wait=can_wait, details=details))
+    return adjusted
+
+
+def apply_decision_resolvers(session: Session) -> list[DecisionMemory]:
+    """Update memory only when current evidence proves an outcome changed."""
+    updated: list[DecisionMemory] = []
+    memories = list(
+        session.scalars(
+            select(DecisionMemory).where(DecisionMemory.lifecycle_status.notin_(("resolved", "dismissed"))).limit(100)
+        ).all()
+    )
+    if not memories:
+        return updated
+    recovery = recovery_risk_assessment(session)
+    bot = bot_instance_diagnostics(session)
+    alert_health = alert_health_summary(session)
+    button_health = button_health_summary(session)
+    latest_backup = session.scalar(
+        select(BackupRun)
+        .where(BackupRun.status.in_(("success", "succeeded")), BackupRun.artifact_verified.is_(True))
+        .order_by(desc(BackupRun.finished_at), desc(BackupRun.id))
+        .limit(1)
+    )
+    latest_restore = session.scalar(
+        select(RestoreTestRun)
+        .where(RestoreTestRun.status.in_(("verified_only", "verified", "passed", "succeeded")))
+        .order_by(desc(RestoreTestRun.finished_at), desc(RestoreTestRun.id))
+        .limit(1)
+    )
+    open_button_issue_count = int(session.scalar(select(func.count(ButtonIssue.id)).where(ButtonIssue.status == "open")) or 0)
+    for memory in memories:
+        now = _now()
+        if memory.category == "recovery":
+            if recovery.status == "healthy":
+                memory.outcome = "resolved"
+                memory.lifecycle_status = "resolved"
+                memory.resolved_at = memory.resolved_at or now
+                memory.usefulness_score = _adjust_score(memory.usefulness_score, 20)
+                memory.evidence_summary = "Recovery reached healthy status from verified backup and restore evidence."
+                updated.append(memory)
+            elif latest_backup is not None and latest_restore is not None:
+                memory.outcome = "acted_on"
+                memory.lifecycle_status = "waiting_for_evidence" if latest_restore.status == "verified_only" else "in_progress"
+                memory.acted_on_at = memory.acted_on_at or now
+                memory.usefulness_score = _adjust_score(memory.usefulness_score, 12)
+                memory.evidence_summary = "Backup was verified; restore validation is not fully passed yet."
+                updated.append(memory)
+        elif memory.category == "telegram_bot":
+            if not bot.get("polling_conflict_active") and bot.get("risk") != "critical":
+                memory.outcome = "resolved"
+                memory.lifecycle_status = "resolved"
+                memory.resolved_at = memory.resolved_at or now
+                memory.usefulness_score = _adjust_score(memory.usefulness_score, 20)
+                memory.evidence_summary = "Telegram polling conflict is not active and bot diagnostics are not critical."
+                updated.append(memory)
+        elif memory.category == "notification":
+            if alert_health.status == "healthy":
+                memory.outcome = "resolved"
+                memory.lifecycle_status = "resolved"
+                memory.resolved_at = memory.resolved_at or now
+                memory.usefulness_score = _adjust_score(memory.usefulness_score, 15)
+                memory.evidence_summary = "Alert health is healthy from current notification evidence."
+                updated.append(memory)
+        elif memory.category in {"navigation", "friction"}:
+            if button_health.overall_status == "healthy" and open_button_issue_count == 0:
+                memory.outcome = "resolved"
+                memory.lifecycle_status = "resolved"
+                memory.resolved_at = memory.resolved_at or now
+                memory.usefulness_score = _adjust_score(memory.usefulness_score, 15)
+                memory.evidence_summary = "Button Health has no active navigation or UX issues."
+                updated.append(memory)
+        elif memory.category == "platform_connection":
+            if memory.lifecycle_status != "dismissed":
+                memory.lifecycle_status = "waiting_for_evidence"
+                memory.metadata_json = sanitize_details({**(memory.metadata_json or {}), "can_wait": True})
+                updated.append(memory)
+    if updated:
+        session.flush()
+    return updated
+
+
 def generate_decisions(session: Session, *, actor: User | None = None) -> tuple[Decision, ...]:
     """Convert current evidence into ranked owner-facing decisions.
 
@@ -230,6 +625,7 @@ def generate_decisions(session: Session, *, actor: User | None = None) -> tuple[
     health model. Every returned decision must include evidence and source records.
     """
 
+    apply_decision_resolvers(session)
     current_time = _now()
     decisions: list[Decision] = []
 
@@ -490,7 +886,7 @@ def generate_decisions(session: Session, *, actor: User | None = None) -> tuple[
             )
         )
 
-    return _sort_decisions([decision for decision in decisions if decision is not None])
+    return _sort_decisions(_apply_memory_adjustments(session, [decision for decision in decisions if decision is not None]))
 
 
 def top_decision(session: Session, *, actor: User | None = None) -> Decision | None:
@@ -540,6 +936,7 @@ def generate_coo_briefing(session: Session, *, actor: User | None = None) -> Coo
             next_best_move=fallback.next_best_move,
             decisions=(fallback,),
             evidence_summary=(evidence,),
+            learning_summary=(),
         )
     active = tuple(decision for decision in decisions if not decision.can_wait)
     can_wait = tuple(decision for decision in decisions if decision.can_wait)
@@ -553,6 +950,8 @@ def generate_coo_briefing(session: Session, *, actor: User | None = None) -> Coo
         "Fortuna checked systems, recovery, notifications, platforms, and recent activity.",
         "Low-value setup noise was moved into Details.",
     )
+    learning = decision_memory_summary(session)
+    learning_lines = tuple(learning.get("meaningful_lines") or ())
     briefing = CooBriefing(
         generated_at=_now(),
         overall_status=status,
@@ -570,8 +969,11 @@ def generate_coo_briefing(session: Session, *, actor: User | None = None) -> Coo
         next_best_move=top.next_best_move if top else "Nothing urgent. Keep operating from Today.",
         decisions=decisions,
         evidence_summary=tuple(decision.evidence_summary for decision in decisions[:5]),
+        learning_summary=learning_lines,
     )
     if actor is not None:
+        for decision in decisions[:5]:
+            record_decision_memory_event(session, decision=decision, action="shown", actor=actor)
         audit_action(
             session,
             actor=actor,
@@ -628,46 +1030,4 @@ def record_decision_interaction(
     action: str,
     actor: User | None = None,
 ) -> EventLog:
-    normalized = action if action in {"shown", "opened", "ignored", "acted_on", "resolved"} else "shown"
-    event = emit_event(
-        session,
-        actor=actor,
-        event_name=f"decision.{normalized}",
-        resource_type="decision",
-        resource_id=decision.category,
-        payload={
-            "title": decision.title,
-            "category": decision.category,
-            "severity": decision.severity,
-            "priority_rank": decision.priority_rank,
-            "confidence": decision.confidence,
-            "evidence": decision.evidence_summary,
-        },
-    )
-    outcome = {
-        "acted_on": "success",
-        "resolved": "success",
-        "ignored": "ignored",
-        "opened": "partial",
-        "shown": "unknown",
-    }[normalized]
-    create_learning_event(
-        session,
-        actor=actor,
-        event_type=f"decision.{normalized}",
-        source_type="system",
-        source_id=decision.category,
-        entity_type="decision",
-        entity_id=decision.category,
-        outcome=outcome,
-        severity="warning" if decision.severity in {"needs_attention", "critical"} else "info",
-        summary=f"Decision {normalized.replace('_', ' ')}: {decision.title}.",
-        details={
-            "priority_rank": decision.priority_rank,
-            "confidence": decision.confidence,
-            "evidence": decision.evidence_summary,
-        },
-        confidence_score={"high": 90, "medium": 70, "low": 45}.get(decision.confidence, 70),
-        update_memory=True,
-    )
-    return event
+    return record_decision_memory_event(session, decision=decision, action=action, actor=actor)

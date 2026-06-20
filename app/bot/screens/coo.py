@@ -1,9 +1,14 @@
 from .formatting import *
+from app.models.decision_memory import DecisionMemory
 from app.services.decision_engine import (
     Decision,
+    decision_memory_key,
+    decision_memory_summary,
     generate_coo_briefing,
     generate_decisions,
+    get_or_create_decision_memory,
     record_decision_interaction,
+    record_decision_memory_event,
     top_decision,
 )
 
@@ -36,6 +41,19 @@ def _decision_summary(decision: Decision) -> list[str]:
         "Next:",
         decision.next_best_move,
     ]
+
+
+def _memory_label(memory: DecisionMemory | None) -> str:
+    if memory is None:
+        return "No owner feedback recorded yet."
+    label = (memory.lifecycle_status or memory.outcome or "shown").replace("_", " ").title()
+    return f"{label} · usefulness {memory.usefulness_score}/100"
+
+
+def _top_memory(session: Session, decision: Decision | None) -> DecisionMemory | None:
+    if decision is None:
+        return None
+    return session.scalar(select(DecisionMemory).where(DecisionMemory.decision_id == decision_memory_key(decision)).limit(1))
 
 def render_coo_dashboard_page(session: Session, user: User | None = None) -> Screen:
     priorities = top_priorities(session, actor=user, limit=5)
@@ -222,6 +240,9 @@ def render_coo_briefing_page(session: Session, user: User | None = None, *, deta
         lines.extend(f"• {decision.title}" for decision in briefing.can_wait[:3])
     else:
         lines.append("• Nothing optional is competing for attention.")
+    if briefing.learning_summary:
+        lines.extend(["", "What Fortuna Learned"])
+        lines.extend(f"- {item}" for item in briefing.learning_summary[:2])
     lines.extend(
         [
             "",
@@ -250,12 +271,18 @@ def render_decision_top_priority_page(session: Session, user: User | None = None
         ]
         return Screen("\n".join(lines), decision_top_priority_menu("today_priorities"))
     record_decision_interaction(session, decision=decision, action="opened", actor=user)
-    lines = ["🎯 Top Priority", "", *_decision_summary(decision)]
+    memory = _top_memory(session, decision)
+    lines = ["🎯 Top Priority", "", *_decision_summary(decision), "", "Memory:", _memory_label(memory)]
     return Screen("\n".join(lines), decision_top_priority_menu(decision.action_page))
 
 
 def render_decision_details_page(session: Session, user: User | None = None) -> Screen:
     decisions = generate_decisions(session, actor=user)
+    top = next((decision for decision in decisions if not decision.can_wait), decisions[0] if decisions else None)
+    memory = None
+    if top is not None:
+        record_decision_interaction(session, decision=top, action="opened", actor=user)
+        memory = get_or_create_decision_memory(session, top)
     lines = [
         "🔎 Decision Details",
         "",
@@ -264,6 +291,32 @@ def render_decision_details_page(session: Session, user: User | None = None) -> 
     if not decisions:
         lines.append("")
         lines.append("Not enough evidence yet.")
+    elif top is not None:
+        lines.extend(
+            [
+                "",
+                "Recommendation:",
+                top.title,
+                "",
+                "Why it matters:",
+                top.risk,
+                "",
+                "Impact:",
+                top.impact,
+                "",
+                "Confidence:",
+                top.confidence.title(),
+                "",
+                "Evidence:",
+                top.evidence_summary,
+                "",
+                "Memory:",
+                _memory_label(memory),
+                "",
+                "Next Action:",
+                top.next_best_move,
+            ]
+        )
     for index, decision in enumerate(decisions[:8], start=1):
         lines.extend(
             [
@@ -277,6 +330,102 @@ def render_decision_details_page(session: Session, user: User | None = None) -> 
             ]
         )
     return Screen("\n".join(lines), decision_details_menu())
+
+
+def render_decision_feedback_page(session: Session, action: str, user: User | None = None) -> Screen:
+    decision = top_decision(session, actor=user)
+    if decision is None:
+        lines = [
+            "🧠 Decision Feedback",
+            "",
+            "There is no active decision to update right now.",
+            "",
+            "Next:",
+            "Open COO Briefing when you want a fresh priority check.",
+        ]
+        return Screen("\n".join(lines), decision_details_menu())
+    action_map = {
+        "helpful": ("Helpful", "Fortuna will trust similar recommendations a little more when the evidence matches."),
+        "not_helpful": ("Not Helpful", "Fortuna will lower similar low-risk recommendations unless fresh evidence raises them again."),
+        "remind_later": ("Remind Later", "Fortuna will keep the evidence, but avoid pushing this unless it becomes more urgent."),
+        "dismissed": ("Dismissed", "Fortuna will hide this unless severity increases or new evidence appears."),
+        "learn_from_this": ("Learn From This", "Fortuna recorded that this decision is worth learning from."),
+    }
+    label, note = action_map.get(action, ("Recorded", "Fortuna recorded your feedback."))
+    record_decision_memory_event(session, decision=decision, action=action, actor=user, owner_feedback=label)
+    memory = _top_memory(session, decision)
+    lines = [
+        "🧠 Decision Feedback",
+        "",
+        label,
+        "",
+        "Decision:",
+        decision.title,
+        "",
+        "What changed:",
+        note,
+        "",
+        "Memory:",
+        _memory_label(memory),
+        "",
+        "Next:",
+        "Open Decision Memory to review what Fortuna has learned.",
+    ]
+    return Screen("\n".join(lines), decision_details_menu())
+
+
+def render_decision_memory_page(
+    session: Session,
+    user: User | None = None,
+    *,
+    status_filter: str | None = None,
+    details: bool = False,
+) -> Screen:
+    summary = decision_memory_summary(session)
+    query = select(DecisionMemory).order_by(desc(DecisionMemory.updated_at), desc(DecisionMemory.id)).limit(12)
+    if status_filter == "active":
+        query = select(DecisionMemory).where(DecisionMemory.lifecycle_status.in_(("active", "opened", "in_progress"))).order_by(desc(DecisionMemory.updated_at), desc(DecisionMemory.id)).limit(12)
+    elif status_filter == "resolved":
+        query = select(DecisionMemory).where(DecisionMemory.lifecycle_status == "resolved").order_by(desc(DecisionMemory.updated_at), desc(DecisionMemory.id)).limit(12)
+    elif status_filter == "waiting":
+        query = select(DecisionMemory).where(DecisionMemory.lifecycle_status == "waiting_for_evidence").order_by(desc(DecisionMemory.updated_at), desc(DecisionMemory.id)).limit(12)
+    elif status_filter == "dismissed":
+        query = select(DecisionMemory).where(DecisionMemory.lifecycle_status == "dismissed").order_by(desc(DecisionMemory.updated_at), desc(DecisionMemory.id)).limit(12)
+    memories = list(session.scalars(query).all())
+    lines = [
+        "🧠 Decision Memory",
+        "",
+        "Status:",
+        "Fortuna is learning from your actions.",
+        "",
+        "What Fortuna noticed:",
+    ]
+    meaningful = tuple(summary.get("meaningful_lines") or ())
+    if meaningful:
+        lines.extend(f"- {item}" for item in meaningful)
+    else:
+        lines.append("- Not enough decision history yet.")
+    lines.extend(
+        [
+            "",
+            "Learning Signals:",
+            f"Opened rate: {int(float(summary.get('opened_rate') or 0) * 100)}%",
+            f"Acted-on rate: {int(float(summary.get('acted_on_rate') or 0) * 100)}%",
+            f"Resolved rate: {int(float(summary.get('resolved_rate') or 0) * 100)}%",
+            f"Usefulness score: {summary.get('usefulness_score') or 0}/100",
+            "",
+            "Recent Memory:",
+        ]
+    )
+    if not memories:
+        lines.append("- No matching decision memory yet.")
+    for memory in memories[:6]:
+        title = str((memory.metadata_json or {}).get("title") or memory.category.replace("_", " ").title())
+        lines.append(f"- {title}: {(memory.lifecycle_status or memory.outcome).replace('_', ' ')}")
+        if details:
+            lines.append(f"  Evidence: {memory.evidence_summary}")
+            lines.append(f"  Feedback: {memory.owner_feedback or 'None'}")
+    return Screen("\n".join(lines), decision_memory_menu())
 
 def render_load_balancer_page(session: Session) -> Screen:
     load = team_load_balancer(session)

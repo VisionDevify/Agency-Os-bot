@@ -428,6 +428,9 @@ def render_today_priorities_page(session: Session, user: User | None = None) -> 
         lines.extend(f"- {decision.title}" for decision in briefing.can_wait[:3])
     else:
         lines.append("- No optional setup item is competing for attention.")
+    if briefing.learning_summary:
+        lines.extend(["", "What Fortuna Learned:"])
+        lines.extend(f"- {item}" for item in briefing.learning_summary[:2])
     lines.extend(["", "Top 5 Actions:"])
     if briefing.decisions:
         for index, decision in enumerate(briefing.decisions[:5], start=1):

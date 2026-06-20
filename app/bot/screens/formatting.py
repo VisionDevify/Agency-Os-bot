@@ -32,6 +32,7 @@ from app.bot.menu import (
     coo_briefing_menu,
     coo_dashboard_menu,
     decision_details_menu,
+    decision_memory_menu,
     decision_top_priority_menu,
     creator_watch_detail_menu,
     creator_watch_menu,

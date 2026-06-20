@@ -658,6 +658,14 @@ def render_production_observability_page(
             )
         if recovery_alerts:
             recovery_lines.insert(2, f"Alert: {recovery_alerts[0]}")
+        if summary.get("decision_learning_lines"):
+            recovery_lines.extend(
+                [
+                    "",
+                    "Decision Learning:",
+                    *[f"- {line}" for line in summary["decision_learning_lines"][:2]],
+                ]
+            )
         summary_line = (
             "Fortuna checked this. Operations are running, but recovery still needs setup."
             if summary["recovery_status"] != "healthy" and operations_ok
@@ -833,6 +841,14 @@ def render_production_observability_page(
         f"Failed Attempts: {summary['alert_health_failed_attempts']}",
         f"Stale Routes: {summary['alert_health_stale_route_count']}",
         f"Next Action: {summary['alert_health_next_action']}",
+        "",
+        "Decision Learning:",
+        f"Total Memories: {summary['decision_learning_total']}",
+        f"Opened Rate: {int(float(summary['decision_learning_opened_rate']) * 100)}%",
+        f"Acted-On Rate: {int(float(summary['decision_learning_acted_on_rate']) * 100)}%",
+        f"Resolved Rate: {int(float(summary['decision_learning_resolved_rate']) * 100)}%",
+        f"Usefulness Score: {summary['decision_learning_usefulness_score']}/100",
+        *[f"- {line}" for line in summary["decision_learning_lines"]],
         "",
         "Logs:",
         summary["railway_note"],

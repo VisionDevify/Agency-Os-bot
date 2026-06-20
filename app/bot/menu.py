@@ -370,6 +370,7 @@ def coo_briefing_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="🔔 Notifications", callback_data=callback_for("platforms:notifications")),
                 InlineKeyboardButton(text="🔎 Details", callback_data=callback_for("coo:briefing:details")),
             ],
+            [InlineKeyboardButton(text="🧠 Decision Memory", callback_data=callback_for("decision:memory"))],
             *page_controls(back_to="owner_advanced"),
         ]
     )
@@ -380,6 +381,18 @@ def decision_top_priority_menu(action_page: str | None = None) -> InlineKeyboard
     if action_page:
         rows.append([InlineKeyboardButton(text="✨ Do This Next", callback_data=callback_for(action_page))])
     rows.append([InlineKeyboardButton(text="🔎 Decision Details", callback_data=callback_for("decision:details"))])
+    rows.append(
+        [
+            InlineKeyboardButton(text="✅ Helpful", callback_data=callback_for("decision:feedback:helpful")),
+            InlineKeyboardButton(text="👎 Not Helpful", callback_data=callback_for("decision:feedback:not_helpful")),
+        ]
+    )
+    rows.append(
+        [
+            InlineKeyboardButton(text="🕒 Remind Later", callback_data=callback_for("decision:feedback:remind_later")),
+            InlineKeyboardButton(text="❌ Dismiss", callback_data=callback_for("decision:feedback:dismissed")),
+        ]
+    )
     rows.append([InlineKeyboardButton(text="👑 COO Briefing", callback_data=callback_for("coo:briefing"))])
     rows.extend(page_controls(back_to="coo:briefing"))
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -388,8 +401,35 @@ def decision_top_priority_menu(action_page: str | None = None) -> InlineKeyboard
 def decision_details_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Helpful", callback_data=callback_for("decision:feedback:helpful")),
+                InlineKeyboardButton(text="👎 Not Helpful", callback_data=callback_for("decision:feedback:not_helpful")),
+            ],
+            [
+                InlineKeyboardButton(text="🕒 Remind Later", callback_data=callback_for("decision:feedback:remind_later")),
+                InlineKeyboardButton(text="❌ Dismiss", callback_data=callback_for("decision:feedback:dismissed")),
+            ],
+            [InlineKeyboardButton(text="🧠 Learn From This", callback_data=callback_for("decision:feedback:learn_from_this"))],
+            [InlineKeyboardButton(text="🧠 Decision Memory", callback_data=callback_for("decision:memory"))],
             [InlineKeyboardButton(text="🔄 Refresh", callback_data=callback_for("coo:briefing"))],
             [InlineKeyboardButton(text="🎯 Top Priority", callback_data=callback_for("decision:top"))],
+            *page_controls(back_to="coo:briefing"),
+        ]
+    )
+
+
+def decision_memory_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🎯 Active Decisions", callback_data=callback_for("decision:memory:active")),
+                InlineKeyboardButton(text="✅ Resolved", callback_data=callback_for("decision:memory:resolved")),
+            ],
+            [
+                InlineKeyboardButton(text="🕒 Waiting", callback_data=callback_for("decision:memory:waiting")),
+                InlineKeyboardButton(text="❌ Dismissed", callback_data=callback_for("decision:memory:dismissed")),
+            ],
+            [InlineKeyboardButton(text="🔎 Details", callback_data=callback_for("decision:memory:details"))],
             *page_controls(back_to="coo:briefing"),
         ]
     )

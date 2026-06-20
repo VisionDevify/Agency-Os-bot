@@ -106,6 +106,15 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_decision_top_priority_page(session, user)
     if page == "decision:details" and session is not None:
         return render_decision_details_page(session, user)
+    if page.startswith("decision:feedback:") and session is not None:
+        return render_decision_feedback_page(session, page.split(":")[-1], user)
+    if page == "decision:memory" and session is not None:
+        return render_decision_memory_page(session, user)
+    if page.startswith("decision:memory:") and session is not None:
+        suffix = page.split(":")[-1]
+        if suffix == "details":
+            return render_decision_memory_page(session, user, details=True)
+        return render_decision_memory_page(session, user, status_filter=suffix)
     if page == "coo:load" and session is not None:
         return render_load_balancer_page(session)
     if page == "executive_mode" and session is not None:

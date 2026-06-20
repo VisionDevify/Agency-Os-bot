@@ -19,6 +19,7 @@ from app.models.user import User
 from app.services.build_metadata import safe_build_metadata, safe_metadata_value
 from app.services.button_health import button_health_summary
 from app.services.chat_cleanup import chat_cleanup_metrics
+from app.services.decision_engine import decision_memory_summary
 from app.services.help_brain import help_questions_today, notification_pilot_status, proxy_pilot_status
 from app.services.heartbeats import list_heartbeats, system_status_summary
 from app.services.bot_instances import bot_instance_diagnostics
@@ -116,6 +117,7 @@ def production_observability_summary(session: Session) -> dict[str, object]:
     cleanup = chat_cleanup_metrics(session)
     platform_overview = platform_connections_overview(session)
     alert_health = alert_health_summary(session)
+    decision_learning = decision_memory_summary(session)
     owner_count = session.scalar(select(func.count(User.id)).where(User.is_owner.is_(True))) or 0
     role_count = session.scalar(select(func.count(Role.id))) or 0
     audit_count = session.scalar(select(func.count(AuditLog.id))) or 0
@@ -346,4 +348,10 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         "alert_health_failed_attempts": alert_health.failed_attempts,
         "alert_health_stale_route_count": alert_health.stale_route_count,
         "alert_health_next_action": alert_health.next_action,
+        "decision_learning_total": decision_learning["total"],
+        "decision_learning_opened_rate": decision_learning["opened_rate"],
+        "decision_learning_acted_on_rate": decision_learning["acted_on_rate"],
+        "decision_learning_resolved_rate": decision_learning["resolved_rate"],
+        "decision_learning_usefulness_score": decision_learning["usefulness_score"],
+        "decision_learning_lines": list(decision_learning["meaningful_lines"]),
     }

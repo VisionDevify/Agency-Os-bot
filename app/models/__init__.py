@@ -14,6 +14,7 @@ from app.models.automation import (
 from app.models.autonomous_operations import FollowUp, OperationsAction, OperationsWorkflow
 from app.models.core import Automation, Report
 from app.models.coo import PriorityItem
+from app.models.decision_memory import DecisionMemory
 from app.models.event_log import EventLog
 from app.models.friction import FrictionItem
 from app.models.help import HelpKnowledgeBase, HelpQuestionLog, UISelfTestRun
@@ -99,6 +100,7 @@ __all__ = [
     "DailyAutopilotSetting",
     "DailyBriefing",
     "EventLog",
+    "DecisionMemory",
     "ExecutiveInsight",
     "FirstDayChecklist",
     "FollowUp",

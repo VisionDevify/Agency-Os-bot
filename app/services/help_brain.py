@@ -290,6 +290,20 @@ HELP_KB_SEEDS: tuple[dict[str, str], ...] = (
         "content": "Can Wait means the item is prepared or useful later, but it should not distract from the current top priority.",
         "related_route": "coo:briefing",
     },
+    {
+        "topic": "decision_memory",
+        "title": "Decision Memory",
+        "role_scope": "owner,admin,manager",
+        "content": "Decision Memory records which recommendations were shown, opened, acted on, dismissed, and resolved. It learns from evidence and owner feedback without hiding critical safety issues.",
+        "related_route": "decision:memory",
+    },
+    {
+        "topic": "decision_feedback",
+        "title": "Decision Feedback",
+        "role_scope": "owner,admin,manager",
+        "content": "Helpful, Not Helpful, Remind Later, and Dismiss adjust future ranking gradually. They do not automatically resolve the underlying issue.",
+        "related_route": "decision:details",
+    },
 )
 
 
@@ -354,6 +368,10 @@ def detect_help_intent(question: str) -> str:
         return "decision_can_wait"
     if "learn" in text and "decision" in text:
         return "decision_learning"
+    if "decision memory" in text or ("memory" in text and "recommendation" in text):
+        return "decision_memory"
+    if "helpful" in text or "not helpful" in text or "dismiss" in text or "remind later" in text:
+        return "decision_feedback"
     if "act automatically" in text or ("fortuna" in text and "automatically" in text and "decision" in text):
         return "decision_human_approval"
     if "platform connection" in text or "platform connections" in text:
@@ -648,6 +666,20 @@ def help_brain_answer(
             "Next button to press: COO Briefing."
         )
         next_action = "coo:briefing" if _adminish(user) else "help"
+    elif intent == "decision_memory":
+        answer = (
+            "Decision Memory shows what Fortuna learned after recommendations were shown.\n\n"
+            "Why: it separates shown, opened, acted on, dismissed, waiting, and resolved decisions so future briefings get quieter and smarter.\n\n"
+            "Next button to press: Decision Memory."
+        )
+        next_action = "decision:memory" if _adminish(user) else "help"
+    elif intent == "decision_feedback":
+        answer = (
+            "Helpful, Not Helpful, Remind Later, and Dismiss are feedback signals.\n\n"
+            "Why: they tune low-risk recommendations gradually, but they never hide critical safety issues without evidence that the issue was resolved.\n\n"
+            "Next button to press: Decision Details."
+        )
+        next_action = "decision:details" if _adminish(user) else "help"
     elif intent == "decision_human_approval":
         answer = (
             "No. Fortuna recommends decisions, but humans still decide and execute.\n\n"

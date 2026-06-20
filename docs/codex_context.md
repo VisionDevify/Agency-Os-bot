@@ -203,7 +203,13 @@ Evidence and confidence:
 
 Decision learning:
 
-- Track decision shown, opened, ignored, acted on, and resolved.
+- Track decision shown, opened, ignored, dismissed, acted on, failed, stale, and resolved in `DecisionMemory`.
+- Outcomes may only move forward when an event or resolver evidence supports the change.
+- Ignored does not mean bad; it means no action was observed.
+- Resolved requires proof from the relevant system record or health check.
+- Helpful, Not Helpful, Remind Later, Dismiss, and Learn From This tune future low-risk ranking gradually.
+- Critical safety issues cannot be hidden only because they were ignored or dismissed.
+- Platform login recommendations can move to Can Wait during build/final activation planning.
 - Learning hooks must not auto-execute business actions.
 - Fortuna recommends; humans decide.
 

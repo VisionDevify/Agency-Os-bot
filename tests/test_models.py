@@ -23,6 +23,7 @@ def test_model_tables_are_registered() -> None:
         ActivationBlockerDecision,
         DailyBriefing,
         DailyAutopilotSetting,
+        DecisionMemory,
         EventLog,
         ExecutiveInsight,
         FrictionItem,
@@ -82,6 +83,7 @@ def test_model_tables_are_registered() -> None:
         "creator_watches",
         "daily_briefings",
         "daily_autopilot_settings",
+        "decision_memory",
         "event_logs",
         "executive_insights",
         "friction_items",
@@ -129,6 +131,7 @@ def test_model_tables_are_registered() -> None:
     assert AuditLog.__tablename__ == "audit_logs"
     assert "status" in AuditLog.__table__.columns
     assert EventLog.__tablename__ == "event_logs"
+    assert DecisionMemory.__tablename__ == "decision_memory"
     assert FrictionItem.__tablename__ == "friction_items"
     assert CallbackErrorLog.__tablename__ == "callback_error_logs"
     assert DailyBriefing.__tablename__ == "daily_briefings"
