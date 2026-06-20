@@ -7,6 +7,7 @@ import re
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.models.button_issue import ButtonIssue
 from app.models.decision_memory import DecisionMemory
 from app.models.event_log import EventLog
@@ -540,6 +541,60 @@ def _apply_memory_adjustments(session: Session, decisions: list[Decision]) -> li
     return adjusted
 
 
+def _apply_quality_adjustments(session: Session, decisions: tuple[Decision, ...], *, actor: User | None = None) -> tuple[Decision, ...]:
+    """Run optional quality scoring without risking the core priority path."""
+    if not settings.decision_quality_enabled:
+        return decisions
+    try:
+        from app.services.decision_quality import adjust_decisions_with_quality
+
+        return adjust_decisions_with_quality(session, decisions, actor=actor)
+    except Exception as exc:
+        try:
+            from app.services.decision_quality import log_quality_failure
+
+            log_quality_failure(session, actor=actor, error=exc)
+        except Exception:
+            try:
+                emit_event(
+                    session,
+                    actor=actor,
+                    event_name="decision_quality.fallback_activated",
+                    resource_type="decision_quality",
+                    status="warning",
+                    payload={"error": str(exc)[:160]},
+                )
+            except Exception:
+                pass
+        return decisions
+
+
+def _safe_decision_memory_summary(session: Session, *, actor: User | None = None) -> dict[str, object]:
+    try:
+        return decision_memory_summary(session)
+    except Exception as exc:
+        try:
+            emit_event(
+                session,
+                actor=actor,
+                event_name="decision_memory.lookup_unavailable",
+                resource_type="decision_memory",
+                status="warning",
+                payload={"error": str(exc)[:160]},
+            )
+        except Exception:
+            pass
+        return {
+            "total": 0,
+            "opened_rate": 0.0,
+            "acted_on_rate": 0.0,
+            "ignored_rate": 0.0,
+            "resolved_rate": 0.0,
+            "usefulness_score": 0,
+            "meaningful_lines": ("Decision Memory is unavailable; current evidence is still being used.",),
+        }
+
+
 def apply_decision_resolvers(session: Session) -> list[DecisionMemory]:
     """Update memory only when current evidence proves an outcome changed."""
     updated: list[DecisionMemory] = []
@@ -886,7 +941,8 @@ def generate_decisions(session: Session, *, actor: User | None = None) -> tuple[
             )
         )
 
-    return _sort_decisions(_apply_memory_adjustments(session, [decision for decision in decisions if decision is not None]))
+    ranked = _sort_decisions(_apply_memory_adjustments(session, [decision for decision in decisions if decision is not None]))
+    return _sort_decisions(list(_apply_quality_adjustments(session, ranked, actor=actor)))
 
 
 def top_decision(session: Session, *, actor: User | None = None) -> Decision | None:
@@ -950,7 +1006,7 @@ def generate_coo_briefing(session: Session, *, actor: User | None = None) -> Coo
         "Fortuna checked systems, recovery, notifications, platforms, and recent activity.",
         "Low-value setup noise was moved into Details.",
     )
-    learning = decision_memory_summary(session)
+    learning = _safe_decision_memory_summary(session, actor=actor)
     learning_lines = tuple(learning.get("meaningful_lines") or ())
     briefing = CooBriefing(
         generated_at=_now(),
@@ -972,8 +1028,21 @@ def generate_coo_briefing(session: Session, *, actor: User | None = None) -> Coo
         learning_summary=learning_lines,
     )
     if actor is not None:
-        for decision in decisions[:5]:
-            record_decision_memory_event(session, decision=decision, action="shown", actor=actor)
+        try:
+            for decision in decisions[:5]:
+                record_decision_memory_event(session, decision=decision, action="shown", actor=actor)
+        except Exception as exc:
+            try:
+                emit_event(
+                    session,
+                    actor=actor,
+                    event_name="decision_memory.record_unavailable",
+                    resource_type="decision_memory",
+                    status="warning",
+                    payload={"error": str(exc)[:160]},
+                )
+            except Exception:
+                pass
         audit_action(
             session,
             actor=actor,

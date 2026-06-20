@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     bot_instance_active_seconds: int = Field(default=180, alias="BOT_INSTANCE_ACTIVE_SECONDS")
     proxy_real_health_checks_enabled: bool = Field(default=False, alias="PROXY_REAL_HEALTH_CHECKS_ENABLED")
     proxy_real_location_checks_enabled: bool = Field(default=False, alias="PROXY_REAL_LOCATION_CHECKS_ENABLED")
+    decision_quality_enabled: bool = Field(default=True, alias="DECISION_QUALITY_ENABLED")
     proxy_health_timeout_seconds: int = Field(default=10, alias="PROXY_HEALTH_TIMEOUT_SECONDS")
     proxy_location_provider: str = Field(default="ipwhois", alias="PROXY_LOCATION_PROVIDER")
     backup_s3_endpoint: str | None = Field(default=None, alias="BACKUP_S3_ENDPOINT")

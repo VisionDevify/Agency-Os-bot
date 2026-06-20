@@ -55,6 +55,7 @@ from app.bot.menu import (
     intelligence_briefing_menu,
     intelligence_details_menu,
     intelligence_menu,
+    intelligence_quality_menu,
     intelligence_run_menu,
     learning_center_menu,
     learning_details_menu,

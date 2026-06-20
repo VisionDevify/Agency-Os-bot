@@ -666,6 +666,19 @@ def render_production_observability_page(
                     *[f"- {line}" for line in summary["decision_learning_lines"][:2]],
                 ]
             )
+        if summary.get("decision_quality_meaningful"):
+            quality_findings = list(summary.get("decision_quality_findings") or [])
+            quality_line = "Quality check unavailable."
+            if summary.get("decision_quality_available"):
+                quality_line = quality_findings[0]["title"] if quality_findings else "Quality needs review."
+            recovery_lines.extend(
+                [
+                    "",
+                    "Intelligence:",
+                    quality_line,
+                    "Next: Open Intelligence Quality.",
+                ]
+            )
         summary_line = (
             "Fortuna checked this. Operations are running, but recovery still needs setup."
             if summary["recovery_status"] != "healthy" and operations_ok
@@ -849,6 +862,21 @@ def render_production_observability_page(
         f"Resolved Rate: {int(float(summary['decision_learning_resolved_rate']) * 100)}%",
         f"Usefulness Score: {summary['decision_learning_usefulness_score']}/100",
         *[f"- {line}" for line in summary["decision_learning_lines"]],
+        "",
+        "Intelligence Quality:",
+        f"Status: {str(summary['decision_quality_status']).replace('_', ' ').title()}",
+        f"Available: {'Yes' if summary['decision_quality_available'] else 'No'}",
+        f"Decision Quality: {summary['decision_quality_score']}/100",
+        f"Recommendation Accuracy: {summary['decision_quality_recommendation_accuracy']}/100",
+        f"Confidence Accuracy: {summary['decision_quality_confidence_accuracy']}/100",
+        f"Briefing Quality: {summary['decision_quality_briefing_score']}/100",
+        f"Learning Status: {str(summary['decision_quality_learning_status']).replace('_', ' ').title()}",
+        f"Duplicate Suppression: {str(summary['decision_quality_duplicate_suppression']).replace('_', ' ')}",
+        f"Friction: {summary['decision_quality_friction_severity']} - {summary['decision_quality_friction_evidence']}",
+        *[
+            f"- {finding['title']}: {finding['evidence']}"
+            for finding in summary["decision_quality_findings"]
+        ],
         "",
         "Logs:",
         summary["railway_note"],

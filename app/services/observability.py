@@ -19,7 +19,8 @@ from app.models.user import User
 from app.services.build_metadata import safe_build_metadata, safe_metadata_value
 from app.services.button_health import button_health_summary
 from app.services.chat_cleanup import chat_cleanup_metrics
-from app.services.decision_engine import decision_memory_summary
+from app.services.decision_engine import decision_memory_summary, generate_decisions
+from app.services.decision_quality import safe_decision_quality_report
 from app.services.help_brain import help_questions_today, notification_pilot_status, proxy_pilot_status
 from app.services.heartbeats import list_heartbeats, system_status_summary
 from app.services.bot_instances import bot_instance_diagnostics
@@ -118,6 +119,14 @@ def production_observability_summary(session: Session) -> dict[str, object]:
     platform_overview = platform_connections_overview(session)
     alert_health = alert_health_summary(session)
     decision_learning = decision_memory_summary(session)
+    decisions_for_quality = generate_decisions(session)
+    decision_quality = safe_decision_quality_report(session, decisions_for_quality)
+    decision_quality_meaningful = (
+        not decision_quality.available
+        or decision_quality.status in {"needs_attention", "critical"}
+        or any(finding.severity in {"medium", "high", "critical"} for finding in decision_quality.findings)
+    )
+    decision_quality_observability_status = decision_quality.status if decision_quality_meaningful else "healthy"
     owner_count = session.scalar(select(func.count(User.id)).where(User.is_owner.is_(True))) or 0
     role_count = session.scalar(select(func.count(Role.id))) or 0
     audit_count = session.scalar(select(func.count(AuditLog.id))) or 0
@@ -186,6 +195,13 @@ def production_observability_summary(session: Session) -> dict[str, object]:
                 0 if alert_health.status == "healthy" else 1,
                 "Open Alert Health." if alert_health.status != "healthy" else None,
             ),
+            StatusCondition(
+                "intelligence_quality",
+                decision_quality_observability_status,
+                "Decision and recommendation quality checks.",
+                1 if decision_quality_meaningful else 0,
+                "Open Intelligence Quality." if decision_quality_meaningful else None,
+            ),
         ]
     )
     observability_issues = list(truth.current_issues)
@@ -202,6 +218,11 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         observability_issues.append(f"Telegram UI Cleanup: {cleanup.next_action}")
     if alert_health.status != "healthy":
         observability_issues.append(f"Alert Health: {alert_health.next_action}")
+    if decision_quality_meaningful:
+        if decision_quality.available and decision_quality.findings:
+            observability_issues.append(f"Intelligence Quality: {decision_quality.findings[0].recommendation}")
+        else:
+            observability_issues.append("Intelligence Quality: quality check unavailable.")
 
     return {
         "app_display_name": build_metadata["app_name"],
@@ -354,4 +375,27 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         "decision_learning_resolved_rate": decision_learning["resolved_rate"],
         "decision_learning_usefulness_score": decision_learning["usefulness_score"],
         "decision_learning_lines": list(decision_learning["meaningful_lines"]),
+        "decision_quality_status": decision_quality.status,
+        "decision_quality_observability_status": decision_quality_observability_status,
+        "decision_quality_meaningful": decision_quality_meaningful,
+        "decision_quality_available": decision_quality.available,
+        "decision_quality_score": decision_quality.decision_quality_score,
+        "decision_quality_recommendation_accuracy": decision_quality.recommendation_accuracy,
+        "decision_quality_category_accuracy": decision_quality.category_accuracy,
+        "decision_quality_confidence_accuracy": decision_quality.confidence_accuracy,
+        "decision_quality_briefing_score": decision_quality.briefing_quality_score,
+        "decision_quality_learning_status": decision_quality.learning_status,
+        "decision_quality_duplicate_suppression": decision_quality.duplicate_suppression_status,
+        "decision_quality_findings": [
+            {
+                "title": finding.title,
+                "severity": finding.severity,
+                "evidence": finding.evidence,
+                "recommendation": finding.recommendation,
+            }
+            for finding in decision_quality.findings
+        ],
+        "decision_quality_friction_severity": decision_quality.friction.severity,
+        "decision_quality_friction_evidence": decision_quality.friction.evidence,
+        "decision_quality_friction_recommendation": decision_quality.friction.recommendation,
     }

@@ -371,6 +371,7 @@ def coo_briefing_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="🔎 Details", callback_data=callback_for("coo:briefing:details")),
             ],
             [InlineKeyboardButton(text="🧠 Decision Memory", callback_data=callback_for("decision:memory"))],
+            [InlineKeyboardButton(text="🧠 Intelligence Quality", callback_data=callback_for("intelligence:quality"))],
             *page_controls(back_to="owner_advanced"),
         ]
     )
@@ -430,7 +431,22 @@ def decision_memory_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="❌ Dismissed", callback_data=callback_for("decision:memory:dismissed")),
             ],
             [InlineKeyboardButton(text="🔎 Details", callback_data=callback_for("decision:memory:details"))],
+            [InlineKeyboardButton(text="🧠 Intelligence Quality", callback_data=callback_for("intelligence:quality"))],
             *page_controls(back_to="coo:briefing"),
+        ]
+    )
+
+
+def intelligence_quality_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Refresh", callback_data=callback_for("intelligence:quality"))],
+            [InlineKeyboardButton(text="🔎 Details", callback_data=callback_for("intelligence:quality:details"))],
+            [
+                InlineKeyboardButton(text="👑 COO Briefing", callback_data=callback_for("coo:briefing")),
+                InlineKeyboardButton(text="🧠 Decision Memory", callback_data=callback_for("decision:memory")),
+            ],
+            *page_controls(back_to="intelligence"),
         ]
     )
 
@@ -1041,6 +1057,7 @@ def intelligence_menu() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="View Priorities", callback_data=callback_for("reports:executive:recommendations"))],
             [InlineKeyboardButton(text="View Trends", callback_data=callback_for("intelligence:trends"))],
+            [InlineKeyboardButton(text="🧠 Intelligence Quality", callback_data=callback_for("intelligence:quality"))],
             [InlineKeyboardButton(text="Ask Fortuna", callback_data=callback_for("help_copilot:next"))],
             [InlineKeyboardButton(text="More Details", callback_data=callback_for("intelligence:details"))],
             *page_controls(back_to="owner_advanced"),

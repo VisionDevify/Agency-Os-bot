@@ -564,6 +564,10 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_intelligence_home(session)
     if page == "intelligence:details" and session is not None:
         return render_intelligence_details_page(session)
+    if page == "intelligence:quality" and session is not None:
+        return render_intelligence_quality_page(session, user)
+    if page == "intelligence:quality:details" and session is not None:
+        return render_intelligence_quality_page(session, user, details=True)
     if page == "intelligence:runs" and session is not None:
         return render_intelligence_runs_page(session)
     if page.startswith("intelligence:run_detail:") and session is not None:

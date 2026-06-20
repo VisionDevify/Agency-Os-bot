@@ -213,6 +213,20 @@ Decision learning:
 - Learning hooks must not auto-execute business actions.
 - Fortuna recommends; humans decide.
 
+Decision quality:
+
+- `DecisionQualityEngine` audits whether Fortuna's decisions are accurate, useful, correctly prioritized, and supported by evidence.
+- Recommendation quality is scored across why, impact, confidence, evidence, and next action.
+- Recommendation accuracy and category accuracy come from Decision Memory outcomes and real system records; do not invent outcomes.
+- Confidence accuracy checks whether high, medium, and low confidence matched evidence strength and later outcomes.
+- Weak evidence must downgrade confidence rather than inflate it.
+- Duplicate and stale recommendation suppression may quiet non-critical repeats when the recommendation hash and evidence version have not changed.
+- Critical and safety-related recommendations must remain visible while unresolved, even if ignored or dismissed.
+- Generic recommendations with no specific evidence should be downgraded or suppressed unless they are critical.
+- Ranking-quality changes are gated by `DECISION_QUALITY_ENABLED`; if quality scoring fails, fall back to the previous Decision Engine ordering.
+- If Decision Memory or quality checks are unavailable, COO Briefing and Today must still render from current evidence and say the quality check is unavailable.
+- Quality failures should be logged safely in Observability and must not expose secrets, raw IDs, or stack traces on simple screens.
+
 What not to break:
 
 - Recovery must remain evidence-backed and cannot be hidden by a healthy operations status.

@@ -1,4 +1,21 @@
 from .formatting import *
+from app.services.decision_engine import generate_decisions
+from app.services.decision_quality import safe_decision_quality_report
+
+
+def _quality_status_label(status: str, *, available: bool = True) -> str:
+    if not available:
+        return "🟡 Quality check unavailable"
+    return {
+        "healthy": "🟢 Healthy",
+        "needs_review": "🟡 Needs review",
+        "needs_attention": "🟠 Needs attention",
+        "critical": "🔴 Critical",
+    }.get(status, "🟡 Needs review")
+
+
+def _quality_percent(value: float) -> str:
+    return f"{int(round(value * 100))}%"
 
 def render_intelligence_home(session: Session | None = None) -> Screen:
     lines = ["\U0001f9e0 Fortuna Insights", ""]
@@ -51,6 +68,82 @@ def render_intelligence_details_page(session: Session) -> Screen:
         "Technical analysis tools live here.",
     ]
     return Screen(text="\n".join(lines), reply_markup=intelligence_details_menu())
+
+
+def render_intelligence_quality_page(
+    session: Session,
+    user: User | None = None,
+    *,
+    details: bool = False,
+) -> Screen:
+    decisions = generate_decisions(session, actor=user)
+    report = safe_decision_quality_report(session, decisions, actor=user)
+    findings = list(report.findings)
+    if not report.available:
+        noticed = ["Intelligence quality check unavailable."]
+        next_move = "Use COO Briefing from current evidence and try again later."
+    elif findings:
+        noticed = [finding.title for finding in findings[:3]]
+        next_move = findings[0].recommendation
+    else:
+        noticed = ["Fortuna found no decision-quality issue that should interrupt you."]
+        next_move = "Keep using COO Briefing and record feedback when recommendations help."
+
+    lines = [
+        "🧠 Intelligence Quality",
+        "",
+        "Status:",
+        _quality_status_label(report.status, available=report.available),
+        "",
+        "Decision Quality:",
+        f"{report.decision_quality_score}/100",
+        "",
+        "Recommendation Accuracy:",
+        f"{report.recommendation_accuracy}/100",
+        "",
+        "Confidence Accuracy:",
+        f"{report.confidence_accuracy}/100",
+        "",
+        "Briefing Quality:",
+        f"{report.briefing_quality_score}/100",
+        "",
+        "Learning Status:",
+        report.learning_status.replace("_", " ").title(),
+        "",
+        "What Fortuna noticed:",
+        *[f"- {item}" for item in noticed],
+        "",
+        "Next Best Move:",
+        next_move,
+    ]
+    if details:
+        lines.extend(
+            [
+                "",
+                "Quality Details:",
+                f"Decision memories reviewed: {report.total_memories}",
+                f"Acted-on rate: {_quality_percent(report.acted_on_rate)}",
+                f"Resolved rate: {_quality_percent(report.resolved_rate)}",
+                f"Ignored rate: {_quality_percent(report.ignored_rate)}",
+                f"Dismissal rate: {_quality_percent(report.dismissal_rate)}",
+                f"Usefulness score: {report.usefulness_score}/100",
+                f"Duplicate suppression: {report.duplicate_suppression_status.replace('_', ' ')}",
+                "",
+                "Friction:",
+                report.friction.evidence,
+                f"Next: {report.friction.recommendation}",
+                "",
+                "Findings:",
+            ]
+        )
+        if findings:
+            for finding in findings[:8]:
+                lines.append(f"- {finding.title}: {finding.evidence}")
+        else:
+            lines.append("- No material quality findings.")
+        if report.unavailable_reason:
+            lines.extend(["", "Unavailable Reason:", report.unavailable_reason])
+    return Screen(text="\n".join(lines), reply_markup=intelligence_quality_menu())
 
 def render_intelligence_runs_page(session: Session) -> Screen:
     runs = list_intelligence_runs(session, limit=10)

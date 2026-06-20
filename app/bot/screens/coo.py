@@ -11,6 +11,7 @@ from app.services.decision_engine import (
     record_decision_memory_event,
     top_decision,
 )
+from app.services.decision_quality import safe_decision_quality_report
 
 
 def _decision_status_icon(status: str) -> str:
@@ -175,12 +176,20 @@ def render_my_work_page(session: Session, user: User) -> Screen:
 
 def render_coo_briefing_page(session: Session, user: User | None = None, *, details: bool = False) -> Screen:
     briefing = generate_coo_briefing(session, actor=user)
+    quality = safe_decision_quality_report(session, briefing.decisions, actor=user)
     top = briefing.top_priority
     if details:
         lines = [
             "🔎 Decision Details",
             "",
             f"Generated: {format_user_datetime(user, briefing.generated_at)}",
+            "",
+            "Intelligence Quality:",
+            f"Decision Quality: {quality.decision_quality_score}/100",
+            f"Recommendation Accuracy: {quality.recommendation_accuracy}/100",
+            f"Confidence Accuracy: {quality.confidence_accuracy}/100",
+            f"Briefing Quality: {quality.briefing_quality_score}/100",
+            f"Quality Status: {'Unavailable' if not quality.available else quality.status.replace('_', ' ').title()}",
             "",
             "Ranked decisions:",
         ]
@@ -243,6 +252,10 @@ def render_coo_briefing_page(session: Session, user: User | None = None, *, deta
     if briefing.learning_summary:
         lines.extend(["", "What Fortuna Learned"])
         lines.extend(f"- {item}" for item in briefing.learning_summary[:2])
+    if not quality.available:
+        lines.extend(["", "Intelligence Quality", "Quality check unavailable; current evidence is still being used."])
+    elif quality.status in {"needs_attention", "critical"} and quality.findings:
+        lines.extend(["", "Intelligence Quality", quality.findings[0].title])
     lines.extend(
         [
             "",

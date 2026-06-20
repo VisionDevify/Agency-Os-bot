@@ -56,7 +56,7 @@ def parent_page_for(page: str | None) -> str:
         return "agency_activation"
     if current in {"coo", "coo:briefing"}:
         return "owner_advanced"
-    if current in {"coo:briefing:details", "decision:top", "decision:details"}:
+    if current in {"coo:briefing:details", "decision:top", "decision:details"} or current.startswith("decision:memory"):
         return "coo:briefing"
     if current.startswith("coo:"):
         return "coo"

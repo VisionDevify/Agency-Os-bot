@@ -304,6 +304,27 @@ HELP_KB_SEEDS: tuple[dict[str, str], ...] = (
         "content": "Helpful, Not Helpful, Remind Later, and Dismiss adjust future ranking gradually. They do not automatically resolve the underlying issue.",
         "related_route": "decision:details",
     },
+    {
+        "topic": "decision_quality",
+        "title": "Decision Quality",
+        "role_scope": "owner,admin,manager",
+        "content": "Decision Quality checks whether Fortuna's recommendations are evidence-backed, specific, useful, and correctly prioritized. If the check is unavailable, COO Briefing still uses current evidence.",
+        "related_route": "intelligence:quality",
+    },
+    {
+        "topic": "recommendation_accuracy",
+        "title": "Recommendation Accuracy",
+        "role_scope": "owner,admin,manager",
+        "content": "Recommendation Accuracy compares what Fortuna suggested with later evidence from Decision Memory and system records. It does not invent outcomes.",
+        "related_route": "intelligence:quality",
+    },
+    {
+        "topic": "confidence_accuracy",
+        "title": "Confidence Accuracy",
+        "role_scope": "owner,admin,manager",
+        "content": "Confidence Accuracy checks whether high, medium, and low confidence matched the strength of evidence and later outcomes. Weak evidence should never inflate confidence.",
+        "related_route": "intelligence:quality",
+    },
 )
 
 
@@ -362,6 +383,12 @@ def detect_help_intent(question: str) -> str:
         return "decision_recovery_priority"
     if "why" in text and "platform" in text and "wait" in text:
         return "decision_platforms_wait"
+    if "decision quality" in text or "is fortuna right" in text:
+        return "decision_quality"
+    if "recommendation accuracy" in text or ("accuracy" in text and "recommendation" in text):
+        return "recommendation_accuracy"
+    if "confidence accuracy" in text or ("accuracy" in text and "confidence" in text):
+        return "confidence_accuracy"
     if "confidence" in text and ("mean" in text or "decision" in text):
         return "decision_confidence"
     if "can wait" in text:
@@ -680,6 +707,27 @@ def help_brain_answer(
             "Next button to press: Decision Details."
         )
         next_action = "decision:details" if _adminish(user) else "help"
+    elif intent == "decision_quality":
+        answer = (
+            "Decision Quality checks whether Fortuna's recommendations are specific, evidence-backed, correctly prioritized, and useful.\n\n"
+            "Why: Fortuna should answer whether it is right, not just produce more recommendations.\n\n"
+            "Next button to press: Intelligence Quality."
+        )
+        next_action = "intelligence:quality" if _adminish(user) else "help"
+    elif intent == "recommendation_accuracy":
+        answer = (
+            "Recommendation Accuracy compares what Fortuna recommended with later evidence from Decision Memory and system records.\n\n"
+            "Why: Fortuna should not assume a recommendation worked unless an action or resolution was actually observed.\n\n"
+            "Next button to press: Intelligence Quality."
+        )
+        next_action = "intelligence:quality" if _adminish(user) else "help"
+    elif intent == "confidence_accuracy":
+        answer = (
+            "Confidence Accuracy checks whether Fortuna's confidence matched the evidence and later outcome.\n\n"
+            "Why: weak evidence should lower confidence, and scoring problems should never make Fortuna sound more certain.\n\n"
+            "Next button to press: Intelligence Quality."
+        )
+        next_action = "intelligence:quality" if _adminish(user) else "help"
     elif intent == "decision_human_approval":
         answer = (
             "No. Fortuna recommends decisions, but humans still decide and execute.\n\n"
