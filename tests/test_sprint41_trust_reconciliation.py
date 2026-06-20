@@ -40,7 +40,11 @@ def _healthy_truth_state(session, monkeypatch):
         status="healthy",
         metadata={"polling_guard": "redis_lock", "redis_lock_status": "held"},
     )
-    record_bot_instance_heartbeat(session, instance_id="primary-instance")
+    record_bot_instance_heartbeat(
+        session,
+        instance_id="primary-instance",
+        metadata={"service_role": "worker", "polling_allowed": "True", "polling_active": "True"},
+    )
 
 
 def test_system_truth_reports_postgresql_redis_healthy(monkeypatch) -> None:

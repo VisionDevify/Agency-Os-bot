@@ -36,7 +36,11 @@ def _healthy_production_state(session, monkeypatch) -> None:
             "last_telegram_update_at": datetime.now(UTC).isoformat(),
         },
     )
-    record_bot_instance_heartbeat(session, instance_id="primary-instance")
+    record_bot_instance_heartbeat(
+        session,
+        instance_id="primary-instance",
+        metadata={"service_role": "worker", "polling_allowed": "True", "polling_active": "True"},
+    )
 
 
 def test_audit_logs_simple_screen_hides_raw_actions_and_targets() -> None:
@@ -108,7 +112,11 @@ def test_observability_polling_warning_explains_duplicate_instance_cause(monkeyp
     with session_scope() as session:
         owner = _owner(session)
         _healthy_production_state(session, monkeypatch)
-        record_bot_instance_heartbeat(session, instance_id="old-worker")
+        record_bot_instance_heartbeat(
+            session,
+            instance_id="old-worker",
+            metadata={"service_role": "worker", "polling_allowed": "True", "polling_active": "True"},
+        )
 
         screen = render_production_observability_page(session, owner)
 

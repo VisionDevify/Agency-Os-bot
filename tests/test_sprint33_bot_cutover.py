@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from app.bot.screens import render_botstatus_page, render_integrity_page
 from app.core.config import settings
@@ -20,6 +20,22 @@ SECRET_MARKERS = (
 
 def _owner(session):
     return setup_owner_if_needed(session, telegram_user_id=1, owner_telegram_id=1, display_name="Rex")
+
+
+def _bot_instance_metadata(
+    *,
+    role: str = "worker",
+    polling_active: bool = True,
+    polling_allowed: bool = True,
+    primary: bool = True,
+) -> dict[str, str]:
+    return {
+        "instance_id_masked": "test••test",
+        "service_role": role,
+        "polling_active": str(polling_active),
+        "polling_allowed": str(polling_allowed),
+        "primary": str(primary),
+    }
 
 
 def test_production_redis_missing_blocks_polling_by_default(monkeypatch) -> None:
@@ -105,13 +121,13 @@ def test_duplicate_heartbeat_detection_warns(monkeypatch) -> None:
             session,
             service_name="bot_instance:first",
             status="healthy",
-            metadata={"instance_id_masked": "firs••irst"},
+            metadata=_bot_instance_metadata(),
         )
         record_heartbeat(
             session,
             service_name="bot_instance:second",
             status="healthy",
-            metadata={"instance_id_masked": "seco••cond"},
+            metadata=_bot_instance_metadata(),
         )
 
         diagnostics = bot_instance_diagnostics(session, current_instance_id="first")
@@ -121,6 +137,148 @@ def test_duplicate_heartbeat_detection_warns(monkeypatch) -> None:
         assert diagnostics["multiple_active_instances"] is True
         assert "Bot instances" in integrity.text
         assert "2 active bot instance heartbeat" in integrity.text
+
+
+def test_one_active_worker_is_healthy(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "database_url", "postgresql+psycopg://user:pass@example.com/db")
+    monkeypatch.setattr(settings, "redis_url", "redis://:password@example")
+    monkeypatch.setattr(settings, "bot_primary_instance", True)
+    monkeypatch.setenv("RAILWAY_PROJECT_ID", "project-test")
+    with session_scope() as session:
+        owner = _owner(session)
+        record_heartbeat(
+            session,
+            service_name="bot",
+            status="healthy",
+            metadata={"redis_lock_status": "held", "polling_guard": "redis_lock"},
+        )
+        record_heartbeat(
+            session,
+            service_name="bot_instance:worker",
+            status="healthy",
+            metadata=_bot_instance_metadata(),
+        )
+
+        diagnostics = bot_instance_diagnostics(session, current_instance_id="worker")
+        screen = render_botstatus_page(session, owner, current_instance_id="worker")
+
+        assert diagnostics["active_instance_count"] == 1
+        assert diagnostics["duplicate_instance_count"] == 0
+        assert "Status:\nHealthy" in screen.text
+        assert "Issues Found: 0" in screen.text
+
+
+def test_worker_plus_api_heartbeat_is_healthy(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "database_url", "postgresql+psycopg://user:pass@example.com/db")
+    monkeypatch.setattr(settings, "redis_url", "redis://:password@example")
+    monkeypatch.setattr(settings, "bot_primary_instance", True)
+    monkeypatch.setenv("RAILWAY_PROJECT_ID", "project-test")
+    with session_scope() as session:
+        owner = _owner(session)
+        record_heartbeat(
+            session,
+            service_name="bot",
+            status="healthy",
+            metadata={"redis_lock_status": "held", "polling_guard": "redis_lock"},
+        )
+        record_heartbeat(
+            session,
+            service_name="bot_instance:worker",
+            status="healthy",
+            metadata=_bot_instance_metadata(),
+        )
+        record_heartbeat(
+            session,
+            service_name="bot_instance:api",
+            status="healthy",
+            metadata=_bot_instance_metadata(role="api", polling_active=False),
+        )
+
+        diagnostics = bot_instance_diagnostics(session, current_instance_id="worker")
+        screen = render_botstatus_page(session, owner, current_instance_id="worker")
+        details = render_botstatus_page(session, owner, current_instance_id="worker", details=True)
+
+        assert diagnostics["active_instance_count"] == 1
+        assert diagnostics["duplicate_instance_count"] == 0
+        assert diagnostics["non_polling_instance_count"] == 1
+        assert "Status:\nHealthy" in screen.text
+        assert "Non-Polling Heartbeats: 1" in details.text
+
+
+def test_stale_old_worker_heartbeat_is_healthy_with_details_only(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "database_url", "postgresql+psycopg://user:pass@example.com/db")
+    monkeypatch.setattr(settings, "redis_url", "redis://:password@example")
+    monkeypatch.setattr(settings, "bot_primary_instance", True)
+    monkeypatch.setattr(settings, "bot_instance_active_seconds", 180)
+    monkeypatch.setenv("RAILWAY_PROJECT_ID", "project-test")
+    with session_scope() as session:
+        owner = _owner(session)
+        record_heartbeat(
+            session,
+            service_name="bot",
+            status="healthy",
+            metadata={"redis_lock_status": "held", "polling_guard": "redis_lock"},
+        )
+        record_heartbeat(
+            session,
+            service_name="bot_instance:worker",
+            status="healthy",
+            metadata=_bot_instance_metadata(),
+        )
+        stale = record_heartbeat(
+            session,
+            service_name="bot_instance:old-worker",
+            status="healthy",
+            metadata=_bot_instance_metadata(),
+        )
+        stale.last_seen_at = datetime.now(UTC) - timedelta(minutes=10)
+        session.flush()
+
+        diagnostics = bot_instance_diagnostics(session, current_instance_id="worker")
+        screen = render_botstatus_page(session, owner, current_instance_id="worker")
+        details = render_botstatus_page(session, owner, current_instance_id="worker", details=True)
+
+        assert diagnostics["active_instance_count"] == 1
+        assert diagnostics["duplicate_instance_count"] == 0
+        assert diagnostics["stale_instance_count"] == 1
+        assert stale.status == "stale"
+        assert "Status:\nHealthy" in screen.text
+        assert "Stale Bot Heartbeats: 1" in details.text
+
+
+def test_bot_primary_false_heartbeat_does_not_count_as_active_poller(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "database_url", "postgresql+psycopg://user:pass@example.com/db")
+    monkeypatch.setattr(settings, "redis_url", "redis://:password@example")
+    monkeypatch.setattr(settings, "bot_primary_instance", True)
+    monkeypatch.setenv("RAILWAY_PROJECT_ID", "project-test")
+    with session_scope() as session:
+        owner = _owner(session)
+        record_heartbeat(
+            session,
+            service_name="bot",
+            status="healthy",
+            metadata={"redis_lock_status": "held", "polling_guard": "redis_lock"},
+        )
+        record_heartbeat(
+            session,
+            service_name="bot_instance:worker",
+            status="healthy",
+            metadata=_bot_instance_metadata(),
+        )
+        record_heartbeat(
+            session,
+            service_name="bot_instance:disabled-worker",
+            status="healthy",
+            metadata=_bot_instance_metadata(primary=False, polling_active=True, polling_allowed=False),
+        )
+
+        diagnostics = bot_instance_diagnostics(session, current_instance_id="worker")
+        screen = render_botstatus_page(session, owner, current_instance_id="worker")
+
+        assert diagnostics["active_instance_count"] == 1
+        assert diagnostics["duplicate_instance_count"] == 0
+        assert diagnostics["non_polling_instance_count"] == 1
+        assert "Status:\nHealthy" in screen.text
 
 
 def test_botstatus_renders_safe_instance_diagnostics(monkeypatch) -> None:

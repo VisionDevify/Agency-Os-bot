@@ -30,6 +30,13 @@ class PollingPreflight:
     reason: str
 
 
+@dataclass(frozen=True)
+class BotInstanceHeartbeatClassification:
+    active_pollers: list[SystemHeartbeat]
+    non_polling: list[SystemHeartbeat]
+    stale: list[SystemHeartbeat]
+
+
 def bot_instance_id() -> str:
     global _GENERATED_INSTANCE_ID
     configured = (settings.bot_instance_id or "").strip()
@@ -202,20 +209,90 @@ def clear_polling_conflict_metadata(metadata: dict | None) -> dict:
     return safe
 
 
+def _metadata_bool(metadata: dict | None, key: str, *, default: bool = False) -> bool:
+    value = (metadata or {}).get(key)
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    return str(value).strip().casefold() in {"1", "true", "yes", "y", "on"}
+
+
+def _instance_role(metadata: dict | None) -> str:
+    return str((metadata or {}).get("service_role") or "").strip().casefold().replace(" ", "_")
+
+
+def _as_utc(value: datetime | None) -> datetime:
+    if value is None:
+        return datetime.min.replace(tzinfo=UTC)
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _is_polling_worker_heartbeat(heartbeat: SystemHeartbeat) -> bool:
+    metadata = heartbeat.metadata_json or {}
+    role = _instance_role(metadata)
+    if role in {"api", "web", "api_only", "web_only"}:
+        return False
+    if not _metadata_bool(metadata, "primary", default=False):
+        return False
+    if not _metadata_bool(metadata, "polling_allowed", default=False):
+        return False
+    if not _metadata_bool(metadata, "polling_active", default=False):
+        return False
+    return True
+
+
+def classify_bot_instance_heartbeats(
+    session: Session,
+    *,
+    active_seconds: int | None = None,
+    mark_stale: bool = True,
+) -> BotInstanceHeartbeatClassification:
+    cutoff = datetime.now(UTC) - timedelta(seconds=active_seconds or settings.bot_instance_active_seconds)
+    rows = list(
+        session.scalars(
+            select(SystemHeartbeat)
+            .where(SystemHeartbeat.service_name.like(f"{BOT_INSTANCE_PREFIX}%"))
+            .order_by(SystemHeartbeat.last_seen_at.desc())
+        ).all()
+    )
+    active_pollers: list[SystemHeartbeat] = []
+    non_polling: list[SystemHeartbeat] = []
+    stale: list[SystemHeartbeat] = []
+    for heartbeat in rows:
+        if _as_utc(heartbeat.last_seen_at) < cutoff or heartbeat.status == "stale":
+            stale.append(heartbeat)
+            if mark_stale and heartbeat.status in {"healthy", "running", "degraded"}:
+                metadata = dict(heartbeat.metadata_json or {})
+                metadata["heartbeat_state"] = "stale"
+                metadata["stale_after_seconds"] = str(active_seconds or settings.bot_instance_active_seconds)
+                heartbeat.status = "stale"
+                heartbeat.metadata_json = metadata
+            continue
+        if heartbeat.status not in {"healthy", "running", "degraded"}:
+            non_polling.append(heartbeat)
+            continue
+        if _is_polling_worker_heartbeat(heartbeat):
+            active_pollers.append(heartbeat)
+        else:
+            non_polling.append(heartbeat)
+    if mark_stale:
+        session.flush()
+    return BotInstanceHeartbeatClassification(
+        active_pollers=active_pollers,
+        non_polling=non_polling,
+        stale=stale,
+    )
+
+
 def active_bot_instance_heartbeats(
     session: Session,
     *,
     active_seconds: int | None = None,
 ) -> list[SystemHeartbeat]:
-    cutoff = datetime.now(UTC) - timedelta(seconds=active_seconds or settings.bot_instance_active_seconds)
-    rows = session.scalars(
-        select(SystemHeartbeat)
-        .where(SystemHeartbeat.service_name.like(f"{BOT_INSTANCE_PREFIX}%"))
-        .where(SystemHeartbeat.last_seen_at >= cutoff)
-        .where(SystemHeartbeat.status.in_(("healthy", "running", "degraded")))
-        .order_by(SystemHeartbeat.last_seen_at.desc())
-    ).all()
-    return list(rows)
+    return classify_bot_instance_heartbeats(session, active_seconds=active_seconds).active_pollers
 
 
 def duplicate_bot_instances(session: Session, *, current_instance_id: str | None = None) -> list[SystemHeartbeat]:
@@ -230,7 +307,8 @@ def duplicate_bot_instances(session: Session, *, current_instance_id: str | None
 def bot_instance_diagnostics(session: Session, *, current_instance_id: str | None = None) -> dict[str, object]:
     identifier = current_instance_id or bot_instance_id()
     current = storage_status()
-    active = active_bot_instance_heartbeats(session)
+    classified = classify_bot_instance_heartbeats(session)
+    active = classified.active_pollers
     if current_instance_id is None:
         # API-side diagnostics do not own a polling instance id. In that context, one active
         # bot heartbeat is exactly what we want; only additional active heartbeats are duplicates.
@@ -286,6 +364,31 @@ def bot_instance_diagnostics(session: Session, *, current_instance_id: str | Non
         "environment": current.environment,
         "active_instance_count": len(active),
         "duplicate_instance_count": duplicate_count,
+        "non_polling_instance_count": len(classified.non_polling),
+        "stale_instance_count": len(classified.stale),
+        "active_polling_owners": [
+            mask_instance_id(heartbeat.service_name.removeprefix(BOT_INSTANCE_PREFIX))
+            for heartbeat in active
+        ],
+        "non_polling_instances": [
+            {
+                "instance": mask_instance_id(heartbeat.service_name.removeprefix(BOT_INSTANCE_PREFIX)),
+                "role": _instance_role(heartbeat.metadata_json),
+                "polling_active": str((heartbeat.metadata_json or {}).get("polling_active", "unknown")),
+                "polling_allowed": str((heartbeat.metadata_json or {}).get("polling_allowed", "unknown")),
+                "primary": str((heartbeat.metadata_json or {}).get("primary", "unknown")),
+                "last_seen_at": heartbeat.last_seen_at.isoformat() if heartbeat.last_seen_at else "unknown",
+            }
+            for heartbeat in classified.non_polling[:5]
+        ],
+        "stale_instances": [
+            {
+                "instance": mask_instance_id(heartbeat.service_name.removeprefix(BOT_INSTANCE_PREFIX)),
+                "role": _instance_role(heartbeat.metadata_json),
+                "last_seen_at": heartbeat.last_seen_at.isoformat() if heartbeat.last_seen_at else "unknown",
+            }
+            for heartbeat in classified.stale[:5]
+        ],
         "multiple_active_instances": duplicate_count > 0,
         "risk": risk,
     }
