@@ -234,6 +234,21 @@ What not to break:
 - Platform Connections must keep the layered truth model: reachable is not connected, connected is not fresh stats.
 - The COO Briefing, Today, Recommendations, and Help Brain should all use the same priority philosophy.
 
+Decision quality trends and Predictive COO:
+
+- `DecisionQualityTrend` aggregates Decision Memory by category and daily/weekly/monthly window.
+- Trend directions are only `improving`, `stable`, `declining`, or `insufficient_data`.
+- Insufficient data must be explicit; Fortuna must not invent improvement from thin records.
+- `DecisionTrendEngine` is deterministic and uses Decision Memory plus quality metadata only.
+- `PredictiveCOOEngine` creates conservative predictions from current evidence plus trends.
+- Predictions are labeled as predictions, not facts, and never replace current verified status.
+- Current critical issues outrank predictions.
+- Prediction confidence must be conservative: low evidence means low confidence or no prediction.
+- Prediction feedback uses prediction events: shown, opened, helpful, not_helpful, remind_later, dismissed, acted_on, proven_correct, proven_wrong.
+- Proven correct or proven wrong requires later evidence; ignored does not mean wrong.
+- `PREDICTIVE_COO_ENABLED` can disable prediction sections without breaking Decision Engine, COO Briefing, or Today.
+- If trend or prediction calculation fails, show unavailable, log safely, and keep current evidence-based briefing screens working.
+
 ## Compliance Rules
 
 Fortuna may observe, summarize, recommend, and route human-reviewed work.

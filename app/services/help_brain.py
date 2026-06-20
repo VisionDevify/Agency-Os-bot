@@ -325,6 +325,20 @@ HELP_KB_SEEDS: tuple[dict[str, str], ...] = (
         "content": "Confidence Accuracy checks whether high, medium, and low confidence matched the strength of evidence and later outcomes. Weak evidence should never inflate confidence.",
         "related_route": "intelligence:quality",
     },
+    {
+        "topic": "decision_quality_trends",
+        "title": "Decision Quality Trends",
+        "role_scope": "owner,admin,manager",
+        "content": "Decision Quality Trends compare Decision Memory outcomes by category over time. Improving means recommendations are being acted on or resolved with evidence; insufficient data means Fortuna does not have enough records yet.",
+        "related_route": "intelligence:quality:trends",
+    },
+    {
+        "topic": "predictive_coo",
+        "title": "Predictive COO",
+        "role_scope": "owner,admin,manager",
+        "content": "Predictive COO makes conservative, evidence-backed guesses about what may matter next. Predictions are not facts and never replace current verified status.",
+        "related_route": "prediction:preview",
+    },
 )
 
 
@@ -383,8 +397,22 @@ def detect_help_intent(question: str) -> str:
         return "decision_recovery_priority"
     if "why" in text and "platform" in text and "wait" in text:
         return "decision_platforms_wait"
+    if "decision quality trend" in text or ("trend" in text and "decision" in text):
+        return "decision_quality_trends"
     if "decision quality" in text or "is fortuna right" in text:
         return "decision_quality"
+    if "insufficient data" in text:
+        return "trend_insufficient_data"
+    if "improving" in text and ("trend" in text or "mean" in text):
+        return "trend_improving"
+    if "predictive coo" in text or ("prediction" in text and "coo" in text):
+        return "predictive_coo"
+    if "predictions facts" in text or ("are predictions" in text and "facts" in text):
+        return "prediction_not_facts"
+    if "restore testing" in text and ("likely next" in text or "prediction" in text):
+        return "prediction_restore_testing"
+    if "train" in text and "prediction" in text:
+        return "prediction_training"
     if "recommendation accuracy" in text or ("accuracy" in text and "recommendation" in text):
         return "recommendation_accuracy"
     if "confidence accuracy" in text or ("accuracy" in text and "confidence" in text):
@@ -399,7 +427,7 @@ def detect_help_intent(question: str) -> str:
         return "decision_memory"
     if "helpful" in text or "not helpful" in text or "dismiss" in text or "remind later" in text:
         return "decision_feedback"
-    if "act automatically" in text or ("fortuna" in text and "automatically" in text and "decision" in text):
+    if "act automatically" in text or ("fortuna" in text and "automatically" in text and ("decision" in text or "prediction" in text)):
         return "decision_human_approval"
     if "platform connection" in text or "platform connections" in text:
         return "platform_connections"
@@ -728,6 +756,55 @@ def help_brain_answer(
             "Next button to press: Intelligence Quality."
         )
         next_action = "intelligence:quality" if _adminish(user) else "help"
+    elif intent == "decision_quality_trends":
+        answer = (
+            "Decision Quality Trends show whether Fortuna's recommendations are improving, stable, declining, or still missing enough outcome data.\n\n"
+            "Why: trends use Decision Memory and real outcomes. Fortuna does not invent improvement when records are thin.\n\n"
+            "Next button to press: Decision Trends."
+        )
+        next_action = "intelligence:quality:trends" if _adminish(user) else "help"
+    elif intent == "trend_improving":
+        answer = (
+            "Improving means recommendations in that category are being opened, acted on, or resolved with evidence.\n\n"
+            "Why: Fortuna needs real Decision Memory records before it can say a category is getting better.\n\n"
+            "Next button to press: Category Trends."
+        )
+        next_action = "intelligence:quality:categories" if _adminish(user) else "help"
+    elif intent == "trend_insufficient_data":
+        answer = (
+            "Insufficient data means Fortuna does not have enough decision outcomes to call a real trend yet.\n\n"
+            "Why: low data should stay honest instead of becoming fake confidence.\n\n"
+            "Next button to press: Decision Trends."
+        )
+        next_action = "intelligence:quality:trends" if _adminish(user) else "help"
+    elif intent == "predictive_coo":
+        answer = (
+            "Predictive COO uses current evidence plus decision trends to suggest what may matter next.\n\n"
+            "Why: predictions are evidence-backed guesses about what may matter next. They do not replace current verified status.\n\n"
+            "Next button to press: Prediction Preview."
+        )
+        next_action = "prediction:preview" if _adminish(user) else "help"
+    elif intent == "prediction_not_facts":
+        answer = (
+            "No. Predictions are not facts.\n\n"
+            "Why: they are conservative forecasts from current evidence and trends, while verified status still comes from live records and checks.\n\n"
+            "Next button to press: Prediction Preview."
+        )
+        next_action = "prediction:preview" if _adminish(user) else "help"
+    elif intent == "prediction_restore_testing":
+        answer = (
+            "Fortuna predicts restore testing as a likely next blocker when backups are verified but full restore validation is still missing.\n\n"
+            "Why: backup evidence improves recovery, but full protection still needs restore-test evidence.\n\n"
+            "Next button to press: Prediction Preview."
+        )
+        next_action = "prediction:preview" if _adminish(user) else "help"
+    elif intent == "prediction_training":
+        answer = (
+            "Train predictions by using Helpful, Not Helpful, Remind Later, and Dismiss after reviewing a prediction.\n\n"
+            "Why: ignored does not mean wrong, and proven-correct predictions require later evidence.\n\n"
+            "Next button to press: Prediction Preview."
+        )
+        next_action = "prediction:preview" if _adminish(user) else "help"
     elif intent == "decision_human_approval":
         answer = (
             "No. Fortuna recommends decisions, but humans still decide and execute.\n\n"

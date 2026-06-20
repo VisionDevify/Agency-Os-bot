@@ -9,6 +9,7 @@ from app.services.productization import best_next_action, setup_steps
 from app.services.system_truth import reconcile_stale_system_warnings, system_truth
 from app.services.button_health import button_health_summary
 from app.services.decision_engine import generate_coo_briefing
+from app.services.decision_trends import safe_predictive_coo_report
 
 def _owner_display_name(user: User) -> str:
     return user.display_name or user.username or "there"
@@ -384,6 +385,8 @@ def render_first_workspace_flow_page(session: Session, user: User | None = None)
 
 def render_today_priorities_page(session: Session, user: User | None = None) -> Screen:
     briefing = generate_coo_briefing(session, actor=user)
+    prediction_report = safe_predictive_coo_report(session, decisions=briefing.decisions, actor=user)
+    prediction = prediction_report.primary
     top = briefing.top_priority
     actions = todays_top_5_actions(session, actor=user)
     recent_actions = recent_operations_activity(session)
@@ -428,6 +431,8 @@ def render_today_priorities_page(session: Session, user: User | None = None) -> 
         lines.extend(f"- {decision.title}" for decision in briefing.can_wait[:3])
     else:
         lines.append("- No optional setup item is competing for attention.")
+    if prediction is not None:
+        lines.extend(["", "🔮 Likely next:", prediction.prediction_title])
     if briefing.learning_summary:
         lines.extend(["", "What Fortuna Learned:"])
         lines.extend(f"- {item}" for item in briefing.learning_summary[:2])

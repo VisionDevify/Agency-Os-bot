@@ -51,6 +51,12 @@ SAFE_SMOKE_PAGES = {
     "opportunities:list",
     "opportunities:posts",
     "owner_advanced",
+    "prediction:preview",
+    "prediction:preview:details",
+    "prediction:feedback:helpful",
+    "prediction:feedback:not_helpful",
+    "prediction:feedback:remind_later",
+    "prediction:feedback:dismissed",
     "platforms",
     "platforms:details",
     "platforms:instagram",
@@ -89,6 +95,11 @@ SAFE_SMOKE_PAGES = {
     "start_here",
     "today_priorities",
     "ui_self_test",
+    "intelligence:quality",
+    "intelligence:quality:categories",
+    "intelligence:quality:details",
+    "intelligence:quality:trends",
+    "intelligence:quality:trends:details",
 }
 
 

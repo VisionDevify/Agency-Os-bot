@@ -12,6 +12,7 @@ from app.services.decision_engine import (
     top_decision,
 )
 from app.services.decision_quality import safe_decision_quality_report
+from app.services.decision_trends import safe_predictive_coo_report
 
 
 def _decision_status_icon(status: str) -> str:
@@ -177,6 +178,8 @@ def render_my_work_page(session: Session, user: User) -> Screen:
 def render_coo_briefing_page(session: Session, user: User | None = None, *, details: bool = False) -> Screen:
     briefing = generate_coo_briefing(session, actor=user)
     quality = safe_decision_quality_report(session, briefing.decisions, actor=user)
+    prediction_report = safe_predictive_coo_report(session, decisions=briefing.decisions, actor=user)
+    prediction = prediction_report.primary
     top = briefing.top_priority
     if details:
         lines = [
@@ -190,6 +193,7 @@ def render_coo_briefing_page(session: Session, user: User | None = None, *, deta
             f"Confidence Accuracy: {quality.confidence_accuracy}/100",
             f"Briefing Quality: {quality.briefing_quality_score}/100",
             f"Quality Status: {'Unavailable' if not quality.available else quality.status.replace('_', ' ').title()}",
+            f"Prediction Status: {'Disabled' if not prediction_report.enabled else 'Unavailable' if not prediction_report.available else prediction_report.status.replace('_', ' ').title()}",
             "",
             "Ranked decisions:",
         ]
@@ -210,6 +214,18 @@ def render_coo_briefing_page(session: Session, user: User | None = None, *, deta
                     f"Sources: {', '.join(decision.source_records)}",
                 ]
             )
+        lines.extend(["", "Predictions:"])
+        if prediction_report.predictions:
+            for item in prediction_report.predictions[:4]:
+                lines.extend(
+                    [
+                        f"- {item.prediction_title}",
+                        f"  Confidence: {item.confidence.title()} | Can wait: {'Yes' if item.can_wait else 'No'}",
+                        f"  Evidence: {item.evidence_summary}",
+                    ]
+                )
+        else:
+            lines.append("- No evidence-backed prediction is ready yet.")
         return Screen("\n".join(lines), decision_details_menu())
 
     lines = [
@@ -256,6 +272,17 @@ def render_coo_briefing_page(session: Session, user: User | None = None, *, deta
         lines.extend(["", "Intelligence Quality", "Quality check unavailable; current evidence is still being used."])
     elif quality.status in {"needs_attention", "critical"} and quality.findings:
         lines.extend(["", "Intelligence Quality", quality.findings[0].title])
+    if prediction is not None:
+        lines.extend(
+            [
+                "",
+                "🔮 Likely Next",
+                prediction.prediction_title,
+                "",
+                "Why:",
+                prediction.reason,
+            ]
+        )
     lines.extend(
         [
             "",
@@ -305,6 +332,7 @@ def render_decision_details_page(session: Session, user: User | None = None) -> 
         lines.append("")
         lines.append("Not enough evidence yet.")
     elif top is not None:
+        prediction_hint = safe_predictive_coo_report(session, decisions=decisions, actor=user).primary
         lines.extend(
             [
                 "",
@@ -330,6 +358,8 @@ def render_decision_details_page(session: Session, user: User | None = None) -> 
                 top.next_best_move,
             ]
         )
+        if prediction_hint is not None:
+            lines.extend(["", "Prediction:", prediction_hint.prediction_title])
     for index, decision in enumerate(decisions[:8], start=1):
         lines.extend(
             [

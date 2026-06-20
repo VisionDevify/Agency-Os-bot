@@ -58,6 +58,18 @@ def parent_page_for(page: str | None) -> str:
         return "owner_advanced"
     if current in {"coo:briefing:details", "decision:top", "decision:details"} or current.startswith("decision:memory"):
         return "coo:briefing"
+    if current == "intelligence:quality":
+        return "coo:briefing"
+    if current == "intelligence:quality:details":
+        return "intelligence:quality"
+    if current == "intelligence:quality:trends":
+        return "intelligence:quality"
+    if current == "intelligence:quality:trends:details":
+        return "intelligence:quality:trends"
+    if current == "intelligence:quality:categories":
+        return "intelligence:quality:trends"
+    if current.startswith("prediction:"):
+        return "intelligence:quality:trends"
     if current.startswith("coo:"):
         return "coo"
     if current in MORE_CHILDREN:

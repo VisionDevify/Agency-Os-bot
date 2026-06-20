@@ -568,6 +568,18 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_intelligence_quality_page(session, user)
     if page == "intelligence:quality:details" and session is not None:
         return render_intelligence_quality_page(session, user, details=True)
+    if page == "intelligence:quality:trends" and session is not None:
+        return render_decision_quality_trends_page(session, user)
+    if page == "intelligence:quality:trends:details" and session is not None:
+        return render_decision_quality_trends_page(session, user, details=True)
+    if page == "intelligence:quality:categories" and session is not None:
+        return render_category_trends_page(session, user)
+    if page == "prediction:preview" and session is not None:
+        return render_prediction_preview_page(session, user)
+    if page == "prediction:preview:details" and session is not None:
+        return render_prediction_preview_page(session, user, details=True)
+    if page.startswith("prediction:feedback:") and session is not None:
+        return render_prediction_feedback_page(session, page.split(":")[-1], user)
     if page == "intelligence:runs" and session is not None:
         return render_intelligence_runs_page(session)
     if page.startswith("intelligence:run_detail:") and session is not None:

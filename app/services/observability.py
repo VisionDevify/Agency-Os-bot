@@ -21,6 +21,7 @@ from app.services.button_health import button_health_summary
 from app.services.chat_cleanup import chat_cleanup_metrics
 from app.services.decision_engine import decision_memory_summary, generate_decisions
 from app.services.decision_quality import safe_decision_quality_report
+from app.services.decision_trends import safe_decision_trend_report, safe_predictive_coo_report
 from app.services.help_brain import help_questions_today, notification_pilot_status, proxy_pilot_status
 from app.services.heartbeats import list_heartbeats, system_status_summary
 from app.services.bot_instances import bot_instance_diagnostics
@@ -121,12 +122,19 @@ def production_observability_summary(session: Session) -> dict[str, object]:
     decision_learning = decision_memory_summary(session)
     decisions_for_quality = generate_decisions(session)
     decision_quality = safe_decision_quality_report(session, decisions_for_quality)
+    decision_trends = safe_decision_trend_report(session)
+    predictive_coo = safe_predictive_coo_report(session, decisions=decisions_for_quality)
     decision_quality_meaningful = (
         not decision_quality.available
         or decision_quality.status in {"needs_attention", "critical"}
         or any(finding.severity in {"medium", "high", "critical"} for finding in decision_quality.findings)
     )
     decision_quality_observability_status = decision_quality.status if decision_quality_meaningful else "healthy"
+    prediction_meaningful = (
+        not predictive_coo.available
+        or any(not prediction.can_wait and prediction.confidence in {"medium", "high"} for prediction in predictive_coo.predictions)
+    )
+    prediction_observability_status = "needs_review" if prediction_meaningful and predictive_coo.available else "healthy"
     owner_count = session.scalar(select(func.count(User.id)).where(User.is_owner.is_(True))) or 0
     role_count = session.scalar(select(func.count(Role.id))) or 0
     audit_count = session.scalar(select(func.count(AuditLog.id))) or 0
@@ -202,6 +210,13 @@ def production_observability_summary(session: Session) -> dict[str, object]:
                 1 if decision_quality_meaningful else 0,
                 "Open Intelligence Quality." if decision_quality_meaningful else None,
             ),
+            StatusCondition(
+                "prediction_health",
+                prediction_observability_status,
+                "Predictive COO checks.",
+                1 if prediction_meaningful and not predictive_coo.available else 0,
+                "Open Prediction Preview." if prediction_meaningful else None,
+            ),
         ]
     )
     observability_issues = list(truth.current_issues)
@@ -223,6 +238,8 @@ def production_observability_summary(session: Session) -> dict[str, object]:
             observability_issues.append(f"Intelligence Quality: {decision_quality.findings[0].recommendation}")
         else:
             observability_issues.append("Intelligence Quality: quality check unavailable.")
+    if prediction_meaningful and not predictive_coo.available:
+        observability_issues.append("Prediction Health: prediction checks are unavailable.")
 
     return {
         "app_display_name": build_metadata["app_name"],
@@ -398,4 +415,15 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         "decision_quality_friction_severity": decision_quality.friction.severity,
         "decision_quality_friction_evidence": decision_quality.friction.evidence,
         "decision_quality_friction_recommendation": decision_quality.friction.recommendation,
+        "decision_trends_available": decision_trends.available,
+        "decision_trends_status": decision_trends.status,
+        "decision_trends_insights": list(decision_trends.insights),
+        "prediction_health_available": predictive_coo.available,
+        "prediction_health_enabled": predictive_coo.enabled,
+        "prediction_health_status": predictive_coo.status,
+        "prediction_health_meaningful": prediction_meaningful,
+        "prediction_current_critical_active": predictive_coo.current_critical_active,
+        "prediction_count": predictive_coo.quality.prediction_count,
+        "prediction_confidence_accuracy": predictive_coo.quality.confidence_accuracy,
+        "prediction_primary_title": predictive_coo.primary.prediction_title if predictive_coo.primary else "None",
     }

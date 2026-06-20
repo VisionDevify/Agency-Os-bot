@@ -24,6 +24,7 @@ def test_model_tables_are_registered() -> None:
         DailyBriefing,
         DailyAutopilotSetting,
         DecisionMemory,
+        DecisionQualityTrend,
         EventLog,
         ExecutiveInsight,
         FrictionItem,
@@ -46,6 +47,7 @@ def test_model_tables_are_registered() -> None:
         Proxy,
         ProxyHealthCheckResult,
         ProxyRotationHistory,
+        PredictiveCOOPrediction,
         Recommendation,
         Report,
         RestoreTestRun,
@@ -84,6 +86,7 @@ def test_model_tables_are_registered() -> None:
         "daily_briefings",
         "daily_autopilot_settings",
         "decision_memory",
+        "decision_quality_trends",
         "event_logs",
         "executive_insights",
         "friction_items",
@@ -105,6 +108,7 @@ def test_model_tables_are_registered() -> None:
         "playbook_runs",
         "playbooks",
         "post_watches",
+        "predictive_coo_predictions",
         "proxies",
         "proxy_health_check_results",
         "proxy_rotation_history",
@@ -132,6 +136,8 @@ def test_model_tables_are_registered() -> None:
     assert "status" in AuditLog.__table__.columns
     assert EventLog.__tablename__ == "event_logs"
     assert DecisionMemory.__tablename__ == "decision_memory"
+    assert DecisionQualityTrend.__tablename__ == "decision_quality_trends"
+    assert PredictiveCOOPrediction.__tablename__ == "predictive_coo_predictions"
     assert FrictionItem.__tablename__ == "friction_items"
     assert CallbackErrorLog.__tablename__ == "callback_error_logs"
     assert DailyBriefing.__tablename__ == "daily_briefings"

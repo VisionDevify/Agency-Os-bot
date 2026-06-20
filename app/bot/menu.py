@@ -371,7 +371,10 @@ def coo_briefing_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="🔎 Details", callback_data=callback_for("coo:briefing:details")),
             ],
             [InlineKeyboardButton(text="🧠 Decision Memory", callback_data=callback_for("decision:memory"))],
-            [InlineKeyboardButton(text="🧠 Intelligence Quality", callback_data=callback_for("intelligence:quality"))],
+            [
+                InlineKeyboardButton(text="🧠 Intelligence Quality", callback_data=callback_for("intelligence:quality")),
+                InlineKeyboardButton(text="🔮 Prediction Preview", callback_data=callback_for("prediction:preview")),
+            ],
             *page_controls(back_to="owner_advanced"),
         ]
     )
@@ -441,12 +444,59 @@ def intelligence_quality_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Refresh", callback_data=callback_for("intelligence:quality"))],
+            [
+                InlineKeyboardButton(text="📈 Decision Trends", callback_data=callback_for("intelligence:quality:trends")),
+                InlineKeyboardButton(text="🔮 Prediction Preview", callback_data=callback_for("prediction:preview")),
+            ],
             [InlineKeyboardButton(text="🔎 Details", callback_data=callback_for("intelligence:quality:details"))],
             [
                 InlineKeyboardButton(text="👑 COO Briefing", callback_data=callback_for("coo:briefing")),
                 InlineKeyboardButton(text="🧠 Decision Memory", callback_data=callback_for("decision:memory")),
             ],
             *page_controls(back_to="coo:briefing"),
+        ]
+    )
+
+
+def decision_quality_trends_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Refresh", callback_data=callback_for("intelligence:quality:trends"))],
+            [
+                InlineKeyboardButton(text="📊 Category Trends", callback_data=callback_for("intelligence:quality:categories")),
+                InlineKeyboardButton(text="🧠 What Fortuna Learned", callback_data=callback_for("decision:memory")),
+            ],
+            [InlineKeyboardButton(text="🔮 Prediction Preview", callback_data=callback_for("prediction:preview"))],
+            [InlineKeyboardButton(text="🔎 Details", callback_data=callback_for("intelligence:quality:trends:details"))],
+            *page_controls(back_to="intelligence:quality"),
+        ]
+    )
+
+
+def category_trends_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Refresh", callback_data=callback_for("intelligence:quality:categories"))],
+            [InlineKeyboardButton(text="🔮 Prediction Preview", callback_data=callback_for("prediction:preview"))],
+            *page_controls(back_to="intelligence:quality:trends"),
+        ]
+    )
+
+
+def prediction_preview_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Refresh", callback_data=callback_for("prediction:preview"))],
+            [InlineKeyboardButton(text="🧠 Why Fortuna Thinks This", callback_data=callback_for("prediction:preview:details"))],
+            [
+                InlineKeyboardButton(text="✅ Helpful", callback_data=callback_for("prediction:feedback:helpful")),
+                InlineKeyboardButton(text="👎 Not Helpful", callback_data=callback_for("prediction:feedback:not_helpful")),
+            ],
+            [
+                InlineKeyboardButton(text="🕒 Remind Later", callback_data=callback_for("prediction:feedback:remind_later")),
+                InlineKeyboardButton(text="❌ Dismiss", callback_data=callback_for("prediction:feedback:dismissed")),
+            ],
+            *page_controls(back_to="intelligence:quality:trends"),
         ]
     )
 
