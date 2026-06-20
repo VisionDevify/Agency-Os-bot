@@ -1375,9 +1375,22 @@ def render_ui_self_test_page(
         systems_checked = latest.screens_checked
         last_check = format_user_datetime(actor, latest.created_at) if latest.created_at else "unknown time"
         if not truth.bot_polling_safe:
+            polling_issue = next(
+                (
+                    issue
+                    for code, issue in zip(truth.current_issue_codes, truth.current_issues, strict=False)
+                    if code == "bot_polling"
+                ),
+                "Bot polling safety needs review.",
+            )
             status = "Critical"
-            summary = "Telegram polling needs attention before Fortuna can reliably receive updates."
-            recommended_action = "Open Bot Status and stop the duplicate poller."
+            summary = f"Telegram polling needs attention: {polling_issue}"
+            if "more than one" in polling_issue.lower() or "conflict" in polling_issue.lower():
+                recommended_action = "Open Bot Status and stop the duplicate poller."
+            elif "redis" in polling_issue.lower():
+                recommended_action = "Open Bot Status and verify the Redis polling lock."
+            else:
+                recommended_action = "Open Bot Status and verify the active worker."
         elif recovery_job["timed_out_marked"]:
             status = "Needs Attention"
             summary = "A recovery workflow timed out and needs review."

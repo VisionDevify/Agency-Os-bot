@@ -18,6 +18,14 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
+def _as_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
 def record_heartbeat(
     session: Session,
     *,
@@ -112,7 +120,7 @@ def system_status_summary(session: Session) -> dict:
         or 0
     )
     last_heartbeat_at = max(
-        (heartbeat.last_seen_at for heartbeat in heartbeats.values() if heartbeat.last_seen_at),
+        (normalized for heartbeat in heartbeats.values() if (normalized := _as_utc(heartbeat.last_seen_at))),
         default=None,
     )
     railway_metadata = railway.metadata_json or {} if railway else {}

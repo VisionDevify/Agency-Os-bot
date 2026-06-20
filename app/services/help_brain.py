@@ -18,7 +18,7 @@ from app.models.reporting import NotificationDeliveryAttempt, NotificationTarget
 from app.models.task import Task
 from app.models.user import User
 from app.services.agency_activation import build_activation_report
-from app.services.audit import sanitize_details
+from app.services.audit import sanitize_details, sanitize_value
 from app.services.auth import audit_action, is_owner, user_has_permission
 from app.services.events import emit_event
 from app.services.learning import create_learning_event
@@ -1254,8 +1254,8 @@ def run_ui_self_test(session: Session, *, actor: User | None) -> UISelfTestRun:
         requested_by_user_id=actor.id,
         status=status,
         screens_checked=checked,
-        failures_json=sanitize_details(failures),
-        warnings_json=sanitize_details(warnings),
+        failures_json=sanitize_value(failures),
+        warnings_json=sanitize_value(warnings),
         created_at=_now(),
     )
     session.add(run)

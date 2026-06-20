@@ -1,6 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
-from app.bot.screens import render_botstatus_page, render_integrity_page
+from app.bot.screens import render_botstatus_page, render_integrity_page, render_ui_self_test_page
 from app.core.config import settings
 from app.runtime.railway_start import should_start_bot
 from app.services.auth import setup_owner_if_needed
@@ -245,6 +245,10 @@ def test_stale_old_worker_heartbeat_is_healthy_with_details_only(monkeypatch) ->
         assert "Status:\nHealthy" in screen.text
         assert "Stale Bot Heartbeats: 1" in details.text
 
+        selftest = render_ui_self_test_page(session, owner, run_now=True)
+        assert "Telegram polling needs attention" not in selftest.text
+        assert "duplicate poller" not in selftest.text.lower()
+
 
 def test_bot_primary_false_heartbeat_does_not_count_as_active_poller(monkeypatch) -> None:
     monkeypatch.setattr(settings, "database_url", "postgresql+psycopg://user:pass@example.com/db")
@@ -279,6 +283,10 @@ def test_bot_primary_false_heartbeat_does_not_count_as_active_poller(monkeypatch
         assert diagnostics["duplicate_instance_count"] == 0
         assert diagnostics["non_polling_instance_count"] == 1
         assert "Status:\nHealthy" in screen.text
+
+        selftest = render_ui_self_test_page(session, owner, run_now=True)
+        assert "Telegram polling needs attention" not in selftest.text
+        assert "duplicate poller" not in selftest.text.lower()
 
 
 def test_botstatus_renders_safe_instance_diagnostics(monkeypatch) -> None:
