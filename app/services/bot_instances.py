@@ -21,6 +21,7 @@ BOT_INSTANCE_PREFIX = "bot_instance:"
 POLLING_CONFLICT_EVENT = "telegram.polling_conflict_detected"
 POLLING_CONFLICT_RECOMMENDATION_TYPE = "bot_polling_conflict"
 _GENERATED_INSTANCE_ID: str | None = None
+MIN_BOT_INSTANCE_ACTIVE_SECONDS = 60
 
 
 @dataclass(frozen=True)
@@ -230,6 +231,11 @@ def _as_utc(value: datetime | None) -> datetime:
     return value.astimezone(UTC)
 
 
+def _active_window_seconds(active_seconds: int | None = None) -> int:
+    configured = active_seconds if active_seconds is not None else settings.bot_instance_active_seconds
+    return max(int(configured or 0), MIN_BOT_INSTANCE_ACTIVE_SECONDS)
+
+
 def _is_polling_worker_heartbeat(heartbeat: SystemHeartbeat) -> bool:
     metadata = heartbeat.metadata_json or {}
     role = _instance_role(metadata)
@@ -250,7 +256,8 @@ def classify_bot_instance_heartbeats(
     active_seconds: int | None = None,
     mark_stale: bool = True,
 ) -> BotInstanceHeartbeatClassification:
-    cutoff = datetime.now(UTC) - timedelta(seconds=active_seconds or settings.bot_instance_active_seconds)
+    window_seconds = _active_window_seconds(active_seconds)
+    cutoff = datetime.now(UTC) - timedelta(seconds=window_seconds)
     rows = list(
         session.scalars(
             select(SystemHeartbeat)
@@ -267,7 +274,7 @@ def classify_bot_instance_heartbeats(
             if mark_stale and heartbeat.status in {"healthy", "running", "degraded"}:
                 metadata = dict(heartbeat.metadata_json or {})
                 metadata["heartbeat_state"] = "stale"
-                metadata["stale_after_seconds"] = str(active_seconds or settings.bot_instance_active_seconds)
+                metadata["stale_after_seconds"] = str(window_seconds)
                 heartbeat.status = "stale"
                 heartbeat.metadata_json = metadata
             continue

@@ -289,6 +289,33 @@ def test_bot_primary_false_heartbeat_does_not_count_as_active_poller(monkeypatch
         assert "duplicate poller" not in selftest.text.lower()
 
 
+def test_short_heartbeat_window_does_not_expire_worker_during_selftest(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "database_url", "postgresql+psycopg://user:pass@example.com/db")
+    monkeypatch.setattr(settings, "redis_url", "redis://:password@example")
+    monkeypatch.setattr(settings, "bot_primary_instance", True)
+    monkeypatch.setattr(settings, "bot_instance_active_seconds", 1)
+    monkeypatch.setenv("RAILWAY_PROJECT_ID", "project-test")
+    with session_scope() as session:
+        owner = _owner(session)
+        record_heartbeat(
+            session,
+            service_name="bot",
+            status="healthy",
+            metadata={"redis_lock_status": "held", "polling_guard": "redis_lock"},
+        )
+        record_heartbeat(
+            session,
+            service_name="bot_instance:worker",
+            status="healthy",
+            metadata=_bot_instance_metadata(),
+        )
+
+        selftest = render_ui_self_test_page(session, owner, run_now=True)
+
+        assert "Telegram polling needs attention" not in selftest.text
+        assert "No active bot polling heartbeat" not in selftest.text
+
+
 def test_botstatus_renders_safe_instance_diagnostics(monkeypatch) -> None:
     monkeypatch.setattr(settings, "database_url", "postgresql+psycopg://user:pass@example.com/db")
     monkeypatch.setattr(settings, "redis_url", "redis://:password@example")
