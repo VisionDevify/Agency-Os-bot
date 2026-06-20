@@ -595,6 +595,10 @@ def render_production_observability_page(
             f"Waiting: {summary['platform_connections_waiting']}",
             f"Next: {summary['platform_connections_next_action']}",
             "",
+            "Alert Health:",
+            f"{summary['alert_health_label']}",
+            f"Next: {summary['alert_health_next_action']}",
+            "",
             "Navigation:",
             f"{summary['button_health_open_issue_count']} open button/navigation issue(s).",
         ]
@@ -754,6 +758,14 @@ def render_production_observability_page(
             f"- {item.emoji} {item.display_name}: website={item.website.status}, login={item.connection.status}, stats={item.stats.status}, notifications={item.notifications.status}, readiness={item.readiness.status}"
             for item in summary["platform_connections_statuses"]
         ],
+        "",
+        "Alert Health:",
+        f"Status: {summary['alert_health_status']}",
+        f"Label: {summary['alert_health_label']}",
+        f"Success Rate: {summary['alert_health_success_rate'] if summary['alert_health_success_rate'] is not None else 'not enough data'}",
+        f"Failed Attempts: {summary['alert_health_failed_attempts']}",
+        f"Stale Routes: {summary['alert_health_stale_route_count']}",
+        f"Next Action: {summary['alert_health_next_action']}",
         "",
         "Logs:",
         summary["railway_note"],

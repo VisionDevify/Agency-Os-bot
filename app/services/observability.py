@@ -24,6 +24,7 @@ from app.services.heartbeats import list_heartbeats, system_status_summary
 from app.services.bot_instances import bot_instance_diagnostics
 from app.services.persistence import storage_status
 from app.services.notifications import notification_routing_mode_summary, purpose_aliases
+from app.services.notification_intelligence import alert_health_summary
 from app.services.platform_connections import platform_connections_overview
 from app.services.recovery import recovery_risk_assessment
 from app.services.shared_status import StatusCondition, compute_shared_status
@@ -113,6 +114,7 @@ def production_observability_summary(session: Session) -> dict[str, object]:
     buttons = button_health_summary(session)
     cleanup = chat_cleanup_metrics(session)
     platform_overview = platform_connections_overview(session)
+    alert_health = alert_health_summary(session)
     owner_count = session.scalar(select(func.count(User.id)).where(User.is_owner.is_(True))) or 0
     role_count = session.scalar(select(func.count(Role.id))) or 0
     audit_count = session.scalar(select(func.count(AuditLog.id))) or 0
@@ -166,6 +168,13 @@ def production_observability_summary(session: Session) -> dict[str, object]:
                 cleanup.failed_count if cleanup.failed_count >= 3 else 0,
                 "Open Chat Cleanup settings." if cleanup.failed_count >= 3 else None,
             ),
+            StatusCondition(
+                "alert_health",
+                alert_health.status,
+                alert_health.evidence,
+                0 if alert_health.status == "healthy" else 1,
+                "Open Alert Health." if alert_health.status != "healthy" else None,
+            ),
         ]
     )
     observability_issues = list(truth.current_issues)
@@ -175,6 +184,8 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         observability_issues.append(f"Navigation/Button Health: {buttons.open_issue_count} open issue(s).")
     if cleanup.failed_count >= 3:
         observability_issues.append(f"Chat Cleanup: {cleanup.failed_count} recent deletion failure(s).")
+    if alert_health.status != "healthy":
+        observability_issues.append(f"Alert Health: {alert_health.next_action}")
 
     return {
         "app_display_name": build_metadata["app_name"],
@@ -298,4 +309,10 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         "platform_connections_needs_attention": platform_overview["needs_attention"],
         "platform_connections_next_action": platform_overview["next_action"],
         "platform_connections_statuses": platform_overview["statuses"],
+        "alert_health_status": alert_health.status,
+        "alert_health_label": alert_health.label,
+        "alert_health_success_rate": alert_health.success_rate,
+        "alert_health_failed_attempts": alert_health.failed_attempts,
+        "alert_health_stale_route_count": alert_health.stale_route_count,
+        "alert_health_next_action": alert_health.next_action,
     }

@@ -58,9 +58,17 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_platform_connections_page(session, user, details=True)
     if page == "platforms:notifications" and session is not None:
         return render_platform_notification_center_page(session, user)
+    if page == "platforms:alert_routing" and session is not None:
+        return render_alert_routing_center_page(session, user)
+    if page == "platforms:alert_health" and session is not None:
+        return render_alert_health_page(session, user)
+    if page == "platforms:alert_health:details" and session is not None:
+        return render_alert_health_page(session, user, details=True)
     if page.startswith("platforms:notifications:") and session is not None:
-        platform = page.removeprefix("platforms:notifications:")
-        return render_platform_notification_detail_page(session, platform, user)
+        parts = page.split(":")
+        platform = parts[2] if len(parts) >= 3 else ""
+        action = parts[3] if len(parts) >= 4 else None
+        return render_platform_notification_detail_page(session, platform, user, action=action)
     if page.startswith("platforms:") and session is not None:
         parts = page.split(":")
         if len(parts) >= 2:

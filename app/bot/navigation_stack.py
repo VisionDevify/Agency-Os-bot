@@ -83,6 +83,8 @@ def parent_page_for(page: str | None) -> str:
         return "recovery_center"
     if current.startswith("platforms:notifications:"):
         return "platforms:notifications"
+    if current.startswith("platforms:alert_"):
+        return "platforms:notifications"
     if current.startswith("platforms:"):
         return "platforms"
     if current.startswith("team_intelligence:"):
