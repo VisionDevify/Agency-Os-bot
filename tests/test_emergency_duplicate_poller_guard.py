@@ -5,6 +5,7 @@ from app.bot.screens.settings import (
     render_production_observability_page,
     render_ui_self_test_page,
 )
+from app.bot.runner import _record_bot_heartbeat
 from app.core.config import settings
 from app.services.bot_instances import (
     bot_instance_diagnostics,
@@ -145,3 +146,23 @@ def test_polling_conflict_appears_in_observability_and_selftest(monkeypatch) -> 
         for marker in SECRET_MARKERS:
             assert marker not in observability.text
             assert marker not in selftest.text
+
+
+def test_polling_loop_does_not_clear_conflict_but_real_update_does(monkeypatch) -> None:
+    _production_env(monkeypatch)
+    with session_scope() as session:
+        _healthy_core_heartbeats(session)
+        record_polling_conflict(
+            session,
+            instance_id="worker-secret-instance",
+            reason="Another process is using the same Telegram bot token.",
+            source="test",
+            conflict_source="telegram_getupdates",
+            polling_lock_owner="old-worker",
+        )
+
+        _record_bot_heartbeat(session, status="healthy", source="polling_loop")
+        assert bot_instance_diagnostics(session, current_instance_id="worker-secret-instance")["polling_conflict_active"] is True
+
+        _record_bot_heartbeat(session, status="healthy", source="telegram_start")
+        assert bot_instance_diagnostics(session, current_instance_id="worker-secret-instance")["polling_conflict_active"] is False

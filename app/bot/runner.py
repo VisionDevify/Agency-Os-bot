@@ -291,7 +291,8 @@ def _bot_heartbeat_metadata(source: str, **extra: str) -> dict[str, str]:
         "polling_guard": "redis_lock" if has_redis else "disabled_no_redis",
         "redis_lock_status": "held" if has_redis else "not_configured",
     }
-    metadata = clear_polling_conflict_metadata(metadata)
+    if source.startswith("telegram_"):
+        metadata = clear_polling_conflict_metadata(metadata)
     if source == "startup":
         metadata["bot_started_at"] = now
     elif source == "polling_loop":
