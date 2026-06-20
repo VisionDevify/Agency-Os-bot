@@ -978,6 +978,8 @@ def render_botstatus_page(
         warning = str(diagnostics["preflight_reason"])
     elif diagnostics["multiple_active_instances"]:
         warning = "Multiple active bot instance heartbeats detected."
+    elif diagnostics["risk"] == "no_active_polling_owner":
+        warning = "No active bot polling owner heartbeat was found."
     elif diagnostics["risk"] != "ready":
         warning = str(diagnostics["risk"])
 

@@ -168,6 +168,29 @@ def test_one_active_worker_is_healthy(monkeypatch) -> None:
         assert "Issues Found: 0" in screen.text
 
 
+def test_no_active_polling_owner_warns(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "database_url", "postgresql+psycopg://user:pass@example.com/db")
+    monkeypatch.setattr(settings, "redis_url", "redis://:password@example")
+    monkeypatch.setattr(settings, "bot_primary_instance", True)
+    monkeypatch.setenv("RAILWAY_PROJECT_ID", "project-test")
+    with session_scope() as session:
+        owner = _owner(session)
+        record_heartbeat(
+            session,
+            service_name="bot",
+            status="healthy",
+            metadata={"redis_lock_status": "held", "polling_guard": "redis_lock"},
+        )
+
+        diagnostics = bot_instance_diagnostics(session, current_instance_id="worker")
+        screen = render_botstatus_page(session, owner, current_instance_id="worker")
+
+        assert diagnostics["active_instance_count"] == 0
+        assert diagnostics["risk"] == "no_active_polling_owner"
+        assert "Status:\nNeeds Attention" in screen.text
+        assert "No active bot polling owner heartbeat was found." in screen.text
+
+
 def test_worker_plus_api_heartbeat_is_healthy(monkeypatch) -> None:
     monkeypatch.setattr(settings, "database_url", "postgresql+psycopg://user:pass@example.com/db")
     monkeypatch.setattr(settings, "redis_url", "redis://:password@example")

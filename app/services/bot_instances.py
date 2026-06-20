@@ -335,6 +335,8 @@ def bot_instance_diagnostics(session: Session, *, current_instance_id: str | Non
         risk = "critical"
     elif not preflight.allowed:
         risk = "blocked"
+    elif not active:
+        risk = "no_active_polling_owner"
     elif duplicate_count:
         risk = "warning"
     elif current.is_production and not redis_configured:

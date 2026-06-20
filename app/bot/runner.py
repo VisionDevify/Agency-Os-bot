@@ -357,6 +357,7 @@ def _bot_heartbeat_metadata(source: str, **extra: str) -> dict[str, str]:
         **owner_metadata,
         "source": source,
         "instance_id_masked": mask_instance_id(CURRENT_BOT_INSTANCE_ID),
+        "service_role": "worker",
         "primary_polling_enabled": str(settings.bot_primary_instance),
         "allow_polling_without_redis": str(settings.allow_polling_without_redis),
         "db_backend": storage.backend,
