@@ -93,6 +93,27 @@ def mask_storage_config(target_type: str, config: dict[str, Any]) -> dict[str, s
     return {"mode": "Manual export"}
 
 
+def backup_s3_environment_state() -> dict[str, Any]:
+    fields = {
+        "BACKUP_S3_ENDPOINT": settings.backup_s3_endpoint,
+        "BACKUP_S3_BUCKET": settings.backup_s3_bucket,
+        "BACKUP_S3_REGION": settings.backup_s3_region,
+        "BACKUP_S3_ACCESS_KEY": settings.backup_s3_access_key.get_secret_value(),
+        "BACKUP_S3_SECRET_KEY": settings.backup_s3_secret_key.get_secret_value(),
+    }
+    required = ("BACKUP_S3_ENDPOINT", "BACKUP_S3_BUCKET", "BACKUP_S3_ACCESS_KEY", "BACKUP_S3_SECRET_KEY")
+    missing = [name for name in required if not str(fields.get(name) or "").strip()]
+    return {
+        "configured": not missing,
+        "missing": missing,
+        "endpoint_configured": bool(settings.backup_s3_endpoint),
+        "bucket_configured": bool(settings.backup_s3_bucket),
+        "region_configured": bool(settings.backup_s3_region),
+        "access_key_masked": mask_credential(settings.backup_s3_access_key.get_secret_value()),
+        "secret_key_status": "Configured" if settings.backup_s3_secret_key.get_secret_value() else "Missing",
+    }
+
+
 def encrypt_storage_config(config: dict[str, Any]) -> str:
     return encrypt_secret(json.dumps(config, sort_keys=True))
 

@@ -33,6 +33,69 @@ If the response shows `db_backend=sqlite_fallback`, production is running in eme
 
 Telegram verification should use only the Fortuna OS bot and approved Fortuna OS spaces.
 
+## Railway CLI Verification
+
+Use the official Railway CLI when authentication is available. The local helper is CI-safe and non-mutating:
+
+```bash
+python scripts/verify_railway.py --health-url https://agency-os-bot-production.up.railway.app/health --json
+```
+
+If the CLI is installed outside `PATH`, pass it explicitly:
+
+```powershell
+$env:RAILWAY_CLI_COMMAND="$env:USERPROFILE\.railway\bin\railway.exe"
+python scripts\verify_railway.py --health-url https://agency-os-bot-production.up.railway.app/health --json
+```
+
+The script never prints Railway variables, tokens, database URLs, or Redis URLs. It reports each check as `pass`, `fail`, or `unavailable` for:
+
+- Railway CLI installed
+- Railway authentication
+- linked project
+- API service
+- worker service
+- PostgreSQL service
+- Redis service
+- public `/health`
+
+If authentication or project access is missing, direct service checks are `unavailable` with a blocking reason. Public `/health` can still verify the safe runtime state exposed by the API.
+
+## Build Metadata
+
+`/health` and Production Observability expose only safe build proof:
+
+- `GIT_COMMIT`, or Railway's `RAILWAY_GIT_COMMIT_SHA` fallback when available
+- `APP_VERSION`
+- `DEPLOYED_AT`
+
+Missing values show `unknown`. Never place secrets, URLs, tokens, or dumped environment text in these fields.
+
+## Recovery Activation Checks
+
+Recovery cannot become healthy without external backup evidence. Before running the first real backup, configure these Railway variables:
+
+- `BACKUP_S3_ENDPOINT`
+- `BACKUP_S3_BUCKET`
+- `BACKUP_S3_REGION`
+- `BACKUP_S3_ACCESS_KEY`
+- `BACKUP_S3_SECRET_KEY`
+
+Backblaze B2 should use its S3-compatible endpoint through the S3-compatible setup flow. Credential values must stay in Railway or a future secure owner-only secret flow, not normal Telegram chat.
+
+Recovery verification statuses:
+
+- `critical`: no configured storage or no trusted backup evidence
+- `needs_attention`: storage configured but backups are missing, stale, or verification failed
+- `needs_review`: backup verified, but restore validation is missing or partial
+- `healthy`: storage configured, backup verified, restore verified, provider available, and no active recovery concerns
+
+Severity handling:
+
+- Critical findings halt Recovery activation and require owner review.
+- Blocking findings stop the affected verification track and require a missing prerequisite, such as Railway auth or storage credentials.
+- Warnings are documented follow-ups, such as missing optional build metadata or Telegram automation limits.
+
 ## No-Secret Rules
 
 - Do not print Railway env var values.

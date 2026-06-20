@@ -4,7 +4,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.bot.menu import callback_for, page_controls
 from app.models.recovery import BackupStorageTarget
-from app.services.backup_storage import backup_storage_targets
+from app.services.backup_storage import backup_s3_environment_state, backup_storage_targets
 from app.services.recovery import backup_history, recovery_risk_assessment, run_backup, run_restore_test
 
 from .formatting import *
@@ -270,10 +270,26 @@ def render_backup_storage_page(session: Session, user: User | None = None, *, ta
         target = _storage_target_for_type(session, target_type)
         title = "S3-Compatible Storage" if target_type == "s3_compatible" else "Backblaze B2 Storage"
         activate_page = "recovery:storage:s3:activate" if target_type == "s3_compatible" else "recovery:storage:b2:activate"
+        env_state = backup_s3_environment_state()
         guidance = (
-            "Add credentials as Railway variables, then tap Activate. Fortuna tests write, read, and cleanup before enabling it."
+            "Add BACKUP_S3_* variables in Railway, then tap Activate. Fortuna tests write, read, and cleanup before enabling it."
             if target_type == "s3_compatible"
-            else "Backblaze B2 direct setup is prepared but not active yet. Use Backblaze's S3-compatible endpoint in S3-Compatible Storage."
+            else "Use Backblaze's S3-compatible endpoint in S3-Compatible Storage for now. Direct B2 setup stays unavailable until its connector is finished."
+        )
+        env_lines = (
+            [
+                "Railway Variables:",
+                f"Endpoint: {'Configured' if env_state['endpoint_configured'] else 'Missing'}",
+                f"Bucket: {'Configured' if env_state['bucket_configured'] else 'Missing'}",
+                f"Region: {'Configured' if env_state['region_configured'] else 'Optional / auto'}",
+                f"Access Key: {env_state['access_key_masked']}",
+                f"Secret Key: {env_state['secret_key_status']}",
+            ]
+            if target_type == "s3_compatible"
+            else [
+                "Backblaze note:",
+                "Use Backblaze's S3-compatible endpoint with the S3-Compatible setup path.",
+            ]
         )
         rows = [[InlineKeyboardButton(text="Activate / Test From Railway Env", callback_data=callback_for(activate_page))]]
         if target is not None:
@@ -293,6 +309,8 @@ def render_backup_storage_page(session: Session, user: User | None = None, *, ta
             "",
             "Configuration:",
             *_storage_target_rows(target),
+            "",
+            *env_lines,
             "",
             "How to connect:",
             guidance,
@@ -333,7 +351,7 @@ def render_backup_storage_page(session: Session, user: User | None = None, *, ta
     targets = backup_storage_targets(session)
     active = [target for target in targets if target.enabled and target.connection_status == "active"]
     lines = [
-        "Backup Storage",
+        "📦 Backup Storage",
         "",
         "Status:",
         "External storage is connected." if active else "External storage is not connected yet.",
@@ -341,12 +359,15 @@ def render_backup_storage_page(session: Session, user: User | None = None, *, ta
         "Why it matters:",
         "If Railway breaks, external backups help restore Fortuna somewhere else.",
         "",
-        "Next Best Move",
-        "Run a backup." if active else "Choose and test a backup storage target.",
+        "✨ Next Best Move",
+        "Run a backup." if active else "Add your backup storage variables in Railway, then test the connection.",
         "",
         "Configured Targets:",
         *(f"- {target.name}: {_storage_status_text(target)}" for target in targets[:5]),
         *([] if targets else ["- None yet"]),
+        "",
+        "Backblaze B2:",
+        "Use its S3-compatible endpoint through S3-Compatible setup for now.",
         "",
         "No credentials are shown here.",
     ]

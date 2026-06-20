@@ -38,10 +38,21 @@ Confirm presence only; never print values:
 Safe build metadata:
 
 - `GIT_COMMIT`: commit SHA deployed to Railway.
+- `RAILWAY_GIT_COMMIT_SHA`: Railway-provided safe fallback commit SHA when `GIT_COMMIT` is not set.
 - `APP_VERSION`: release/build label.
 - `DEPLOYED_AT`: deployment timestamp.
 
 These labels are safe to show in `/health` and Production Observability. Do not put secrets, URLs, tokens, or dumped env values in these fields.
+
+Recovery storage variables:
+
+- `BACKUP_S3_ENDPOINT`
+- `BACKUP_S3_BUCKET`
+- `BACKUP_S3_REGION`
+- `BACKUP_S3_ACCESS_KEY`
+- `BACKUP_S3_SECRET_KEY`
+
+Confirm only whether they are present. Do not print values. Missing storage credentials mean Recovery remains non-healthy and backup/restore activation is blocked until the owner configures them.
 
 ## Health And Heartbeats
 
@@ -58,6 +69,21 @@ curl https://agency-os-bot-production.up.railway.app/health
 ```
 
 Expected proof fields include `app_name`, `environment`, `git_commit`, `build_version`, `deployed_at`, `alembic_revision`, `db_backend`, `db_durable`, and `redis`. Missing build metadata renders as `unknown`; secrets and connection URLs are never returned.
+
+Run the CI-safe Railway verifier after deploy:
+
+```bash
+python scripts/verify_railway.py --health-url https://agency-os-bot-production.up.railway.app/health --json
+```
+
+If the Railway CLI is installed outside `PATH`:
+
+```powershell
+$env:RAILWAY_CLI_COMMAND="$env:USERPROFILE\.railway\bin\railway.exe"
+python scripts\verify_railway.py --health-url https://agency-os-bot-production.up.railway.app/health --json
+```
+
+The verifier is read-only. It reports Railway CLI, auth, linked project, API, worker, Postgres, Redis, and public health as `pass`, `fail`, or `unavailable`.
 
 The bot worker records `bot` heartbeat rows on startup and Telegram activity.
 
@@ -269,3 +295,29 @@ Bot worker startup:
 - API owns Alembic migrations.
 - Bot worker should not run Alembic before polling.
 - If API health is green but Telegram is silent, check bot worker logs for polling startup and heartbeat, not API health alone.
+
+## Recovery Operations
+
+Recovery Center is evidence-based. It must not show protected, healthy, passed, or successful unless real backup and restore evidence supports that state.
+
+Owner activation flow:
+
+1. Configure the `BACKUP_S3_*` variables in Railway.
+2. Open Recovery Center -> Backup Storage.
+3. Open S3-Compatible setup.
+4. Activate / Test From Railway Env.
+5. Confirm the connection test writes, reads, verifies, and cleans up a test object.
+6. Run Backup.
+7. Confirm the backup artifact was encrypted, uploaded, checksummed, and verified.
+8. Run Restore Test.
+9. Treat `verified_only` as a warning, not a full restore pass.
+
+Backblaze B2 should be connected through its S3-compatible endpoint using the S3-Compatible setup path.
+
+Sprint halt conditions for Recovery activation:
+
+- Critical: checksum mismatch, decryptability failure, uploaded artifact cannot be verified, restore validation failed, or any fake-success contradiction.
+- Blocking: missing Railway auth, missing project access, missing storage credentials, unavailable storage connection test, or missing restore-test prerequisite.
+- Warning: optional build metadata missing, Telegram Web unavailable, or restore evidence is partial (`verified_only`).
+
+Owner escalation must include the failed step, observed evidence, severity, and the exact owner action needed.

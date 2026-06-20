@@ -134,6 +134,31 @@ The health endpoint returns safe status labels for API, database backend type, d
 
 Set `GIT_COMMIT`, `APP_VERSION`, and `DEPLOYED_AT` in Railway for deploy verification. Missing values render as `unknown`; secrets, tokens, and connection URLs are never returned.
 
+Railway can also provide `RAILWAY_GIT_COMMIT_SHA` for GitHub-triggered deployments. Fortuna uses it as a safe fallback when `GIT_COMMIT` is not set.
+
+Safe Railway verification script:
+
+```bash
+python scripts/verify_railway.py --health-url https://agency-os-bot-production.up.railway.app/health --json
+```
+
+If Railway CLI is installed outside `PATH`, point the script at it without printing secrets:
+
+```powershell
+$env:RAILWAY_CLI_COMMAND="$env:USERPROFILE\.railway\bin\railway.exe"
+python scripts\verify_railway.py --health-url https://agency-os-bot-production.up.railway.app/health --json
+```
+
+Recovery activation requires external backup storage. Set these in Railway before running Recovery Center -> Backup Storage -> Activate / Test:
+
+- `BACKUP_S3_ENDPOINT`
+- `BACKUP_S3_BUCKET`
+- `BACKUP_S3_REGION`
+- `BACKUP_S3_ACCESS_KEY`
+- `BACKUP_S3_SECRET_KEY`
+
+Backblaze B2 should use its S3-compatible endpoint through the S3-compatible setup path for now. Missing backup storage keeps Recovery non-healthy by design.
+
 Owner-only integrity check:
 
 ```bash
@@ -166,6 +191,7 @@ Production smoke testing checklist:
 - `docs/help_brain.md`
 - `docs/pilot_readiness.md`
 - `docs/railway_deployment.md`
+- `docs/recovery_center.md`
 - `docs/notification_routing.md`
 - `docs/production_operations.md`
 - `docs/automation_simulation.md`

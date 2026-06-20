@@ -13,6 +13,7 @@ COPY railway.json ./
 COPY alembic ./alembic
 COPY app ./app
 COPY docs ./docs
+COPY scripts ./scripts
 COPY tests ./tests
 
 CMD ["python", "-m", "app.runtime.railway_start"]

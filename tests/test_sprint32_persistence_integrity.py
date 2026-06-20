@@ -67,6 +67,26 @@ def test_health_payload_includes_safe_build_metadata_without_secrets(monkeypatch
     assert "DATABASE_URL" not in str(payload)
 
 
+def test_health_payload_uses_railway_commit_metadata_when_git_commit_missing(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "git_commit", None)
+    monkeypatch.setattr(settings, "app_version", None)
+    monkeypatch.setattr(settings, "deployed_at", None)
+    monkeypatch.setenv("RAILWAY_GIT_COMMIT_SHA", "railway-safe-sha")
+    storage = storage_status(
+        database_url="postgresql+psycopg://user:pass@example.com/db",
+        allow_sqlite_fallback=False,
+        environment="production",
+    )
+
+    payload = health_payload(storage=storage, db_connected=True, redis_status="healthy")
+
+    assert payload["git_commit"] == "railway-safe-sha"
+    assert payload["build_version"] == "unknown"
+    assert payload["deployed_at"] == "unknown"
+    assert "RAILWAY_GIT_COMMIT_SHA" not in str(payload)
+    assert "user:pass" not in str(payload)
+
+
 def test_health_payload_redacts_suspicious_metadata(monkeypatch) -> None:
     monkeypatch.setattr(settings, "git_commit", "secret-token")
     monkeypatch.setattr(settings, "app_version", "DATABASE_URL=postgres://user:pass@example/db")

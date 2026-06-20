@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from app.core.config import settings
@@ -36,7 +37,9 @@ def safe_build_metadata(*, environment: str | None = None, alembic_revision: str
     return {
         "app_name": safe_metadata_value(settings.app_display_name),
         "environment": safe_metadata_value(environment or settings.environment),
-        "git_commit": safe_metadata_value(settings.git_commit),
+        "git_commit": safe_metadata_value(
+            settings.git_commit or os.environ.get("RAILWAY_GIT_COMMIT_SHA")
+        ),
         "build_version": safe_metadata_value(settings.app_version),
         "deployed_at": safe_metadata_value(settings.deployed_at),
         "alembic_revision": safe_metadata_value(alembic_revision),

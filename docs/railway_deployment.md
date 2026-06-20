@@ -60,10 +60,21 @@ API service variables:
 Safe build metadata variables:
 
 - `GIT_COMMIT`: short or full git commit SHA deployed to Railway.
+- `RAILWAY_GIT_COMMIT_SHA`: Railway-provided fallback commit SHA for GitHub-triggered deployments when `GIT_COMMIT` is not set.
 - `APP_VERSION`: human-readable release/build label.
 - `DEPLOYED_AT`: deployment timestamp, preferably ISO 8601.
 
 These values are returned by `/health` and Production Observability so operators can prove what code is running. They must never contain secrets, URLs, tokens, or dumped environment values.
+
+Recovery backup variables:
+
+- `BACKUP_S3_ENDPOINT`
+- `BACKUP_S3_BUCKET`
+- `BACKUP_S3_REGION`
+- `BACKUP_S3_ACCESS_KEY`
+- `BACKUP_S3_SECRET_KEY`
+
+Set these only in Railway variables or another secure owner-only secret store. Never paste them into normal Telegram chat. Backblaze B2 should use its S3-compatible endpoint through the S3-compatible setup flow.
 
 ## API Service
 
@@ -109,6 +120,39 @@ Expected response:
 ```
 
 If `GIT_COMMIT`, `APP_VERSION`, or `DEPLOYED_AT` are missing, `/health` returns `unknown` for those safe metadata fields. If PostgreSQL or Redis are not attached yet, `/health` must say so. Emergency SQLite in Railway returns `status=degraded`, `db=degraded`, and `db_backend=sqlite_fallback`. Do not treat a production bot as durable until `db_backend=postgresql`, `db_durable=true`, and `redis=healthy`.
+
+## Railway CLI Verification
+
+Install the Railway CLI using the official Railway instructions, then authenticate with `railway login` or the approved Railway token mechanism for CI. Official docs:
+
+- https://docs.railway.com/cli
+- https://docs.railway.com/variables/reference
+
+Run the read-only verifier:
+
+```bash
+python scripts/verify_railway.py --health-url https://agency-os-bot-production.up.railway.app/health --json
+```
+
+If Railway CLI is installed outside `PATH`, set:
+
+```powershell
+$env:RAILWAY_CLI_COMMAND="$env:USERPROFILE\.railway\bin\railway.exe"
+python scripts\verify_railway.py --health-url https://agency-os-bot-production.up.railway.app/health --json
+```
+
+The verifier never mutates Railway resources and never prints variables. It reports:
+
+- CLI installed/version
+- auth available
+- project linked
+- API service discoverable
+- worker service discoverable
+- Postgres service discoverable
+- Redis service discoverable
+- public `/health` status and safe metadata
+
+Statuses are `pass`, `fail`, or `unavailable`. If auth is missing, service checks must remain `unavailable` rather than guessed from prior knowledge.
 
 ## Bot Worker Service
 
