@@ -33,6 +33,7 @@ from app.models.opportunity import (
 )
 from app.models.performance import TeamPerformanceSnapshot
 from app.models.permissions import Permission, Role, RolePermission, UserRole
+from app.models.platform import PlatformConnection
 from app.models.prediction import OpportunityPrediction
 from app.models.proxy import Proxy, ProxyHealthCheckResult, ProxyRotationHistory, ProxySessionMemory
 from app.models.recovery import BackupRun, BackupStorageTarget, RestoreTestRun
@@ -126,6 +127,7 @@ __all__ = [
     "OperationsAction",
     "OperationsWorkflow",
     "Permission",
+    "PlatformConnection",
     "Playbook",
     "PlaybookRun",
     "PostWatch",

@@ -13,6 +13,7 @@ from .automations import *
 from .opportunities import *
 from .predictions import *
 from .recovery import *
+from .platforms import *
 from .settings import *
 from .team import *
 from .team_intelligence import *
@@ -51,6 +52,26 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_team_intelligence_page(session, user)
     if page == "team_intelligence:details" and session is not None:
         return render_team_intelligence_page(session, user, details=True)
+    if page == "platforms" and session is not None:
+        return render_platform_connections_page(session, user)
+    if page == "platforms:details" and session is not None:
+        return render_platform_connections_page(session, user, details=True)
+    if page == "platforms:notifications" and session is not None:
+        return render_platform_notification_center_page(session, user)
+    if page.startswith("platforms:notifications:") and session is not None:
+        platform = page.removeprefix("platforms:notifications:")
+        return render_platform_notification_detail_page(session, platform, user)
+    if page.startswith("platforms:") and session is not None:
+        parts = page.split(":")
+        if len(parts) >= 2:
+            platform = parts[1]
+            if len(parts) >= 3 and parts[2] == "test_website":
+                return render_platform_detail_page(session, platform, user, run_website_check=True)
+            if len(parts) >= 3 and parts[2] == "details":
+                return render_platform_detail_page(session, platform, user, details=True)
+            if len(parts) >= 3 and parts[2] in {"connection", "stats"}:
+                return render_platform_detail_page(session, platform, user, section=parts[2])
+            return render_platform_detail_page(session, platform, user)
     if page == "today_priorities" and session is not None:
         return render_today_priorities_page(session, user)
     if page == "setup_progress" and session is not None:

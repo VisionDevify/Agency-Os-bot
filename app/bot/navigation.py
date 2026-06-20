@@ -1403,6 +1403,7 @@ def screen_for_page(
         or normalized.startswith("help_feedback:")
         or normalized.startswith("team_qa:")
         or normalized.startswith("notification_digest:")
+        or normalized.startswith("platforms")
     ):
         if normalized.startswith("settings:chat_cleanup"):
             return render_chat_cleanup_page(session, user, chat_id)

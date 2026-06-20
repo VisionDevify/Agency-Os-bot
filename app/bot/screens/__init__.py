@@ -13,6 +13,7 @@ from .automations import *
 from .opportunities import *
 from .predictions import *
 from .recovery import *
+from .platforms import *
 from .settings import *
 from .team import *
 from .team_intelligence import *

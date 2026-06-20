@@ -74,6 +74,7 @@ def owner_advanced_home_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="Recovery Center", callback_data=callback_for("recovery_center")),
                 InlineKeyboardButton(text="Team Intelligence", callback_data=callback_for("team_intelligence")),
             ],
+            [InlineKeyboardButton(text="🔌 Platform Connections", callback_data=callback_for("platforms"))],
             [InlineKeyboardButton(text="Simple Mode", callback_data=callback_for("menu"))],
             *page_controls(back_to="menu"),
         ]

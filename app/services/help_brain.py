@@ -221,6 +221,34 @@ HELP_KB_SEEDS: tuple[dict[str, str], ...] = (
         "related_route": "recovery:restore:test",
     },
     {
+        "topic": "platform_connections",
+        "title": "Platform Connections",
+        "role_scope": "owner,admin,manager",
+        "content": "Platform Connections shows public website reachability, approved login/API/session connection, stats access, notification routing, and activation readiness as separate evidence-backed states.",
+        "related_route": "platforms",
+    },
+    {
+        "topic": "platform_reachable_vs_connected",
+        "title": "Reachable Versus Connected",
+        "role_scope": "owner,admin,manager",
+        "content": "Reachable only means Fortuna can access the public website. Connected means you have approved a login/API/session method and Fortuna verified it.",
+        "related_route": "platforms",
+    },
+    {
+        "topic": "platform_stats_waiting",
+        "title": "Platform Stats Waiting",
+        "role_scope": "owner,admin,manager",
+        "content": "Stats wait for connection because follower, reach, engagement, and account metrics require a verified owner-approved connection. Fortuna does not fabricate placeholder metrics.",
+        "related_route": "platforms",
+    },
+    {
+        "topic": "platform_notifications",
+        "title": "Platform Notifications",
+        "role_scope": "owner,admin,manager",
+        "content": "Platform notifications route approved alerts to Fortuna HQ, Ops, or Alerts targets. Missing targets are setup items, not failures.",
+        "related_route": "platforms:notifications",
+    },
+    {
         "topic": "opportunity_prediction",
         "title": "Opportunity Prediction",
         "role_scope": "owner,admin,manager,chatter",
@@ -284,6 +312,20 @@ def help_article_count(session: Session) -> int:
 
 def detect_help_intent(question: str) -> str:
     text = question.casefold()
+    if "platform connection" in text or "platform connections" in text:
+        return "platform_connections"
+    if "reachable" in text and "connected" in text:
+        return "platform_reachable_vs_connected"
+    if "instagram" in text and ("reachable" in text or "connected" in text):
+        return "platform_reachable_vs_connected"
+    if "stats waiting" in text or "waiting for connection" in text or ("access" in text and "account stats" in text):
+        return "platform_stats_waiting"
+    if "when" in text and "connect platforms" in text:
+        return "platform_activation_readiness"
+    if "notification" in text and "platform" in text:
+        return "platform_notifications"
+    if "activation readiness" in text:
+        return "platform_activation_readiness"
     if "comment profile" in text or "profile lead" in text or ("why" in text and "profile" in text and "suggest" in text):
         return "comment_profile_leads"
     if "comment section" in text:
@@ -512,7 +554,42 @@ def help_brain_answer(
     role = _role_label(user)
     next_action = current_page or "help"
 
-    if intent == "readiness_low":
+    if intent == "platform_connections":
+        answer = (
+            "Platform Connections shows each platform in layers: public website, verified login/API/session, stats access, notifications, and activation readiness.\n\n"
+            "Why: reachable is not the same as connected, and missing credentials are setup items, not failures.\n\n"
+            "Next button to press: Platform Connections."
+        )
+        next_action = "platforms" if _adminish(user) else "help"
+    elif intent == "platform_reachable_vs_connected":
+        answer = (
+            "Reachable only means Fortuna can access the public website. Connected means you have approved a login/API/session method and Fortuna verified it.\n\n"
+            "Why: a public website check cannot prove account access or stats access.\n\n"
+            "Next button to press: Connection Setup."
+        )
+        next_action = "platforms"
+    elif intent == "platform_stats_waiting":
+        answer = (
+            "Stats waiting for connection means Fortuna has not verified an approved platform connection yet.\n\n"
+            "Why: followers, reach, engagement, and account metrics require official/API, approved connector, session-based, or manual evidence. Fortuna will not invent stats.\n\n"
+            "Next button to press: Connection Setup."
+        )
+        next_action = "platforms"
+    elif intent == "platform_notifications":
+        answer = (
+            "Platform notifications send approved alerts to Fortuna HQ, Ops, or Alerts targets when those targets are registered.\n\n"
+            "Why: missing targets are setup items, not delivery failures.\n\n"
+            "Next button to press: Notification Center."
+        )
+        next_action = "platforms:notifications"
+    elif intent == "platform_activation_readiness":
+        answer = (
+            "Activation readiness means Fortuna has checked the setup pieces needed before a platform becomes useful: website check, connection method, secure credential readiness, stats layer, notification route, and compliance rules.\n\n"
+            "Why: Fortuna should say what is prepared without pretending credentials or stats already exist.\n\n"
+            "Next button to press: Platform Connections."
+        )
+        next_action = "platforms"
+    elif intent == "readiness_low":
         answer, next_action = _readiness_answer(session, user)
     elif intent == "recovery_center":
         if not _adminish(user):

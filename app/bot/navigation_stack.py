@@ -24,6 +24,7 @@ MORE_CHILDREN = {
     "executive_mode",
     "recovery_center",
     "team_intelligence",
+    "platforms",
 }
 
 
@@ -80,6 +81,10 @@ def parent_page_for(page: str | None) -> str:
         return "opportunities"
     if current.startswith("recovery:"):
         return "recovery_center"
+    if current.startswith("platforms:notifications:"):
+        return "platforms:notifications"
+    if current.startswith("platforms:"):
+        return "platforms"
     if current.startswith("team_intelligence:"):
         return "team_intelligence"
     if current.startswith("notification_") or current.startswith("notification:"):
@@ -95,7 +100,7 @@ def root_page_for(page: str | None) -> str:
         return ROOT_SCREEN
     if current.startswith("settings:chat_cleanup"):
         return "settings"
-    if current in MORE_CHILDREN or current.startswith(("intelligence", "automations", "reports", "settings", "recovery", "team_intelligence")):
+    if current in MORE_CHILDREN or current.startswith(("intelligence", "automations", "reports", "settings", "recovery", "team_intelligence", "platforms")):
         return "owner_advanced"
     if current.startswith(("proxy:", "proxies:")):
         return "proxies"

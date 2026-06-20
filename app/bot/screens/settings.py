@@ -587,6 +587,11 @@ def render_production_observability_page(
             f"Restore Test: {summary['recovery_restore_test_status']}",
             f"Next: {summary['recovery_next_best_move']}",
             "",
+            "Platform Connections:",
+            f"{summary['platform_connections_ready']}/{summary['platform_connections_total']} ready.",
+            f"Waiting: {summary['platform_connections_waiting']}",
+            f"Next: {summary['platform_connections_next_action']}",
+            "",
             "Navigation:",
             f"{summary['button_health_open_issue_count']} open button/navigation issue(s).",
         ]
@@ -736,6 +741,16 @@ def render_production_observability_page(
         f"Recovery Next Move: {summary['recovery_next_best_move']}",
         "Recovery Evidence:",
         *[f"- {line}" for line in summary["recovery_evidence"]],
+        "",
+        "Platform Connections:",
+        f"Ready: {summary['platform_connections_ready']}/{summary['platform_connections_total']}",
+        f"Waiting: {summary['platform_connections_waiting']}",
+        f"Needs Attention: {summary['platform_connections_needs_attention']}",
+        f"Next Action: {summary['platform_connections_next_action']}",
+        *[
+            f"- {item.emoji} {item.display_name}: website={item.website.status}, login={item.connection.status}, stats={item.stats.status}, notifications={item.notifications.status}, readiness={item.readiness.status}"
+            for item in summary["platform_connections_statuses"]
+        ],
         "",
         "Logs:",
         summary["railway_note"],
