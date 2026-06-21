@@ -314,6 +314,19 @@ AI Brain and grounded reasoning:
 - AI audit logs store safe metadata only: use case, provider, model, status, evidence count, safe error summary, output hash, and estimates. They must not store API keys, raw secrets, or full unredacted production prompts.
 - Rate limits, timeouts, cached repeated summaries, and disabled fallbacks prevent AI call loops and cost surprises.
 
+Self-healing issue lifecycle:
+
+- Fixed problems must fall out of active views after fresh evidence proves they no longer reproduce.
+- Standard issue-like lifecycle states are `active`, `validating`, `resolved`, `historical`, `ignored`, `stale`, and `reappeared`.
+- Callback failures, Button Health issues, callback recommendations, observability findings, notification alerts, friction findings, recovery findings, AI/search failures, and team UX findings should use those meanings even when the underlying table stores a smaller status vocabulary.
+- Historical records are retained for audit and learning. Do not delete old callback logs, audit rows, events, or recommendations just because they are resolved.
+- `IssueRevalidationEngine` classifies old callback failures against current callback scan evidence and deployment metadata. A route can become historical only after a targeted fresh check passes or a previously stored resolved recommendation contains revalidation evidence.
+- Revalidation must be evidence-backed. If validation is unavailable, show `validating` or `needs review`; do not claim healthy.
+- Old failures before the current deployment should not count as active if the same route passes after deploy. Failures after the current deploy, or failures that reproduce after resolution, remain active or `reappeared`.
+- Button Health active counts must use only open/current ButtonIssue records. Resolved or historical issues stay in Details/history.
+- Observability top-level issue counts must exclude historical issues and include only active, reappeared, or current validating issues.
+- Recommendations tied to fixed callback failures should move to `resolved` when the callback route passes revalidation. If the same issue returns, create or reopen the recommendation with new evidence.
+
 Team UX readiness and active screens:
 
 - Fortuna should feel like one active Telegram app screen, not a stack of historical menus.

@@ -14,6 +14,7 @@ from app.models.help import UISelfTestRun
 from app.models.intelligence import IntelligenceRun
 from app.models.proxy import ProxyHealthCheckResult
 from app.models.permissions import Role
+from app.models.recommendation import Recommendation
 from app.models.reporting import NotificationTarget
 from app.models.user import User
 from app.services.build_metadata import safe_build_metadata, safe_metadata_value
@@ -123,6 +124,15 @@ def production_observability_summary(session: Session) -> dict[str, object]:
     buttons = button_health_summary(session)
     cleanup = chat_cleanup_metrics(session)
     team_ux = team_ux_readiness(session)
+    active_callback_recommendations = int(
+        session.scalar(
+            select(func.count(Recommendation.id)).where(
+                Recommendation.recommendation_type == "callback_failure",
+                Recommendation.status.in_(("open", "acknowledged")),
+            )
+        )
+        or 0
+    )
     platform_overview = platform_connections_overview(session)
     alert_health = alert_health_summary(session)
     decision_learning = decision_memory_summary(session)
@@ -213,6 +223,13 @@ def production_observability_summary(session: Session) -> dict[str, object]:
                 "Open Button Health." if buttons.open_issue_count else None,
             ),
             StatusCondition(
+                "issue_lifecycle",
+                "needs_review" if active_callback_recommendations else "healthy",
+                "Self-healing issue lifecycle tracks unresolved callback recommendations only.",
+                active_callback_recommendations,
+                "Open Callback Failure Review." if active_callback_recommendations else None,
+            ),
+            StatusCondition(
                 "chat_cleanup",
                 cleanup.status,
                 cleanup.evidence,
@@ -280,6 +297,8 @@ def production_observability_summary(session: Session) -> dict[str, object]:
     button_issue_count = buttons.open_issue_count + buttons.telegram_ui_issue_count
     if button_issue_count:
         observability_issues.append(f"Navigation/Button Health: {button_issue_count} open issue(s).")
+    if active_callback_recommendations:
+        observability_issues.append(f"Callback Issue Lifecycle: {active_callback_recommendations} active callback recommendation(s).")
     if cleanup.old_menu_risk:
         observability_issues.append(f"Telegram UI Cleanup: {cleanup.next_action}")
     if team_ux.meaningful:
@@ -414,6 +433,7 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         "recovery_job_timed_out_marked": recovery_job["timed_out_marked"],
         "button_health_status": buttons.overall_status,
         "button_health_open_issue_count": button_issue_count,
+        "issue_lifecycle_active_callback_recommendations": active_callback_recommendations,
         "button_health_technical_issue_count": buttons.technical_issue_count,
         "button_health_navigation_issue_count": buttons.navigation_issue_count,
         "button_health_ux_issue_count": buttons.ux_issue_count,

@@ -130,7 +130,6 @@ def render_button_health_report_page(
         return Screen(text="Button Health Report\n\nOwner access required.", reply_markup=page_controls_markup("settings"))
     health = run_button_issue_scan(session, actor=user) if run_now or not details else button_health_summary(session)
     team_ux = team_ux_readiness(session)
-    review = callback_failure_review(session, limit=3)
     if not details:
         total_issues = health.open_issue_count + health.telegram_ui_issue_count
         title = "🟢 Button Health" if health.overall_status == "healthy" else "🟡 Button Health"
@@ -186,6 +185,14 @@ def render_button_health_report_page(
             ),
         )
     report = run_callback_health_smoke_test(session, actor=user)
+    revalidated_at = datetime.now(UTC)
+    review = callback_failure_review(
+        session,
+        limit=10,
+        working_pages=report.working,
+        failing_pages=[failure.page for failure in report.failing],
+        revalidated_at=revalidated_at,
+    )
     health = button_health_summary(session)
     lines = [
         "Fortuna Self-Test Technical Details",
@@ -229,9 +236,14 @@ def render_button_health_report_page(
         [
             "",
             "Recent Production Failure Logs:",
-            f"Callback errors: {len(review.items)}",
+            f"Callback errors: {len(review.active_items) + len(review.validating_items) + len(review.historical_items)} total",
+            f"Active callback errors: {len(review.active_items)}",
+            f"Validating callback errors: {len(review.validating_items)}",
+            f"Historical fixed callback errors: {len(review.historical_items)}",
             f"Friction items: {review.friction_count}",
-            f"Callback recommendations: {review.recommendation_count}",
+            f"Callback recommendations: {review.recommendation_count} total",
+            f"Active callback recommendations: {review.active_recommendation_count}",
+            f"Resolved callback recommendations: {review.resolved_recommendation_count}",
             f"Callback audit rows: {review.audit_count}",
             f"Callback event rows: {review.event_count}",
         ]
@@ -240,11 +252,23 @@ def render_button_health_report_page(
         lines.extend(["", "Failing Buttons:"])
         for failure in report.failing[:8]:
             lines.append(f"- {failure.page}: {failure.exception_type}")
-    if review.items:
-        lines.extend(["", "Latest Logged Failures:"])
-        for item in review.items[:3]:
+    if review.active_items:
+        lines.extend(["", "Active Logged Failures:"])
+        for item in review.active_items[:3]:
             when = format_user_datetime(user, item.created_at) if item.created_at else "Unknown"
             lines.append(f"- {item.page}: {item.exception_type} at {when}")
+    elif review.validating_items:
+        lines.extend(["", "Validating Logged Failures:"])
+        for item in review.validating_items[:3]:
+            when = format_user_datetime(user, item.created_at) if item.created_at else "Unknown"
+            lines.append(f"- {item.page}: {item.exception_type} at {when}")
+            lines.append(f"  Evidence: {item.evidence_summary}")
+    elif review.historical_items:
+        lines.extend(["", "Historical Fixed Issues:"])
+        for item in review.historical_items[:3]:
+            when = format_user_datetime(user, item.created_at) if item.created_at else "Unknown"
+            lines.append(f"- {item.page}: {item.exception_type} at {when}")
+            lines.append(f"  Evidence: {item.evidence_summary}")
     if report.untested:
         lines.extend(["", "Skipped For Safety:"])
         for page in report.untested[:8]:
@@ -266,37 +290,86 @@ def render_button_health_report_page(
 
 
 def render_callback_failure_review_page(session: Session, user: User | None = None) -> Screen:
-    review = callback_failure_review(session, limit=10)
+    review = callback_failure_review(session, limit=20)
     lines = [
         "Callback Failure Review",
         "",
         "Fortuna checked callback errors, friction items, callback recommendations, audit logs, and event logs.",
         "",
-        f"Callback errors: {len(review.items)}",
+        f"Callback errors: {len(review.active_items)} active",
+        "",
+        "Active Failures:",
+        f"{len(review.active_items)} active / {len(review.new_since_deploy_items)} new since latest validation",
+        "",
+        "Validating:",
+        f"{len(review.validating_items)} waiting for targeted recheck",
+        "",
+        "Resolved / Historical:",
+        f"{len(review.historical_items)} fixed historical issue(s)",
+        "",
         f"Friction items: {review.friction_count}",
-        f"Callback recommendations: {review.recommendation_count}",
+        f"Active callback recommendations: {review.active_recommendation_count}",
+        f"Resolved callback recommendations: {review.resolved_recommendation_count}",
         f"Callback audit rows: {review.audit_count}",
         f"Callback event rows: {review.event_count}",
     ]
-    if not review.items:
+    if not review.active_items and not review.validating_items:
         lines.extend(
             [
                 "",
-                "No callback failures are currently logged in this database.",
-                "Next best move: keep Button Health Report available during mobile QA.",
+                "No callback failures are currently logged in this database."
+                if not review.historical_items
+                else "✅ No new callback failures since latest deployment.",
+                "Old failures are retained as historical records for audit and learning."
+                if review.historical_items
+                else "No historical callback failures need review.",
+                "Next best move: keep Button Health available during mobile QA.",
             ]
         )
     else:
-        lines.extend(["", "Logged Failures:"])
-        for item in review.items:
+        if review.active_items:
+            lines.extend(["", "Active Failures:"])
+        for item in review.active_items:
             when = format_user_datetime(user, item.created_at) if item.created_at else "Unknown"
             lines.extend(
                 [
                     f"- {item.page}",
                     f"  Exception: {item.exception_type}",
                     f"  Time: {when}",
+                    f"  Status: {item.lifecycle_status}",
+                    f"  Evidence: {item.evidence_summary}",
                     f"  Root cause: {item.root_cause}",
                     f"  Fix: {item.recommended_fix}",
+                ]
+            )
+        if review.validating_items:
+            lines.extend(["", "Validating:"])
+            for item in review.validating_items[:8]:
+                when = format_user_datetime(user, item.created_at) if item.created_at else "Unknown"
+                lines.extend(
+                    [
+                        f"- {item.page}",
+                        f"  Exception: {item.exception_type}",
+                        f"  Time: {when}",
+                        f"  Evidence: {item.evidence_summary}",
+                        f"  Root cause: {item.root_cause}",
+                        f"  Fix: {item.recommended_fix}",
+                        f"  Next: {item.next_action}",
+                    ]
+                )
+    if review.historical_items:
+        lines.extend(["", "Historical Fixed Issues:"])
+        for item in review.historical_items[:8]:
+            when = format_user_datetime(user, item.created_at) if item.created_at else "Unknown"
+            fixed_by = item.fixed_by_commit or "current validated build"
+            lines.extend(
+                [
+                    f"- {item.page}",
+                    f"  Exception: {item.exception_type}",
+                    f"  First seen: {when}",
+                    f"  Status: historical",
+                    f"  Fixed by: {fixed_by}",
+                    f"  Evidence: {item.evidence_summary}",
                 ]
             )
     return Screen(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 import re
 from typing import Iterable
 
@@ -18,6 +19,7 @@ from app.services.auth import audit_action
 from app.services.db_safety import normalize_db_error, safe_db_side_effect
 from app.services.events import emit_event
 from app.services.friction import create_friction_item
+from app.services.issue_lifecycle import IssueLifecycleView, IssueRevalidationEngine, IssueRevalidationResult
 from app.services.recommendations import upsert_recommendation
 from app.services.permissions import PermissionPrincipal, RoleName
 
@@ -32,7 +34,6 @@ SAFE_SMOKE_PAGES = {
     "accounts:list",
     "agency_activation",
     "assistant_next",
-    "callback_failure_review",
     "coo:readiness",
     "debug_last_error",
     "first_workspace",
@@ -159,15 +160,32 @@ class CallbackFailureReviewItem:
     root_cause: str
     recommended_fix: str
     created_at: object
+    lifecycle_status: str = "active"
+    evidence_summary: str = "Failure is still active until revalidated."
+    next_action: str = "Run Button Health."
+    first_seen_at: object | None = None
+    last_seen_at: object | None = None
+    fixed_by_commit: str | None = None
+    revalidated_at: object | None = None
+    revalidated_commit: str | None = None
 
 
 @dataclass(frozen=True)
 class CallbackFailureReview:
     items: list[CallbackFailureReviewItem]
+    active_items: list[CallbackFailureReviewItem]
+    new_since_deploy_items: list[CallbackFailureReviewItem]
+    validating_items: list[CallbackFailureReviewItem]
+    resolved_items: list[CallbackFailureReviewItem]
+    historical_items: list[CallbackFailureReviewItem]
     friction_count: int
     recommendation_count: int
+    active_recommendation_count: int
+    resolved_recommendation_count: int
     audit_count: int
     event_count: int
+    lifecycle_summary: IssueRevalidationResult
+    latest_deploy_commit: str | None = None
 
 
 SECRET_PATTERNS = (
@@ -345,31 +363,134 @@ def _classify_root_cause(error: CallbackErrorLog) -> tuple[str, str]:
     )
 
 
-def callback_failure_review(session: Session, *, limit: int = 10) -> CallbackFailureReview:
+def _review_item_from_error(error: CallbackErrorLog, lifecycle: IssueLifecycleView) -> CallbackFailureReviewItem:
+    root_cause, recommended_fix = _classify_root_cause(error)
+    return CallbackFailureReviewItem(
+        error_id=error.id,
+        page=error.page or "unknown",
+        callback_data=error.callback_data or "unknown",
+        exception_type=error.exception_type,
+        root_cause=root_cause,
+        recommended_fix=recommended_fix,
+        created_at=error.created_at,
+        lifecycle_status=lifecycle.status,
+        evidence_summary=lifecycle.evidence_summary,
+        next_action=lifecycle.next_action,
+        first_seen_at=lifecycle.first_seen_at,
+        last_seen_at=lifecycle.last_seen_at,
+        fixed_by_commit=lifecycle.fixed_by_commit,
+        revalidated_at=lifecycle.revalidated_at,
+        revalidated_commit=lifecycle.revalidated_commit,
+    )
+
+
+def _datetime_after(value: object | None, boundary: datetime | None) -> bool:
+    if value is None or boundary is None or not isinstance(value, datetime):
+        return False
+    left = value.replace(tzinfo=UTC) if value.tzinfo is None else value
+    right = boundary.replace(tzinfo=UTC) if boundary.tzinfo is None else boundary
+    return left > right
+
+
+def _parse_iso_datetime(value: object | None) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed
+
+
+def callback_failure_review(
+    session: Session,
+    *,
+    limit: int = 10,
+    working_pages: Iterable[str] | None = None,
+    failing_pages: Iterable[str] | None = None,
+    revalidated_at: datetime | None = None,
+    current_commit: str | None = None,
+) -> CallbackFailureReview:
     errors = recent_callback_errors(session, limit=limit)
+    working_set = set(working_pages or ())
+    failing_set = set(failing_pages or ())
+    resolved_recommendations = list(
+        session.scalars(
+            select(Recommendation).where(
+                Recommendation.recommendation_type == "callback_failure",
+                Recommendation.entity_type == "telegram_callback",
+                Recommendation.status == "resolved",
+            )
+        ).all()
+    )
+    resolved_pages = {rec.entity_id for rec in resolved_recommendations if rec.entity_id}
+    working_set.update(resolved_pages)
+    resolved_revalidated_at = max(
+        (
+            parsed
+            for rec in resolved_recommendations
+            if (parsed := _parse_iso_datetime((rec.metadata_json or {}).get("revalidated_at"))) is not None
+        ),
+        default=None,
+    )
+    effective_revalidated_at = revalidated_at or resolved_revalidated_at
+    engine = IssueRevalidationEngine(current_commit=current_commit, revalidated_at=effective_revalidated_at)
     items: list[CallbackFailureReviewItem] = []
+    lifecycle_views: list[IssueLifecycleView] = []
     for error in errors:
-        root_cause, recommended_fix = _classify_root_cause(error)
-        items.append(
-            CallbackFailureReviewItem(
-                error_id=error.id,
-                page=error.page or "unknown",
-                callback_data=error.callback_data or "unknown",
-                exception_type=error.exception_type,
-                root_cause=root_cause,
-                recommended_fix=recommended_fix,
-                created_at=error.created_at,
+        lifecycle = engine.classify_callback_error(error, working_pages=working_set, failing_pages=failing_set)
+        lifecycle_views.append(lifecycle)
+        items.append(_review_item_from_error(error, lifecycle))
+    fixed_pages = {view.source for view in lifecycle_views if view.status in {"resolved", "historical"}}
+    if fixed_pages:
+        engine.resolve_callback_recommendations(session, fixed_pages=fixed_pages)
+    lifecycle_summary = engine.summarize(lifecycle_views)
+    active_items = [item for item in items if item.lifecycle_status in {"active", "reappeared"}]
+    new_since_deploy_items = [
+        item
+        for item in active_items
+        if _datetime_after(item.created_at, effective_revalidated_at)
+    ]
+    validating_items = [item for item in items if item.lifecycle_status == "validating"]
+    resolved_items = [item for item in items if item.lifecycle_status == "resolved"]
+    historical_items = [item for item in items if item.lifecycle_status == "historical"]
+    all_recommendation_count = (
+        session.scalar(select(func.count(Recommendation.id)).where(Recommendation.recommendation_type == "callback_failure"))
+        or 0
+    )
+    active_recommendation_count = (
+        session.scalar(
+            select(func.count(Recommendation.id)).where(
+                Recommendation.recommendation_type == "callback_failure",
+                Recommendation.status.in_(("open", "acknowledged")),
             )
         )
-    return CallbackFailureReview(
-        items=items,
-        friction_count=session.scalar(select(func.count(FrictionItem.id))) or 0,
-        recommendation_count=session.scalar(
-            select(func.count(Recommendation.id)).where(Recommendation.recommendation_type == "callback_failure")
+        or 0
+    )
+    resolved_recommendation_count = (
+        session.scalar(
+            select(func.count(Recommendation.id)).where(
+                Recommendation.recommendation_type == "callback_failure",
+                Recommendation.status == "resolved",
+            )
         )
-        or 0,
+        or 0
+    )
+    return CallbackFailureReview(
+        items=active_items,
+        active_items=active_items,
+        new_since_deploy_items=new_since_deploy_items,
+        validating_items=validating_items,
+        resolved_items=resolved_items,
+        historical_items=historical_items,
+        friction_count=session.scalar(select(func.count(FrictionItem.id))) or 0,
+        recommendation_count=all_recommendation_count,
+        active_recommendation_count=active_recommendation_count,
+        resolved_recommendation_count=resolved_recommendation_count,
         audit_count=session.scalar(select(func.count(AuditLog.id)).where(AuditLog.action == "callback.failed")) or 0,
         event_count=session.scalar(select(func.count(EventLog.id)).where(EventLog.event_type == "callback.failed")) or 0,
+        lifecycle_summary=lifecycle_summary,
+        latest_deploy_commit=engine.current_commit,
     )
 
 

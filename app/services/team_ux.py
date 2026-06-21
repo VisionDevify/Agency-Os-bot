@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.models.button_issue import ButtonIssue
 from app.models.callback_error import CallbackErrorLog
 from app.models.friction import FrictionItem
+from app.models.recommendation import Recommendation
 from app.models.user import User
 from app.services.chat_cleanup import CleanupMetrics, chat_cleanup_metrics
 from app.services.friction import create_friction_item
@@ -194,9 +195,24 @@ def _count_friction(session: Session, needle: str) -> int:
 def trust_signal_summary(session: Session, *, cleanup: CleanupMetrics | None = None) -> UserTrustSignals:
     cleanup = cleanup or chat_cleanup_metrics(session)
     cutoff = datetime.now(UTC) - timedelta(hours=24)
-    callback_failures = int(
-        session.scalar(select(func.count(CallbackErrorLog.id)).where(CallbackErrorLog.created_at >= cutoff)) or 0
+    recent_callback_errors = list(
+        session.scalars(select(CallbackErrorLog).where(CallbackErrorLog.created_at >= cutoff)).all()
     )
+    callback_failures = 0
+    for error in recent_callback_errors:
+        page = error.page or error.callback_data or "unknown"
+        resolved = session.scalar(
+            select(Recommendation.id)
+            .where(
+                Recommendation.recommendation_type == "callback_failure",
+                Recommendation.entity_type == "telegram_callback",
+                Recommendation.entity_id == page,
+                Recommendation.status == "resolved",
+            )
+            .limit(1)
+        )
+        if resolved is None:
+            callback_failures += 1
     navigation_failures = int(
         session.scalar(
             select(func.count(ButtonIssue.id)).where(
