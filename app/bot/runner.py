@@ -1471,6 +1471,12 @@ async def shortcut_command(message: Message) -> None:
     if shortcut is None:
         return
 
+    pre_ack_sent = False
+    if shortcut.working_label:
+        with contextlib.suppress(Exception):
+            await message.answer(f"{shortcut.working_label}...\n\nFortuna heard you.")
+            pre_ack_sent = True
+
     with SessionLocal() as session:
         telegram_id = message.from_user.id
         _record_bot_heartbeat(session, status="healthy", source=f"telegram_command_{command_name}")
@@ -1498,7 +1504,7 @@ async def shortcut_command(message: Message) -> None:
 
         principal = _principal_from_user(user)
         working = working_screen_for(shortcut)
-        if working is not None:
+        if working is not None and not pre_ack_sent:
             try:
                 await _send_tracked_temporary_message(
                     message,
