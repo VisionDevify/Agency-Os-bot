@@ -727,6 +727,16 @@ def render_production_observability_page(
                     f"Next: {summary['ai_brain_next_action']}",
                 ]
             )
+        if summary.get("agency_awareness_meaningful"):
+            recovery_lines.extend(
+                [
+                    "",
+                    "Agency Awareness:",
+                    f"Status: {str(summary['agency_awareness_status']).replace('_', ' ').title()}",
+                    f"Visibility: {str(summary['agency_awareness_visibility_level']).title()} ({summary['agency_awareness_visibility_score']}/100)",
+                    f"Next: {summary['agency_awareness_next_action']}",
+                ]
+            )
         summary_line = (
             "Fortuna checked this. Operations are running, but recovery still needs setup."
             if summary["recovery_status"] != "healthy" and operations_ok
@@ -976,6 +986,13 @@ def render_production_observability_page(
         f"Critic Blocks: {summary['ai_brain_critic_blocks']}",
         f"Fallback Count: {summary['ai_brain_fallback_count']}",
         f"Next Action: {summary['ai_brain_next_action']}",
+        "",
+        "Agency Awareness:",
+        f"Status: {str(summary['agency_awareness_status']).replace('_', ' ').title()}",
+        f"Visibility: {str(summary['agency_awareness_visibility_level']).title()} ({summary['agency_awareness_visibility_score']}/100)",
+        f"Degraded: {'Yes' if summary['agency_awareness_degraded'] else 'No'}",
+        f"Missing Inputs: {', '.join(summary['agency_awareness_missing_inputs']) if summary['agency_awareness_missing_inputs'] else 'None'}",
+        f"Next Action: {summary['agency_awareness_next_action']}",
         "",
         "Logs:",
         summary["railway_note"],

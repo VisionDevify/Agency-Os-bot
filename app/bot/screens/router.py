@@ -20,6 +20,7 @@ from .team_intelligence import *
 from .coo import *
 from .search import *
 from .ai import *
+from .agency_awareness import *
 from .help import *
 from .errors import *
 from app.models.opportunity import CreatorPostAlert, OwnPostAlert
@@ -142,6 +143,18 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_ai_coo_briefing_page(session, user)
     if page == "ai_brain:opportunity" and session is not None:
         return render_ai_opportunity_explanation_page(session, user)
+    if page == "agency_awareness" and session is not None:
+        return render_agency_awareness_page(session, user)
+    if page == "agency_awareness:active" and session is not None:
+        return render_agency_active_areas_page(session, user)
+    if page == "agency_awareness:missing" and session is not None:
+        return render_agency_missing_page(session, user)
+    if page == "agency_awareness:not_connected" and session is not None:
+        return render_agency_not_connected_page(session, user)
+    if page == "agency_awareness:evidence" and session is not None:
+        return render_agency_evidence_page(session, user)
+    if page == "agency_awareness:details" and session is not None:
+        return render_agency_awareness_page(session, user, details=True)
     if page == "decision:top" and session is not None:
         return render_decision_top_priority_page(session, user)
     if page == "decision:details" and session is not None:

@@ -361,6 +361,20 @@ HELP_KB_SEEDS: tuple[dict[str, str], ...] = (
         "related_route": "reality:calibration",
     },
     {
+        "topic": "agency_awareness",
+        "title": "Agency Awareness",
+        "role_scope": "owner,admin,manager",
+        "content": "Agency Awareness is Fortuna's map of what the agency is doing right now, what is inactive, what is not connected, and where visibility is still missing.",
+        "related_route": "agency_awareness",
+    },
+    {
+        "topic": "agency_visibility",
+        "title": "Agency Visibility",
+        "role_scope": "owner,admin,manager",
+        "content": "Visibility describes how much of the agency Fortuna can understand from evidence. Insufficient data means Fortuna needs more information, not that the agency is broken.",
+        "related_route": "agency_awareness",
+    },
+    {
         "topic": "old_menu",
         "title": "Old Menus",
         "role_scope": "owner,admin,manager,chatter,viewer",
@@ -518,8 +532,18 @@ def detect_help_intent(question: str) -> str:
         return "decision_quality_trends"
     if "decision quality" in text or "is fortuna right" in text:
         return "decision_quality"
+    if "agency awareness" in text or ("agency" in text and "visibility" in text):
+        return "agency_awareness"
     if "insufficient data" in text:
-        return "trend_insufficient_data"
+        return "agency_insufficient_data" if "agency" in text or "fortuna" in text else "trend_insufficient_data"
+    if "not connected" in text and ("agency" in text or "platform" in text):
+        return "agency_not_connected"
+    if "manual record" in text or "manual records" in text:
+        return "agency_manual_records"
+    if "degraded mode" in text or "fallback snapshot" in text:
+        return "agency_degraded_mode"
+    if ("instagram" in text or "reddit" in text or "x" in text) and ("unavailable" in text or "outage" in text):
+        return "agency_external_outage"
     if "improving" in text and ("trend" in text or "mean" in text):
         return "trend_improving"
     if "predictive coo" in text or ("prediction" in text and "coo" in text):
@@ -1026,6 +1050,48 @@ def help_brain_answer(
             "Next button to press: Calibration."
         )
         next_action = "reality:calibration" if _adminish(user) else "help"
+    elif intent == "agency_awareness":
+        answer = (
+            "Agency Awareness is Fortuna's live map of what the agency is doing right now.\n\n"
+            "Why: it separates active work, inactive areas, not-connected sources, and places where Fortuna needs more evidence.\n\n"
+            "Next button to press: Agency Awareness."
+        )
+        next_action = "agency_awareness" if _adminish(user) else "help"
+    elif intent == "agency_insufficient_data":
+        answer = (
+            "Insufficient data means Fortuna does not have enough evidence to understand that agency area yet.\n\n"
+            "Why: missing visibility is not a failure. It is Fortuna refusing to guess.\n\n"
+            "Next button to press: Missing / Inactive."
+        )
+        next_action = "agency_awareness:missing" if _adminish(user) else "help"
+    elif intent == "agency_not_connected":
+        answer = (
+            "Not connected means an external platform or source is not approved and verified yet.\n\n"
+            "Why: not connected is setup status, not broken status. Fortuna waits until the workflow needs that source.\n\n"
+            "Next button to press: Not Connected."
+        )
+        next_action = "agency_awareness:not_connected" if _adminish(user) else "help"
+    elif intent == "agency_manual_records":
+        answer = (
+            "Manual records are owner-supplied notes about agency activity, blockers, wins, losses, or plans.\n\n"
+            "Why: they help Fortuna learn when automated sources are not connected, but they do not overwrite verified system evidence.\n\n"
+            "Next button to press: Agency Awareness."
+        )
+        next_action = "agency_awareness" if _adminish(user) else "help"
+    elif intent == "agency_degraded_mode":
+        answer = (
+            "Degraded mode means Fortuna can still show useful agency context, but one or more live inputs are unavailable.\n\n"
+            "Why: a fallback snapshot is older verified information. Fortuna labels it clearly instead of pretending it is fresh.\n\n"
+            "Next button to press: Agency Awareness Details."
+        )
+        next_action = "agency_awareness:details" if _adminish(user) else "help"
+    elif intent == "agency_external_outage":
+        answer = (
+            "If Instagram, X, or Reddit are unavailable, Fortuna pauses live collection and lowers confidence instead of crashing or inventing activity.\n\n"
+            "Why: historical evidence can remain useful, but unavailable platforms should never be reported as freshly active.\n\n"
+            "Next button to press: Not Connected."
+        )
+        next_action = "agency_awareness:not_connected" if _adminish(user) else "help"
     elif intent == "evidence_capture":
         answer = (
             "Evidence is a traceable record of what happened in reality.\n\n"

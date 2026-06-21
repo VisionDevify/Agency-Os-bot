@@ -76,6 +76,8 @@ def test_model_tables_are_registered() -> None:
         "account_auth_sessions",
         "account_verification_codes",
         "accountability_snapshots",
+        "agency_awareness_snapshots",
+        "agency_manual_records",
         "ai_audit_logs",
         "activation_blocker_decisions",
         "audit_logs",

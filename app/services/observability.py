@@ -20,6 +20,7 @@ from app.models.user import User
 from app.services.build_metadata import safe_build_metadata, safe_metadata_value
 from app.services.button_health import button_health_summary
 from app.services.ai import ai_observability_summary
+from app.services.agency_awareness import agency_awareness_observability
 from app.services.chat_cleanup import chat_cleanup_metrics
 from app.services.decision_engine import decision_memory_summary, generate_decisions
 from app.services.decision_quality import safe_decision_quality_report
@@ -144,6 +145,7 @@ def production_observability_summary(session: Session) -> dict[str, object]:
     evidence_capture = safe_evidence_capture_report(session)
     search_intelligence = search_observability_summary(session)
     ai_brain = ai_observability_summary(session)
+    agency_awareness = agency_awareness_observability(session)
     decision_quality_meaningful = (
         not decision_quality.available
         or decision_quality.status in {"needs_attention", "critical"}
@@ -167,6 +169,7 @@ def production_observability_summary(session: Session) -> dict[str, object]:
     )
     search_meaningful = bool(search_intelligence["meaningful"])
     ai_meaningful = bool(ai_brain["meaningful"])
+    agency_awareness_meaningful = bool(agency_awareness["meaningful"])
     reality_observability_status = "needs_review" if reality_meaningful and reality_calibration.available else "healthy"
     owner_count = session.scalar(select(func.count(User.id)).where(User.is_owner.is_(True))) or 0
     role_count = session.scalar(select(func.count(Role.id))) or 0
@@ -285,6 +288,13 @@ def production_observability_summary(session: Session) -> dict[str, object]:
                 1 if ai_meaningful and ai_brain["health"] != "healthy" else 0,
                 "Open AI Brain." if ai_meaningful and ai_brain["health"] != "healthy" else None,
             ),
+            StatusCondition(
+                "agency_awareness",
+                "needs_review" if agency_awareness_meaningful and agency_awareness["status"] != "healthy" else "healthy",
+                str(agency_awareness["summary"]),
+                1 if agency_awareness_meaningful and agency_awareness["status"] != "healthy" else 0,
+                "Open Agency Awareness." if agency_awareness_meaningful and agency_awareness["status"] != "healthy" else None,
+            ),
         ]
     )
     observability_issues = list(truth.current_issues)
@@ -318,6 +328,8 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         observability_issues.append(f"Search Intelligence: {search_intelligence['next_action']}")
     if ai_meaningful and ai_brain["health"] != "healthy":
         observability_issues.append(f"AI Brain: {ai_brain['next_action']}")
+    if agency_awareness_meaningful and agency_awareness["status"] != "healthy":
+        observability_issues.append(f"Agency Awareness: {agency_awareness['next_action']}")
 
     return {
         "app_display_name": build_metadata["app_name"],
@@ -563,4 +575,11 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         "ai_brain_critic_blocks": ai_brain["critic_blocks"],
         "ai_brain_fallback_count": ai_brain["fallback_count"],
         "ai_brain_next_action": ai_brain["next_action"],
+        "agency_awareness_status": agency_awareness["status"],
+        "agency_awareness_meaningful": agency_awareness_meaningful,
+        "agency_awareness_visibility_score": agency_awareness.get("visibility_score"),
+        "agency_awareness_visibility_level": agency_awareness.get("visibility_level"),
+        "agency_awareness_degraded": agency_awareness.get("degraded"),
+        "agency_awareness_missing_inputs": agency_awareness.get("missing_inputs", []),
+        "agency_awareness_next_action": agency_awareness.get("next_action"),
     }

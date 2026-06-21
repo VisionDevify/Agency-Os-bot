@@ -343,6 +343,27 @@ Team UX readiness and active screens:
 - The New Team Member Test asks whether a new hire can understand the screen in under 30 seconds.
 - AI wording should pass a readability check: a manager or chatter should understand the point, the risk, and the next action.
 
+Agency Awareness:
+
+- Agency Awareness answers: what is happening inside the agency right now?
+- It must separate active work, inactive work, not-connected sources, missing visibility, and temporarily unavailable external platforms.
+- `AgencyDomain` definitions cover recovery, AI Brain, Search Intelligence, notifications, platform connections, Instagram, X, Reddit, OnlyFans, Chaturbate, creators, content, traffic sources, fans, whales, chatters, opportunities, operations, compliance, finance, and Knowledge Memory.
+- Active status requires evidence. Manual notes are evidence, but they are not system truth and must not overwrite verified system records.
+- `AgencyManualRecord` stores owner-supplied activity, blockers, notes, wins, losses, plans, and updates with explicit confidence.
+- `AgencyAwarenessSnapshot` stores generated awareness summaries, visibility score, confidence score, top focus area, next best move, snapshot source, stale state, missing inputs, and degraded mode.
+- `AgencyAwarenessEngine` must tolerate missing future modules and continue from healthy inputs. Missing creators, fans, whales, chatters, finance, or content data should become visibility gaps, not crashes.
+- Visibility score is a coverage signal, not a health claim. Low visibility is acceptable when evidence is honestly missing.
+- Stale snapshots can be used as fallback only when clearly labeled with timestamp and degraded/fallback wording.
+- If no valid snapshot exists and live generation fails, return explicit insufficient data.
+- External platform outages must not crash Awareness. Instagram, X, Reddit, OnlyFans, or Chaturbate being unavailable should pause live collection, lower confidence, keep historical/manual evidence available, and explain the impact in plain language.
+- Not connected is not failure. It means a platform or data source is not approved and verified yet.
+- Simple Agency Awareness screens should answer what this is, why it matters, what Fortuna can see, what Fortuna cannot see, top focus area, and next best move.
+- Details may show deeper status/source/freshness metadata, but no secrets, raw IDs, or developer-first architecture.
+- AI may summarize Agency Awareness only from supplied awareness context. It must not infer platform activity during outages or fill gaps with invented agency activity.
+- COO Briefing and Today may mention Agency Awareness only when visibility gaps, degraded mode, or meaningful agency context changes what the owner should do.
+- Observability should show Agency Awareness only when meaningful: missing inputs, stale snapshots, external outages, generation failures, or fallback usage.
+- Future Agency Awareness path: Drift Detection, Opportunity Loss, Question Engine, and Digital Twin.
+
 ## Compliance Rules
 
 Fortuna may observe, summarize, recommend, and route human-reviewed work.

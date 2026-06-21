@@ -78,6 +78,7 @@ def owner_advanced_home_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="🔌 Platform Connections", callback_data=callback_for("platforms"))],
             [InlineKeyboardButton(text="🔎 Search Intelligence", callback_data=callback_for("search"))],
             [InlineKeyboardButton(text="🧠 AI Brain", callback_data=callback_for("ai_brain"))],
+            [InlineKeyboardButton(text="🧭 Agency Awareness", callback_data=callback_for("agency_awareness"))],
             [InlineKeyboardButton(text="Simple Mode", callback_data=callback_for("menu"))],
             *page_controls(back_to="menu"),
         ]
@@ -107,7 +108,10 @@ def today_priorities_menu(action_buttons: list[tuple[str, str]] | None = None) -
                 InlineKeyboardButton(text="🔔 Notifications", callback_data=callback_for("platforms:notifications")),
                 InlineKeyboardButton(text="🛡 Recovery", callback_data=callback_for("recovery_center")),
             ],
-            [InlineKeyboardButton(text="📱 Platforms", callback_data=callback_for("platforms"))],
+            [
+                InlineKeyboardButton(text="📱 Platforms", callback_data=callback_for("platforms")),
+                InlineKeyboardButton(text="🧭 Agency", callback_data=callback_for("agency_awareness")),
+            ],
             *page_controls(back_to="menu"),
         ]
     )
@@ -378,6 +382,7 @@ def coo_briefing_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="🔮 Prediction Preview", callback_data=callback_for("prediction:preview")),
             ],
             [InlineKeyboardButton(text="🧠 AI Brain", callback_data=callback_for("ai_brain"))],
+            [InlineKeyboardButton(text="🧭 Agency Awareness", callback_data=callback_for("agency_awareness"))],
             *page_controls(back_to="owner_advanced"),
         ]
     )

@@ -17,6 +17,7 @@ from app.services.evidence_capture import safe_evidence_capture_report
 from app.services.reality_calibration import safe_reality_calibration_report
 from app.services.search_intelligence import latest_external_context
 from app.services.ai import ai_configuration_status, generate_ai_decision_explanation
+from app.services.agency_awareness import agency_awareness_report
 
 
 def _decision_status_icon(status: str) -> str:
@@ -187,6 +188,7 @@ def render_coo_briefing_page(session: Session, user: User | None = None, *, deta
     evidence = safe_evidence_capture_report(session)
     external_context = latest_external_context(session)
     ai_status = ai_configuration_status(session)
+    awareness = agency_awareness_report(session, persist=False)
     prediction = prediction_report.primary
     top = briefing.top_priority
     if details:
@@ -207,6 +209,8 @@ def render_coo_briefing_page(session: Session, user: User | None = None, *, deta
             f"Knowledge Lessons: {evidence.knowledge_count if evidence.available else 'Unavailable'}",
             f"External Search Results: {external_context.get('count', 0)}",
             f"AI Brain: {'Configured' if ai_status.get('configured') else 'Not configured'}",
+            f"Agency Visibility: {awareness.visibility_level.title()} ({awareness.visibility_score}/100)",
+            f"Agency Awareness: {awareness.overall_status.replace('_', ' ').title()}",
             "",
             "Ranked decisions:",
         ]
@@ -346,6 +350,24 @@ def render_coo_briefing_page(session: Session, user: User | None = None, *, deta
                     if reality.outcome_counts.get("proven_wrong", 0)
                     else "Some predictions are still waiting for evidence."
                 ),
+            ]
+        )
+    awareness_meaningful = awareness.degraded_mode or awareness.visibility_level in {"low", "medium"} or awareness.missing_domains
+    if awareness_meaningful:
+        if awareness.degraded_mode:
+            summary = "Fortuna is operating with limited agency visibility."
+        elif awareness.visibility_level == "low":
+            summary = "Fortuna understands infrastructure better than creators, fans, content, and team activity."
+        else:
+            summary = f"Fortuna can see {len(awareness.active_domains)} active area(s), with visibility gaps still present."
+        lines.extend(
+            [
+                "",
+                "🧭 Agency Awareness",
+                summary,
+                "",
+                "Next:",
+                awareness.next_best_move,
             ]
         )
     lines.extend(

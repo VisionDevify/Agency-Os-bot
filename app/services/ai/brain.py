@@ -276,6 +276,7 @@ class AIGroundingContextBuilder:
         self.max_records = max_records or _env_int("AI_MAX_CONTEXT_RECORDS", 12)
 
     def build(self, *, use_case: str, include_search: bool = True, decisions: tuple[Any, ...] | None = None) -> dict[str, Any]:
+        from app.services.agency_awareness import agency_awareness_report
         from app.services.bot_instances import bot_instance_diagnostics
         from app.services.decision_engine import generate_decisions
         from app.services.notification_intelligence import alert_health_summary
@@ -289,6 +290,7 @@ class AIGroundingContextBuilder:
         bot = bot_instance_diagnostics(self.session)
         alert_health = alert_health_summary(self.session)
         platforms = platform_connections_overview(self.session)
+        awareness = agency_awareness_report(self.session, persist=False)
 
         evidence_records = list(
             self.session.scalars(select(EvidenceRecord).order_by(desc(EvidenceRecord.created_at), desc(EvidenceRecord.id)).limit(self.max_records)).all()
@@ -360,6 +362,21 @@ class AIGroundingContextBuilder:
                 "waiting": platforms.get("waiting"),
                 "needs_attention": platforms.get("needs_attention"),
                 "next_action": platforms.get("next_action"),
+            },
+            "agency_awareness": {
+                "status": awareness.overall_status,
+                "visibility_level": awareness.visibility_level,
+                "visibility_score": awareness.visibility_score,
+                "confidence_score": awareness.confidence_score,
+                "degraded_mode": awareness.degraded_mode,
+                "snapshot_source": awareness.snapshot_source,
+                "stale": awareness.stale,
+                "top_focus_area": awareness.top_focus_area,
+                "next_best_move": awareness.next_best_move,
+                "active_domains": [item.display_name for item in awareness.active_domains[:8]],
+                "missing_domains": [item.display_name for item in awareness.missing_domains[:8]],
+                "not_connected_domains": [item.display_name for item in awareness.not_connected_domains[:8]],
+                "missing_inputs": list(awareness.missing_inputs[:8]),
             },
             "decisions": [
                 {

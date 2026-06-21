@@ -11,6 +11,7 @@ from app.services.button_health import button_health_summary
 from app.services.decision_engine import generate_coo_briefing
 from app.services.decision_trends import safe_predictive_coo_report
 from app.services.reality_calibration import safe_reality_calibration_report
+from app.services.agency_awareness import agency_awareness_report
 
 def _owner_display_name(user: User) -> str:
     return user.display_name or user.username or "there"
@@ -396,6 +397,7 @@ def render_today_priorities_page(session: Session, user: User | None = None) -> 
     followups = outstanding_blockers(session)
     recommendations = list_recommendations(session, status="open", limit=5)
     button_health = button_health_summary(session)
+    awareness = agency_awareness_report(session, persist=False)
     button_needs_review = button_health.open_issue_count > 0 and button_health.overall_status in {"needs_review", "needs_attention", "critical"}
     next_action = (
         top.next_best_move
@@ -437,6 +439,21 @@ def render_today_priorities_page(session: Session, user: User | None = None) -> 
         if reality.available and reality.outcome_counts.get("pending", 0):
             lines.extend(["", "Prediction status:", "Still pending evidence."])
         lines.extend(["", "🔮 Likely next:", prediction.prediction_title])
+    if awareness.degraded_mode or awareness.visibility_level == "low" or awareness.missing_domains:
+        lines.extend(
+            [
+                "",
+                "Visibility Gap:",
+                (
+                    "Some awareness data is currently unavailable. Review manual updates until access returns."
+                    if awareness.degraded_mode
+                    else f"Fortuna has {awareness.visibility_level} agency visibility right now."
+                ),
+                "",
+                "Next:",
+                awareness.next_best_move,
+            ]
+        )
     if briefing.learning_summary:
         lines.extend(["", "What Fortuna Learned:"])
         lines.extend(f"- {item}" for item in briefing.learning_summary[:2])
