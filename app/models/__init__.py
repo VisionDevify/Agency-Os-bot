@@ -1,4 +1,5 @@
 from app.models.account import Account, AccountAuthSession, AccountVerificationCode
+from app.models.ai import AIAuditLog
 from app.models.audit import AuditLog
 from app.models.callback_error import CallbackErrorLog
 from app.models.button_issue import ButtonIssue
@@ -83,6 +84,7 @@ __all__ = [
     "AccountAuthSession",
     "AccountVerificationCode",
     "AccountabilitySnapshot",
+    "AIAuditLog",
     "ActivationBlockerDecision",
     "AgencyActivationState",
     "AuditLog",

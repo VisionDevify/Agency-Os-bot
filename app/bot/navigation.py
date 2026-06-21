@@ -200,6 +200,7 @@ PAGE_PERMISSIONS: dict[str, str] = {
     "team_onboarding_activation": "manage_users",
     "fortuna_action_log": "view_dashboard",
     "coo": "view_dashboard",
+    "ai_brain": "view_dashboard",
     "executive_mode": "view_dashboard",
     "manager_queue": "manage_tasks",
     "my_work": "view_dashboard",
@@ -385,6 +386,8 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         return ("manage_roles",)
     if page.startswith("settings:report_problem"):
         return ("manage_roles",)
+    if page.startswith("ai_brain"):
+        return ("view_dashboard", "manage_reports", "manage_roles")
     if (
         page.startswith("bot_status")
         or page == "production_status"
@@ -1195,18 +1198,21 @@ def screen_for_page(
             )
         return render_main_menu(session=session, user=user)
 
-    if normalized in {
-        "production_observability",
-        "integrity",
-        "integrity:details",
-        "bot_instance_status",
-        "ui_self_test",
-        "ui_self_test:run",
-        "button_health",
-        "button_health:run",
-        "callback_failure_review",
-        "debug_last_error",
-    } and not (
+    if (
+        normalized in {
+            "production_observability",
+            "integrity",
+            "integrity:details",
+            "bot_instance_status",
+            "ui_self_test",
+            "ui_self_test:run",
+            "button_health",
+            "button_health:run",
+            "callback_failure_review",
+            "debug_last_error",
+        }
+        or normalized.startswith("ai_brain")
+    ) and not (
         principal.is_owner or (user is not None and user.is_owner)
     ):
         if session is not None:
@@ -1382,6 +1388,7 @@ def screen_for_page(
         or normalized.startswith("evidence:")
         or normalized.startswith("knowledge:")
         or normalized.startswith("search")
+        or normalized.startswith("ai_brain")
         or normalized.startswith("prediction:")
         or normalized.startswith("reality:")
         or normalized == "executive_mode"

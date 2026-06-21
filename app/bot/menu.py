@@ -77,6 +77,7 @@ def owner_advanced_home_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="👑 COO Briefing", callback_data=callback_for("coo:briefing"))],
             [InlineKeyboardButton(text="🔌 Platform Connections", callback_data=callback_for("platforms"))],
             [InlineKeyboardButton(text="🔎 Search Intelligence", callback_data=callback_for("search"))],
+            [InlineKeyboardButton(text="🧠 AI Brain", callback_data=callback_for("ai_brain"))],
             [InlineKeyboardButton(text="Simple Mode", callback_data=callback_for("menu"))],
             *page_controls(back_to="menu"),
         ]
@@ -376,6 +377,7 @@ def coo_briefing_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="🧠 Intelligence Quality", callback_data=callback_for("intelligence:quality")),
                 InlineKeyboardButton(text="🔮 Prediction Preview", callback_data=callback_for("prediction:preview")),
             ],
+            [InlineKeyboardButton(text="🧠 AI Brain", callback_data=callback_for("ai_brain"))],
             *page_controls(back_to="owner_advanced"),
         ]
     )
@@ -415,6 +417,7 @@ def decision_details_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="❌ Dismiss", callback_data=callback_for("decision:feedback:dismissed")),
             ],
             [InlineKeyboardButton(text="🧠 Learn From This", callback_data=callback_for("decision:feedback:learn_from_this"))],
+            [InlineKeyboardButton(text="🧠 AI Explanation", callback_data=callback_for("ai_brain:coo"))],
             [InlineKeyboardButton(text="🧠 Decision Memory", callback_data=callback_for("decision:memory"))],
             [InlineKeyboardButton(text="🔄 Refresh", callback_data=callback_for("coo:briefing"))],
             [InlineKeyboardButton(text="🎯 Top Priority", callback_data=callback_for("decision:top"))],
@@ -878,6 +881,7 @@ def search_results_menu() -> InlineKeyboardMarkup:
                 InlineKeyboardButton(text="🎯 Create Opportunity", callback_data=callback_for("search:results:opportunity")),
                 InlineKeyboardButton(text="🔔 Notification Watch", callback_data=callback_for("search:results:notification")),
             ],
+            [InlineKeyboardButton(text="🧠 AI Summary", callback_data=callback_for("ai_brain:search"))],
             [InlineKeyboardButton(text="❌ Ignore", callback_data=callback_for("search:results:ignore"))],
             *page_controls(back_to="search:history"),
         ]
@@ -890,6 +894,44 @@ def search_settings_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="🔄 Refresh", callback_data=callback_for("search:settings"))],
             [InlineKeyboardButton(text="🔎 Search Intelligence", callback_data=callback_for("search"))],
             *page_controls(back_to="search"),
+        ]
+    )
+
+
+def ai_brain_menu(*, configured: bool = False) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(text="👑 AI COO Briefing", callback_data=callback_for("ai_brain:coo"))],
+        [InlineKeyboardButton(text="🔎 AI Evidence Summary", callback_data=callback_for("ai_brain:evidence"))],
+        [InlineKeyboardButton(text="🔎 AI Search Summary", callback_data=callback_for("ai_brain:search"))],
+        [InlineKeyboardButton(text="🎯 AI Opportunity Explanation", callback_data=callback_for("ai_brain:opportunity"))],
+        [
+            InlineKeyboardButton(text="🧪 AI Critic Status", callback_data=callback_for("ai_brain:critic")),
+            InlineKeyboardButton(text="⚙️ AI Settings", callback_data=callback_for("ai_brain:settings")),
+        ],
+        [InlineKeyboardButton(text="🔎 Details", callback_data=callback_for("ai_brain:details"))],
+    ]
+    if not configured:
+        rows.insert(1, [InlineKeyboardButton(text="⚙️ Setup OpenAI", callback_data=callback_for("ai_brain:settings"))])
+    rows.extend(page_controls(back_to="owner_advanced"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def ai_settings_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Refresh", callback_data=callback_for("ai_brain:settings"))],
+            [InlineKeyboardButton(text="🧠 AI Brain", callback_data=callback_for("ai_brain"))],
+            *page_controls(back_to="ai_brain"),
+        ]
+    )
+
+
+def ai_critic_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Refresh", callback_data=callback_for("ai_brain:critic"))],
+            [InlineKeyboardButton(text="⚙️ AI Settings", callback_data=callback_for("ai_brain:settings"))],
+            *page_controls(back_to="ai_brain"),
         ]
     )
 

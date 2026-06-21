@@ -708,6 +708,16 @@ def render_production_observability_page(
                     f"Next: {summary['search_intelligence_next_action']}",
                 ]
             )
+        if summary.get("ai_brain_meaningful"):
+            recovery_lines.extend(
+                [
+                    "",
+                    "AI Brain:",
+                    f"Status: {summary['ai_brain_label']}",
+                    f"Latest call: {summary['ai_brain_latest_status']}",
+                    f"Next: {summary['ai_brain_next_action']}",
+                ]
+            )
         summary_line = (
             "Fortuna checked this. Operations are running, but recovery still needs setup."
             if summary["recovery_status"] != "healthy" and operations_ok
@@ -933,6 +943,18 @@ def render_production_observability_page(
         f"Latest Result Count: {summary['search_intelligence_latest_result_count']}",
         f"Failed/Skipped Searches: {summary['search_intelligence_failed_or_skipped_count']}",
         f"Next Action: {summary['search_intelligence_next_action']}",
+        "",
+        "AI Brain:",
+        f"Status: {summary['ai_brain_label']}",
+        f"Provider: {summary['ai_brain_provider']}",
+        f"Enabled: {'Yes' if summary['ai_brain_enabled'] else 'No'}",
+        f"Configured: {'Yes' if summary['ai_brain_configured'] else 'No'}",
+        f"Daily AI Calls: {summary['ai_brain_daily_count']}/{summary['ai_brain_daily_limit']}",
+        f"Latest Call: {str(summary['ai_brain_latest_status']).replace('_', ' ').title()}",
+        f"Last Success: {_observability_time(summary['ai_brain_last_success_at'], user)}",
+        f"Critic Blocks: {summary['ai_brain_critic_blocks']}",
+        f"Fallback Count: {summary['ai_brain_fallback_count']}",
+        f"Next Action: {summary['ai_brain_next_action']}",
         "",
         "Logs:",
         summary["railway_note"],

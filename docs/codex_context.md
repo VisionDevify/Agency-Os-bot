@@ -298,6 +298,22 @@ Search Intelligence and external evidence:
 - Rate limits and cached repeated queries prevent search API spam and cost surprises.
 - If search provider calls fail, show a safe reason, keep old results if useful, and never expose the API key.
 
+AI Brain and grounded reasoning:
+
+- AI Brain is optional and controlled by `AI_ENABLED`, `AI_PROVIDER`, `OPENAI_API_KEY`, `AI_MODEL`, `AI_TIMEOUT_SECONDS`, `AI_DAILY_LIMIT`, `AI_MAX_CONTEXT_RECORDS`, and `AI_CRITIC_ENABLED`.
+- ChatGPT Pro does not automatically power Fortuna. Production AI requires an OpenAI API key configured safely in Railway.
+- Missing `OPENAI_API_KEY` means AI Brain is not configured yet; it is not a production-critical failure unless an active AI-dependent workflow requires it.
+- AI may explain, synthesize, compare, summarize, and improve wording. It may not mark systems healthy, verify backups, pass restores, approve compliance, change polling truth, or override deterministic status logic.
+- Evidence always wins. If AI disagrees with verified Recovery, Bot Status, Observability, Search, or Decision Engine evidence, the deterministic evidence is shown and the AI output is blocked or replaced.
+- `AIGroundingContextBuilder` must provide structured, redacted context for decision, COO, search, opportunity, and Help Brain use cases.
+- AI calls must not receive secrets, backup credentials, Telegram tokens, raw environment dumps, private scraping data, or unnecessary sensitive/private data.
+- AI output must follow the grounded reasoning contract: conclusion, evidence used, reasoning summary, confidence, limitations, next best move, and safety flags.
+- `FortunaAICritic` reviews AI output for unsupported claims, exaggerated confidence, missing evidence, contradictions with system truth, unsafe recommendations, compliance violations, raw secret leaks, auto-action suggestions, and excessive verbosity.
+- Critic-blocked output must fall back to deterministic Decision Engine text and create safe audit/observability events.
+- AI Search summaries may only cite source titles/domains/results supplied by Search Intelligence. AI must not invent sources or external facts.
+- AI audit logs store safe metadata only: use case, provider, model, status, evidence count, safe error summary, output hash, and estimates. They must not store API keys, raw secrets, or full unredacted production prompts.
+- Rate limits, timeouts, cached repeated summaries, and disabled fallbacks prevent AI call loops and cost surprises.
+
 ## Compliance Rules
 
 Fortuna may observe, summarize, recommend, and route human-reviewed work.

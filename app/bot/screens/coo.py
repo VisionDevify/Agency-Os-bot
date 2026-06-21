@@ -16,6 +16,7 @@ from app.services.decision_trends import safe_predictive_coo_report
 from app.services.evidence_capture import safe_evidence_capture_report
 from app.services.reality_calibration import safe_reality_calibration_report
 from app.services.search_intelligence import latest_external_context
+from app.services.ai import ai_configuration_status, generate_ai_decision_explanation
 
 
 def _decision_status_icon(status: str) -> str:
@@ -185,6 +186,7 @@ def render_coo_briefing_page(session: Session, user: User | None = None, *, deta
     reality = safe_reality_calibration_report(session, actor=user)
     evidence = safe_evidence_capture_report(session)
     external_context = latest_external_context(session)
+    ai_status = ai_configuration_status(session)
     prediction = prediction_report.primary
     top = briefing.top_priority
     if details:
@@ -204,6 +206,7 @@ def render_coo_briefing_page(session: Session, user: User | None = None, *, deta
             f"Evidence Records: {evidence.evidence_count if evidence.available else 'Unavailable'}",
             f"Knowledge Lessons: {evidence.knowledge_count if evidence.available else 'Unavailable'}",
             f"External Search Results: {external_context.get('count', 0)}",
+            f"AI Brain: {'Configured' if ai_status.get('configured') else 'Not configured'}",
             "",
             "Ranked decisions:",
         ]
@@ -303,6 +306,19 @@ def render_coo_briefing_page(session: Session, user: User | None = None, *, deta
                 f"Public evidence from {external_context['source_domain']} may support manual review.",
             ]
         )
+    if ai_status.get("enabled") and ai_status.get("configured") and top is not None:
+        ai_result = generate_ai_decision_explanation(session, actor=user)
+        if not ai_result.fallback_used and ai_result.status == "succeeded":
+            lines.extend(
+                [
+                    "",
+                    "🧠 Fortuna's AI Read",
+                    ai_result.output.conclusion,
+                    "",
+                    "Limit:",
+                    ai_result.output.limitations[0] if ai_result.output.limitations else "Evidence still controls final status.",
+                ]
+            )
     if not quality.available:
         lines.extend(["", "Intelligence Quality", "Quality check unavailable; current evidence is still being used."])
     elif quality.status in {"needs_attention", "critical"} and quality.findings:
@@ -412,6 +428,20 @@ def render_decision_details_page(session: Session, user: User | None = None) -> 
             reality_hint = safe_reality_calibration_report(session, actor=user)
             if reality_hint.available:
                 lines.extend(["Calibration:", reality_hint.status.replace("_", " ").title()])
+        ai_status = ai_configuration_status(session)
+        if ai_status.get("enabled") and ai_status.get("configured"):
+            ai_result = generate_ai_decision_explanation(session, actor=user)
+            if not ai_result.fallback_used and ai_result.status == "succeeded":
+                lines.extend(
+                    [
+                        "",
+                        "🧠 AI Explanation:",
+                        ai_result.output.reasoning_summary,
+                        "",
+                        "AI Limitations:",
+                        ai_result.output.limitations[0] if ai_result.output.limitations else "Evidence remains the source of truth.",
+                    ]
+                )
     for index, decision in enumerate(decisions[:8], start=1):
         lines.extend(
             [

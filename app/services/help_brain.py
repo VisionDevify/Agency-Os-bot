@@ -395,6 +395,34 @@ HELP_KB_SEEDS: tuple[dict[str, str], ...] = (
         "content": "External evidence is a timestamped public search result with a source URL/domain, scores, and evidence strength. It supports review but does not prove a claim by itself.",
         "related_route": "search:history",
     },
+    {
+        "topic": "ai_brain",
+        "title": "AI Brain",
+        "role_scope": "owner,admin",
+        "content": "AI Brain can explain decisions, summarize evidence, compare options, and improve briefing language. It cannot mark systems healthy or override evidence.",
+        "related_route": "ai_brain",
+    },
+    {
+        "topic": "grounded_reasoning",
+        "title": "Grounded Reasoning",
+        "role_scope": "owner,admin",
+        "content": "Grounded reasoning means AI must use Fortuna evidence records, system truth, search results, and decision outputs instead of guessing.",
+        "related_route": "ai_brain:evidence",
+    },
+    {
+        "topic": "ai_critic",
+        "title": "AI Critic",
+        "role_scope": "owner,admin",
+        "content": "AI Critic checks for unsupported claims, raw secret leaks, compliance problems, exaggerated confidence, and contradictions with system truth before AI text is shown.",
+        "related_route": "ai_brain:critic",
+    },
+    {
+        "topic": "openai_api_key",
+        "title": "OpenAI API Key",
+        "role_scope": "owner,admin",
+        "content": "ChatGPT Pro does not automatically power Fortuna. Production AI Brain needs OPENAI_API_KEY configured safely in Railway.",
+        "related_route": "ai_brain:settings",
+    },
 )
 
 
@@ -487,6 +515,14 @@ def detect_help_intent(question: str) -> str:
         return "evidence_capture"
     if "feedback" in text and ("override" in text or "system record" in text or "system truth" in text):
         return "feedback_override"
+    if "ai critic" in text or "ai verifier" in text:
+        return "ai_critic"
+    if "grounded reasoning" in text or ("ai" in text and "evidence" in text):
+        return "grounded_reasoning"
+    if "chatgpt pro" in text or "openai api key" in text or "openai key" in text:
+        return "openai_api_key"
+    if "ai brain" in text or "what is ai" in text or ("ai" in text and "fortuna" in text):
+        return "ai_brain"
     if "search intelligence" in text or "what is search" in text:
         return "search_intelligence"
     if "scrape google" in text or ("google" in text and "scrape" in text):
@@ -964,6 +1000,34 @@ def help_brain_answer(
             "Next button to press: Reality Check."
         )
         next_action = "reality:check" if _adminish(user) else "help"
+    elif intent == "ai_brain":
+        answer = (
+            "AI Brain is Fortuna's grounded reasoning layer.\n\n"
+            "Why: AI may explain decisions, summarize evidence, compare options, and improve briefing wording. It may not mark systems healthy, verify backups, approve compliance, or override deterministic evidence.\n\n"
+            "Next button to press: AI Brain."
+        )
+        next_action = "ai_brain" if _adminish(user) else "help"
+    elif intent == "grounded_reasoning":
+        answer = (
+            "Grounded reasoning means AI must use the evidence Fortuna supplies.\n\n"
+            "Why: Decision Engine output, Recovery records, Search results, Evidence Records, and Bot Status are the source material. If evidence is missing, Fortuna should say so instead of guessing.\n\n"
+            "Next button to press: AI Evidence Summary."
+        )
+        next_action = "ai_brain:evidence" if _adminish(user) else "help"
+    elif intent == "ai_critic":
+        answer = (
+            "AI Critic checks AI output before it reaches the owner.\n\n"
+            "Why: it blocks raw secret leaks, unsupported claims, invented healthy statuses, compliance violations, and auto-action suggestions.\n\n"
+            "Next button to press: AI Critic Status."
+        )
+        next_action = "ai_brain:critic" if _adminish(user) else "help"
+    elif intent == "openai_api_key":
+        answer = (
+            "ChatGPT Pro does not automatically power Fortuna.\n\n"
+            "Why: production AI Brain needs an OpenAI API key configured in Railway as OPENAI_API_KEY, with AI_ENABLED=true. Fortuna shows only variable presence, never the key value.\n\n"
+            "Next button to press: AI Settings."
+        )
+        next_action = "ai_brain:settings" if _adminish(user) else "help"
     elif intent == "search_intelligence":
         answer = (
             "Search Intelligence lets Fortuna use approved search APIs for public outside-world context.\n\n"

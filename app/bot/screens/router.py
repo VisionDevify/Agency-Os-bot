@@ -19,6 +19,7 @@ from .team import *
 from .team_intelligence import *
 from .coo import *
 from .search import *
+from .ai import *
 from .help import *
 from .errors import *
 from app.models.opportunity import CreatorPostAlert, OwnPostAlert
@@ -125,6 +126,22 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_search_results_page(session, user, action=page.split(":")[-1])
     if page == "search:settings" and session is not None:
         return render_search_settings_page(session, user)
+    if page == "ai_brain" and session is not None:
+        return render_ai_brain_page(session, user)
+    if page == "ai_brain:details" and session is not None:
+        return render_ai_brain_page(session, user, details=True)
+    if page == "ai_brain:settings" and session is not None:
+        return render_ai_settings_page(session, user)
+    if page == "ai_brain:critic" and session is not None:
+        return render_ai_critic_status_page(session, user)
+    if page == "ai_brain:evidence" and session is not None:
+        return render_ai_evidence_summary_page(session, user)
+    if page == "ai_brain:search" and session is not None:
+        return render_ai_search_summary_page(session, user)
+    if page == "ai_brain:coo" and session is not None:
+        return render_ai_coo_briefing_page(session, user)
+    if page == "ai_brain:opportunity" and session is not None:
+        return render_ai_opportunity_explanation_page(session, user)
     if page == "decision:top" and session is not None:
         return render_decision_top_priority_page(session, user)
     if page == "decision:details" and session is not None:

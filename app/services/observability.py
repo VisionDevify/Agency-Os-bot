@@ -18,6 +18,7 @@ from app.models.reporting import NotificationTarget
 from app.models.user import User
 from app.services.build_metadata import safe_build_metadata, safe_metadata_value
 from app.services.button_health import button_health_summary
+from app.services.ai import ai_observability_summary
 from app.services.chat_cleanup import chat_cleanup_metrics
 from app.services.decision_engine import decision_memory_summary, generate_decisions
 from app.services.decision_quality import safe_decision_quality_report
@@ -130,6 +131,7 @@ def production_observability_summary(session: Session) -> dict[str, object]:
     reality_calibration = safe_reality_calibration_report(session)
     evidence_capture = safe_evidence_capture_report(session)
     search_intelligence = search_observability_summary(session)
+    ai_brain = ai_observability_summary(session)
     decision_quality_meaningful = (
         not decision_quality.available
         or decision_quality.status in {"needs_attention", "critical"}
@@ -152,6 +154,7 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         or evidence_capture.knowledge_count
     )
     search_meaningful = bool(search_intelligence["meaningful"])
+    ai_meaningful = bool(ai_brain["meaningful"])
     reality_observability_status = "needs_review" if reality_meaningful and reality_calibration.available else "healthy"
     owner_count = session.scalar(select(func.count(User.id)).where(User.is_owner.is_(True))) or 0
     role_count = session.scalar(select(func.count(Role.id))) or 0
@@ -249,6 +252,13 @@ def production_observability_summary(session: Session) -> dict[str, object]:
                 1 if search_meaningful and search_intelligence["health"] != "healthy" else 0,
                 "Open Search Intelligence." if search_meaningful and search_intelligence["health"] != "healthy" else None,
             ),
+            StatusCondition(
+                "ai_brain",
+                ai_brain["health"],
+                "AI Brain explains evidence but cannot override system truth.",
+                1 if ai_meaningful and ai_brain["health"] != "healthy" else 0,
+                "Open AI Brain." if ai_meaningful and ai_brain["health"] != "healthy" else None,
+            ),
         ]
     )
     observability_issues = list(truth.current_issues)
@@ -276,6 +286,8 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         observability_issues.append("Reality Calibration: calibration checks are unavailable.")
     if search_meaningful and search_intelligence["health"] != "healthy":
         observability_issues.append(f"Search Intelligence: {search_intelligence['next_action']}")
+    if ai_meaningful and ai_brain["health"] != "healthy":
+        observability_issues.append(f"AI Brain: {ai_brain['next_action']}")
 
     return {
         "app_display_name": build_metadata["app_name"],
@@ -489,4 +501,18 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         "search_intelligence_latest_result_count": search_intelligence["latest_result_count"],
         "search_intelligence_failed_or_skipped_count": search_intelligence["failed_or_skipped_count"],
         "search_intelligence_next_action": search_intelligence["next_action"],
+        "ai_brain_status": ai_brain["health"],
+        "ai_brain_label": ai_brain["label"],
+        "ai_brain_meaningful": ai_meaningful,
+        "ai_brain_provider": ai_brain["provider"],
+        "ai_brain_enabled": ai_brain["enabled"],
+        "ai_brain_configured": ai_brain["configured"],
+        "ai_brain_daily_count": ai_brain["daily_count"],
+        "ai_brain_daily_limit": ai_brain["daily_limit"],
+        "ai_brain_latest_status": ai_brain["latest_status"],
+        "ai_brain_last_success_at": ai_brain["last_success_at"],
+        "ai_brain_last_failure": ai_brain["last_failure"],
+        "ai_brain_critic_blocks": ai_brain["critic_blocks"],
+        "ai_brain_fallback_count": ai_brain["fallback_count"],
+        "ai_brain_next_action": ai_brain["next_action"],
     }

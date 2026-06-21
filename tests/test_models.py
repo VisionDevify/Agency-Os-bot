@@ -3,6 +3,7 @@ def test_model_tables_are_registered() -> None:
     from app.models import (
         Account,
         AccountabilitySnapshot,
+        AIAuditLog,
         AuditLog,
         CallbackErrorLog,
         Automation,
@@ -75,6 +76,7 @@ def test_model_tables_are_registered() -> None:
         "account_auth_sessions",
         "account_verification_codes",
         "accountability_snapshots",
+        "ai_audit_logs",
         "activation_blocker_decisions",
         "audit_logs",
         "callback_error_logs",
@@ -144,6 +146,7 @@ def test_model_tables_are_registered() -> None:
     assert expected.issubset(Base.metadata.tables)
     assert User.__tablename__ == "users"
     assert Role.__tablename__ == "roles"
+    assert AIAuditLog.__tablename__ == "ai_audit_logs"
     assert AuditLog.__tablename__ == "audit_logs"
     assert "status" in AuditLog.__table__.columns
     assert EventLog.__tablename__ == "event_logs"
