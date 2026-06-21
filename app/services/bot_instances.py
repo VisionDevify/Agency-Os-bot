@@ -331,11 +331,15 @@ def bot_instance_diagnostics(session: Session, *, current_instance_id: str | Non
     redis_configured = bool(settings.redis_url)
     duplicate_count = len(duplicates)
     conflict_active = str(metadata.get("polling_conflict_active", "false")).lower() == "true"
+    webhook_delivery_active = (
+        str(metadata.get("telegram_delivery_mode", "")).strip().casefold() == "webhook"
+        and str(metadata.get("webhook_active", "false")).strip().casefold() == "true"
+    )
     if conflict_active:
         risk = "critical"
     elif not preflight.allowed:
         risk = "blocked"
-    elif not active:
+    elif not active and not webhook_delivery_active:
         risk = "no_active_polling_owner"
     elif duplicate_count:
         risk = "warning"
@@ -357,6 +361,8 @@ def bot_instance_diagnostics(session: Session, *, current_instance_id: str | Non
         "polling_allowed": metadata.get("polling_allowed", str(preflight.allowed)),
         "polling_active": metadata.get("polling_active", "unknown"),
         "polling_lock_owner": metadata.get("polling_lock_owner", "unknown"),
+        "telegram_delivery_mode": metadata.get("telegram_delivery_mode", "polling"),
+        "webhook_delivery_active": webhook_delivery_active,
         "service_role": metadata.get("service_role", "unknown"),
         "process_id": metadata.get("process_id", "unknown"),
         "deployment_commit": metadata.get("deployment_commit", settings.git_commit or "unknown"),

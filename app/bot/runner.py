@@ -3,6 +3,7 @@ import contextlib
 import logging
 import os
 import time
+from contextvars import ContextVar
 from datetime import UTC, datetime
 
 from aiogram import Bot, Dispatcher
@@ -155,6 +156,7 @@ TELEGRAM_PENDING_WATCHDOG_INTERVAL_SECONDS = float(os.getenv("TELEGRAM_PENDING_W
 TELEGRAM_PENDING_WATCHDOG_LIMIT = int(os.getenv("TELEGRAM_PENDING_WATCHDOG_LIMIT", "3"))
 TELEGRAM_PENDING_WATCHDOG_API_TIMEOUT_SECONDS = float(os.getenv("TELEGRAM_PENDING_WATCHDOG_API_TIMEOUT_SECONDS", "10"))
 LAST_TELEGRAM_UPDATE_MONOTONIC = time.monotonic()
+TELEGRAM_DELIVERY_MODE: ContextVar[str] = ContextVar("telegram_delivery_mode", default="polling")
 
 PENDING_ACCOUNT_CREATES: dict[int, dict[str, int | str]] = {}
 PENDING_AUTH_CODES: dict[int, int] = {}
@@ -370,26 +372,37 @@ def _bot_heartbeat_metadata(source: str, **extra: str) -> dict[str, str]:
     now = datetime.now(UTC).isoformat()
     storage = storage_status()
     has_redis = bool(settings.redis_url)
+    delivery_mode = TELEGRAM_DELIVERY_MODE.get()
+    webhook_delivery = delivery_mode == "webhook"
     owner_metadata = polling_owner_metadata(
         instance_id=CURRENT_BOT_INSTANCE_ID,
-        polling_allowed=True,
-        polling_active=source in {"startup", "polling_loop"} or source.startswith("telegram_"),
-        polling_lock_owner=mask_instance_id(CURRENT_BOT_INSTANCE_ID) if has_redis else "not_configured",
+        polling_allowed=not webhook_delivery,
+        polling_active=(not webhook_delivery)
+        and (source in {"startup", "polling_loop"} or source.startswith("telegram_")),
+        polling_lock_owner=(
+            "webhook_delivery"
+            if webhook_delivery
+            else mask_instance_id(CURRENT_BOT_INSTANCE_ID)
+            if has_redis
+            else "not_configured"
+        ),
         source=source,
     )
     metadata = {
         **owner_metadata,
         "source": source,
         "instance_id_masked": mask_instance_id(CURRENT_BOT_INSTANCE_ID),
-        "service_role": "worker",
+        "service_role": "webhook" if webhook_delivery else "worker",
+        "telegram_delivery_mode": delivery_mode,
+        "webhook_active": str(webhook_delivery),
         "primary_polling_enabled": str(settings.bot_primary_instance),
         "allow_polling_without_redis": str(settings.allow_polling_without_redis),
         "db_backend": storage.backend,
         "db_driver": storage.scheme,
         "db_durable": str(storage.durable),
         "storage_warning": storage.warning or "",
-        "polling_guard": "redis_lock" if has_redis else "disabled_no_redis",
-        "redis_lock_status": "held" if has_redis else "not_configured",
+        "polling_guard": "webhook_delivery" if webhook_delivery else "redis_lock" if has_redis else "disabled_no_redis",
+        "redis_lock_status": "not_required" if webhook_delivery else "held" if has_redis else "not_configured",
     }
     if source.startswith("telegram_"):
         metadata = clear_polling_conflict_metadata(metadata)

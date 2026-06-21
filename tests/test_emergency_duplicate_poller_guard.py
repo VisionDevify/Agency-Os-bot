@@ -8,7 +8,7 @@ from app.bot.screens.settings import (
     render_production_observability_page,
     render_ui_self_test_page,
 )
-from app.bot.runner import _record_bot_heartbeat, _watch_telegram_pending_updates
+from app.bot.runner import TELEGRAM_DELIVERY_MODE, _record_bot_heartbeat, _watch_telegram_pending_updates
 from app.core.config import settings
 from app.services.bot_instances import (
     bot_instance_diagnostics,
@@ -186,6 +186,25 @@ def test_polling_loop_does_not_clear_conflict_but_real_update_does(monkeypatch) 
 
         _record_bot_heartbeat(session, status="healthy", source="telegram_start")
         assert bot_instance_diagnostics(session, current_instance_id="worker-secret-instance")["polling_conflict_active"] is False
+
+
+def test_webhook_delivery_does_not_count_as_duplicate_poller(monkeypatch) -> None:
+    _production_env(monkeypatch)
+    with session_scope() as session:
+        _healthy_core_heartbeats(session)
+        delivery_token = TELEGRAM_DELIVERY_MODE.set("webhook")
+        try:
+            _record_bot_heartbeat(session, status="healthy", source="telegram_start")
+        finally:
+            TELEGRAM_DELIVERY_MODE.reset(delivery_token)
+
+        diagnostics = bot_instance_diagnostics(session)
+
+        assert diagnostics["webhook_delivery_active"] is True
+        assert diagnostics["telegram_delivery_mode"] == "webhook"
+        assert diagnostics["active_instance_count"] == 0
+        assert diagnostics["duplicate_instance_count"] == 0
+        assert diagnostics["risk"] != "no_active_polling_owner"
 
 
 def test_pending_update_watchdog_exits_when_polling_is_wedged() -> None:

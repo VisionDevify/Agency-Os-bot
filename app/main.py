@@ -36,11 +36,15 @@ def _get_telegram_webhook_bot() -> Bot:
 
 async def _feed_telegram_webhook_update(payload: dict[str, object]) -> None:
     # Import lazily so the API can boot even if Telegram-specific startup has an issue.
-    from app.bot.runner import dp
+    from app.bot import runner as bot_runner
 
     bot = _get_telegram_webhook_bot()
     update = Update.model_validate(payload, context={"bot": bot})
-    await dp.feed_update(bot, update)
+    delivery_token = bot_runner.TELEGRAM_DELIVERY_MODE.set("webhook")
+    try:
+        await bot_runner.dp.feed_update(bot, update)
+    finally:
+        bot_runner.TELEGRAM_DELIVERY_MODE.reset(delivery_token)
 
 
 @app.on_event("startup")
