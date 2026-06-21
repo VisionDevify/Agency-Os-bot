@@ -305,15 +305,26 @@ async def _acquire_polling_guard(
     *,
     retry_seconds: int = 10,
     max_wait_seconds: int = 420,
+    operation_timeout_seconds: int = 5,
 ) -> bool:
-    if guard.acquire():
+    try:
+        acquired = await asyncio.wait_for(asyncio.to_thread(guard.acquire), timeout=operation_timeout_seconds)
+    except Exception:
+        logger.warning("Unable to acquire Fortuna OS bot polling lock", exc_info=True)
+        acquired = False
+    if acquired:
         return True
 
     logger.warning("Another Fortuna OS bot polling instance appears active; waiting for lock to clear")
     deadline = time.monotonic() + max_wait_seconds
     while time.monotonic() < deadline:
         await asyncio.sleep(retry_seconds)
-        if guard.acquire():
+        try:
+            acquired = await asyncio.wait_for(asyncio.to_thread(guard.acquire), timeout=operation_timeout_seconds)
+        except Exception:
+            logger.warning("Unable to acquire Fortuna OS bot polling lock while waiting", exc_info=True)
+            acquired = False
+        if acquired:
             logger.info("Acquired Fortuna OS bot polling lock after waiting")
             return True
     return False
@@ -2283,7 +2294,12 @@ async def main() -> None:
     async def refresh_guard() -> None:
         while True:
             await asyncio.sleep(60)
-            if not guard.refresh():
+            try:
+                refreshed = await asyncio.wait_for(asyncio.to_thread(guard.refresh), timeout=5)
+            except Exception:
+                logger.error("Unable to refresh Fortuna OS bot polling lock", exc_info=True)
+                refreshed = False
+            if not refreshed:
                 logger.error("Lost Fortuna OS bot polling lock; stopping process to avoid duplicate polling")
                 # If long polling hangs during cancellation, Railway can show the worker as online
                 # while Telegram updates are no longer consumed. Exiting immediately is safer: the
