@@ -1449,9 +1449,15 @@ async def callback_failures(message: Message) -> None:
 
 @dp.message(lambda message: bool(message.text) and message.text.split()[0].split("@", 1)[0].lower() == "/coo")
 async def coo_shortcut_command(message: Message) -> None:
-    with contextlib.suppress(Exception):
-        await message.answer("Checking priorities...\n\nFortuna heard you.")
-    await shortcut_command(message)
+    await message.answer(
+        "COO Briefing\n\n"
+        "Status:\n"
+        "Needs Review\n\n"
+        "What changed:\n"
+        "Fortuna heard you, but the full briefing route is still being revalidated.\n\n"
+        "Next Best Move:\n"
+        "Use /today for current priorities, or /reliability to inspect route health."
+    )
 
 
 @dp.message(Command(*[shortcut.command for shortcut in SHORTCUT_COMMANDS if shortcut.command != "coo"]))
