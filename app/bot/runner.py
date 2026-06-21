@@ -1447,7 +1447,12 @@ async def callback_failures(message: Message) -> None:
         session.commit()
 
 
-@dp.message(Command(*[shortcut.command for shortcut in SHORTCUT_COMMANDS]))
+@dp.message(Command("coo"))
+async def coo_shortcut_command(message: Message) -> None:
+    await shortcut_command(message)
+
+
+@dp.message(Command(*[shortcut.command for shortcut in SHORTCUT_COMMANDS if shortcut.command != "coo"]))
 async def shortcut_command(message: Message) -> None:
     if message.from_user is None or SessionLocal is None or not message.text:
         await message.answer("That command is unavailable right now.")
