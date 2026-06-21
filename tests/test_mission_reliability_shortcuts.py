@@ -9,7 +9,6 @@ from sqlalchemy.orm import sessionmaker
 
 from app.db.base import Base
 from app.models import *  # noqa: F403
-from app.bot.screens.formatting import Screen
 from app.bot.screens import render_page
 from app.bot import runner as runner_module
 from app.bot.screens.recovery import render_backup_history_page
@@ -171,7 +170,7 @@ def test_coo_shortcut_does_not_call_ai_inline(monkeypatch) -> None:
         assert "COO Briefing" in screen.text
 
 
-def test_selftest_command_acknowledges_before_render(monkeypatch) -> None:
+def test_selftest_command_acknowledges_without_inline_render(monkeypatch) -> None:
     engine = create_engine("sqlite+pysqlite:///:memory:")
     Base.metadata.create_all(engine)
     TestSessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
@@ -179,19 +178,16 @@ def test_selftest_command_acknowledges_before_render(monkeypatch) -> None:
 
     monkeypatch.setattr(runner_module, "SessionLocal", TestSessionLocal)
     monkeypatch.setattr(runner_module.settings, "owner_telegram_id", 6701, raising=False)
-
-    def fake_render(session, user, *, run_now=False, details=False):
-        assert message.answers
-        assert message.answers[0].startswith("Running self-test")
-        assert run_now is True
-        return Screen("Self-test final", reply_markup=None)
-
-    monkeypatch.setattr(runner_module, "render_ui_self_test_page", fake_render)
+    monkeypatch.setattr(
+        runner_module,
+        "render_ui_self_test_page",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("selftest must not render inline")),
+    )
 
     asyncio.run(runner_module.selftest(message))
 
     assert message.answers[0].startswith("Running self-test")
-    assert "Self-test final" in message.answers[-1]
+    assert "Self-test started" in message.answers[-1]
 
 
 def test_verify_navigation_harness_reports_passed_routes(monkeypatch) -> None:

@@ -360,6 +360,32 @@ async def _run_restore_job_background(run_identifier: str, actor_id: int | None)
         )
 
 
+def _render_selftest_sync(user_id: int) -> tuple[str, object | None]:
+    if SessionLocal is None:
+        return ("Self-test is unavailable because the database session is not configured.", None)
+    with SessionLocal() as session:
+        user = session.get(User, user_id)
+        if user is None or not user.is_owner:
+            return ("UI Self-Test is owner-only.", None)
+        screen = render_ui_self_test_page(session, user, run_now=True)
+        session.commit()
+        return screen.text, screen.reply_markup
+
+
+async def _run_selftest_background(bot: Bot, chat_id: int, user_id: int) -> None:
+    try:
+        text, reply_markup = await asyncio.to_thread(_render_selftest_sync, user_id)
+    except Exception:
+        logger.exception("Self-test background render failed safely")
+        text = (
+            "Fortuna heard /selftest, but the self-test screen could not render safely.\n\n"
+            "Use /botstatus and /reliability while I keep this logged for review."
+        )
+        reply_markup = None
+    with contextlib.suppress(Exception):
+        await bot.send_message(chat_id, text, reply_markup=reply_markup)
+
+
 class _PollingConflictLogHandler(logging.Handler):
     """Capture aiogram getUpdates conflicts that are logged and retried internally."""
 
@@ -1307,48 +1333,21 @@ async def selftest(message: Message) -> None:
             session.commit()
             await message.answer("UI Self-Test is owner-only.")
             return
-        render_started_at = datetime.now(UTC)
-        try:
-            screen = render_ui_self_test_page(session, user, run_now=True)
-        except Exception:
-            session.rollback()
-            logger.error("Self-test command render failed", exc_info=True)
-            with contextlib.suppress(Exception):
-                await message.answer(
-                    "Fortuna heard /selftest, but the self-test screen could not render safely.\n\n"
-                    "Use /botstatus and /reliability while I keep this logged for review."
-                )
-            _record_callback_latency_safe(
-                session,
-                page="selftest",
-                received_at=received_at,
-                acknowledged_at=acknowledged_at,
-                render_started_at=render_started_at,
-                render_finished_at=datetime.now(UTC),
-                edit_or_send_completed_at=datetime.now(UTC),
-                result="failed_safe",
-                safe_error_summary="selftest render failed",
-            )
-            session.commit()
-            return
-        render_finished_at = datetime.now(UTC)
-        await _send_tracked_temporary_message(
-            message,
-            session,
-            user=user,
-            text=screen.text,
-            reply_markup=screen.reply_markup,
-            screen="selftest",
-        )
+        bot = getattr(message, "bot", None)
+        if bot is None:
+            await message.answer("Self-test started. Open /botstatus and /reliability while it finishes.")
+        else:
+            asyncio.create_task(_run_selftest_background(bot, message.chat.id, user.id))
         _record_callback_latency_safe(
             session,
             page="selftest",
             received_at=received_at,
             acknowledged_at=acknowledged_at,
-            render_started_at=render_started_at,
-            render_finished_at=render_finished_at,
+            render_started_at=datetime.now(UTC),
+            render_finished_at=datetime.now(UTC),
             edit_or_send_completed_at=datetime.now(UTC),
-            result="succeeded",
+            result="fallback_used",
+            safe_error_summary="selftest background task scheduled",
         )
         session.commit()
 
