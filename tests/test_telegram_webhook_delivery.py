@@ -53,6 +53,24 @@ def test_telegram_webhook_accepts_valid_secret_without_exposing_token(monkeypatc
     assert token not in str(response)
 
 
+def test_webhook_update_exception_is_acknowledged_safely(monkeypatch) -> None:
+    import app.bot.runner as runner
+
+    class FakeUpdate:
+        @staticmethod
+        def model_validate(payload: dict[str, object], context: dict[str, object] | None = None):
+            return {"payload": payload, "context": context}
+
+    async def broken_feed_update(bot, update) -> None:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(main, "Update", FakeUpdate)
+    monkeypatch.setattr(main, "_get_telegram_webhook_bot", lambda: object())
+    monkeypatch.setattr(runner.dp, "feed_update", broken_feed_update)
+
+    asyncio.run(main._feed_telegram_webhook_update({"update_id": 99, "message": {}}))
+
+
 class _WebhookInfoBot:
     def __init__(self, url: str) -> None:
         self.url = url

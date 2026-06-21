@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import logging
 
 from aiogram import Bot
 from aiogram.types import Update
@@ -17,6 +18,7 @@ from app.services.system_truth import current_alembic_revision, reconcile_stale_
 app = FastAPI(title=settings.app_display_name)
 app.include_router(router)
 _telegram_webhook_bot: Bot | None = None
+logger = logging.getLogger(__name__)
 
 
 def _telegram_webhook_secret(token: str, app_secret: str) -> str:
@@ -42,7 +44,17 @@ async def _feed_telegram_webhook_update(payload: dict[str, object]) -> None:
     update = Update.model_validate(payload, context={"bot": bot})
     delivery_token = bot_runner.TELEGRAM_DELIVERY_MODE.set("webhook")
     try:
-        await bot_runner.dp.feed_update(bot, update)
+        try:
+            await bot_runner.dp.feed_update(bot, update)
+        except Exception:
+            logger.exception(
+                "Telegram webhook update failed safely",
+                extra={
+                    "update_id": payload.get("update_id"),
+                    "has_message": "message" in payload,
+                    "has_callback_query": "callback_query" in payload,
+                },
+            )
     finally:
         bot_runner.TELEGRAM_DELIVERY_MODE.reset(delivery_token)
 
