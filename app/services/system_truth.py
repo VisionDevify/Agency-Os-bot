@@ -216,6 +216,8 @@ def _bot_polling_issue(is_production: bool, diagnostics: dict[str, object]) -> s
         return None
     if bool(diagnostics.get("polling_conflict_active")):
         return "Polling conflict detected: another process is using the same Telegram bot token."
+    if bool(diagnostics.get("webhook_delivery_active")):
+        return None
     if not bool(diagnostics.get("preflight_allowed")):
         reason = str(diagnostics.get("preflight_reason") or "").strip()
         if "BOT_PRIMARY_INSTANCE" in reason:

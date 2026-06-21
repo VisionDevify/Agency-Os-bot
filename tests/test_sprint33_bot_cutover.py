@@ -191,6 +191,38 @@ def test_no_active_polling_owner_warns(monkeypatch) -> None:
         assert "No active bot polling owner heartbeat was found." in screen.text
 
 
+def test_webhook_delivery_does_not_make_selftest_require_polling_heartbeat(monkeypatch) -> None:
+    monkeypatch.setattr(settings, "database_url", "postgresql+psycopg://user:pass@example.com/db")
+    monkeypatch.setattr(settings, "redis_url", "redis://:password@example")
+    monkeypatch.setattr(settings, "bot_primary_instance", True)
+    monkeypatch.setenv("RAILWAY_PROJECT_ID", "project-test")
+    with session_scope() as session:
+        owner = _owner(session)
+        record_heartbeat(
+            session,
+            service_name="bot",
+            status="healthy",
+            metadata={
+                "telegram_delivery_mode": "webhook",
+                "webhook_active": "True",
+                "redis_lock_status": "not_required",
+                "polling_guard": "webhook_delivery",
+                "polling_active": "False",
+                "polling_allowed": "False",
+            },
+        )
+
+        diagnostics = bot_instance_diagnostics(session, current_instance_id="worker")
+        screen = render_botstatus_page(session, owner, current_instance_id="worker")
+        selftest = render_ui_self_test_page(session, owner, run_now=True)
+
+        assert diagnostics["webhook_delivery_active"] is True
+        assert diagnostics["risk"] == "ready"
+        assert "Status:\nHealthy" in screen.text
+        assert "Telegram polling needs attention" not in selftest.text
+        assert "No active bot polling heartbeat" not in selftest.text
+
+
 def test_worker_plus_api_heartbeat_is_healthy(monkeypatch) -> None:
     monkeypatch.setattr(settings, "database_url", "postgresql+psycopg://user:pass@example.com/db")
     monkeypatch.setattr(settings, "redis_url", "redis://:password@example")
