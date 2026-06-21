@@ -21,6 +21,7 @@ from .coo import *
 from .search import *
 from .ai import *
 from .agency_awareness import *
+from .reliability import *
 from .help import *
 from .errors import *
 from app.models.opportunity import CreatorPostAlert, OwnPostAlert
@@ -105,6 +106,18 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_coo_briefing_page(session, user)
     if page == "coo:briefing:details" and session is not None:
         return render_coo_briefing_page(session, user, details=True)
+    if page == "reliability" and session is not None:
+        return render_reliability_center_page(session, user)
+    if page == "reliability:details" and session is not None:
+        return render_reliability_center_page(session, user, details=True)
+    if page == "reliability:slow" and session is not None:
+        return render_reliability_slow_page(session, user)
+    if page == "reliability:jobs" and session is not None:
+        return render_reliability_jobs_page(session, user)
+    if page == "reliability:history" and session is not None:
+        return render_reliability_history_page(session, user)
+    if page == "reliability:verify" and session is not None:
+        return render_reliability_verify_page(session, user)
     if page == "search" and session is not None:
         return render_search_center_page(session, user)
     if page == "search:details" and session is not None:

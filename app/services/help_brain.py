@@ -396,6 +396,27 @@ HELP_KB_SEEDS: tuple[dict[str, str], ...] = (
         "related_route": "settings:chat_cleanup",
     },
     {
+        "topic": "reliability_center",
+        "title": "Reliability Center",
+        "role_scope": "owner,admin,manager",
+        "content": "Reliability Center shows whether buttons, commands, webhook delivery, stale menus, and long-running jobs are responding cleanly. Historical issues stay in details; active issues drive the status.",
+        "related_route": "reliability",
+    },
+    {
+        "topic": "command_shortcuts",
+        "title": "Command Shortcuts",
+        "role_scope": "owner,admin,manager,chatter,viewer",
+        "content": "Command shortcuts open important Fortuna screens directly, such as /home, /coo, /agency, /recovery, /reliability, /botstatus, and /selftest. They help Telegram Desktop testing when inline buttons are hard to automate.",
+        "related_route": "reliability",
+    },
+    {
+        "topic": "working_state",
+        "title": "Working Screens",
+        "role_scope": "owner,admin,manager,chatter,viewer",
+        "content": "A Working screen means Fortuna heard the button or command and is checking, searching, backing up, or summarizing. You can keep using Fortuna while long work finishes.",
+        "related_route": "reliability",
+    },
+    {
         "topic": "evidence_capture",
         "title": "Evidence",
         "role_scope": "owner,admin,manager",
@@ -516,6 +537,20 @@ def detect_help_intent(question: str) -> str:
         return "old_menu_redirect"
     if "cleanup" in text and ("menu" in text or "chat" in text):
         return "chat_cleanup"
+    if "button feel slow" in text or ("slow" in text and "button" in text):
+        return "button_slow"
+    if "reliability center" in text or "reliability" in text and "button" in text:
+        return "reliability_center"
+    if "working" in text and ("fortuna" in text or "screen" in text or "button" in text):
+        return "working_state"
+    if "command" in text and ("open" in text or "screen" in text or "shortcut" in text):
+        return "command_shortcuts"
+    if "active failure" in text:
+        return "active_failure"
+    if "historical issue" in text or "historical failure" in text:
+        return "historical_issue"
+    if "bot" in text and "healthy" in text:
+        return "bot_health_check"
     if "what should i do first" in text or "what do i do first" in text:
         return "safe_next"
     if "difference" in text and "home" in text and "back" in text:
@@ -888,6 +923,55 @@ def help_brain_answer(
             "Next button to press: Clean Now."
         )
         next_action = "settings:chat_cleanup" if _adminish(user) else "menu"
+    elif intent == "button_slow":
+        answer = (
+            "A slow button usually means Fortuna had to check AI, search, recovery, observability, or a larger database view.\n\n"
+            "Why: slow routes are tracked so fixed problems can retire and truly slow areas stay visible.\n\n"
+            "Next button to press: Reliability Center."
+        )
+        next_action = "reliability" if _adminish(user) else "menu"
+    elif intent == "reliability_center":
+        answer = (
+            "Reliability Center shows whether Fortuna is responding quickly and cleanly.\n\n"
+            "Why: it separates active failures, slow routes, stale menus, webhook delivery, and long-running jobs from historical issues.\n\n"
+            "Next button to press: Reliability Center."
+        )
+        next_action = "reliability" if _adminish(user) else "menu"
+    elif intent == "working_state":
+        answer = (
+            "A Working screen means Fortuna heard the click or command.\n\n"
+            "Why: some checks take longer, so Fortuna shows a visible in-progress state instead of leaving you wondering.\n\n"
+            "Next button to press: wait for the completion screen, or use /reliability to check active jobs."
+        )
+        next_action = "reliability" if _adminish(user) else "menu"
+    elif intent == "command_shortcuts":
+        answer = (
+            "Command shortcuts open important screens directly.\n\n"
+            "Useful examples: /home, /more, /coo, /today, /agency, /ai, /search, /recovery, /reliability, /observability, /botstatus, and /selftest.\n\n"
+            "Why: they make live Telegram Desktop testing possible even when inline buttons are not exposed clearly to automation."
+        )
+        next_action = "reliability" if _adminish(user) else "menu"
+    elif intent == "active_failure":
+        answer = (
+            "An active failure is a problem current evidence still supports.\n\n"
+            "Why: historical failures are kept for audit, but only active or reappeared issues should affect health.\n\n"
+            "Next button to press: Reliability Center."
+        )
+        next_action = "reliability" if _adminish(user) else "menu"
+    elif intent == "historical_issue":
+        answer = (
+            "A historical issue is an old problem kept for learning and audit.\n\n"
+            "Why: Fortuna should not keep showing fixed problems as current failures after fresh checks pass.\n\n"
+            "Next button to press: Reliability Details."
+        )
+        next_action = "reliability:details" if _adminish(user) else "menu"
+    elif intent == "bot_health_check":
+        answer = (
+            "Use /botstatus and /selftest to check whether Fortuna is receiving updates and whether critical systems are truthful.\n\n"
+            "Why: Bot Status checks polling, Redis guardrails, database durability, duplicate instances, and recovery workflow state.\n\n"
+            "Next command to run: /botstatus."
+        )
+        next_action = "bot_instance_status" if _adminish(user) else "menu"
     elif intent == "coo_briefing":
         answer = (
             "COO Briefing shows what matters, why it matters, and what should happen next.\n\n"

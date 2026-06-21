@@ -35,6 +35,7 @@ from app.services.notification_intelligence import alert_health_summary
 from app.services.platform_connections import platform_connections_overview
 from app.services.reality_calibration import safe_reality_calibration_report
 from app.services.recovery import latest_recovery_job_summary, recovery_risk_assessment
+from app.services.reliability import reliability_summary
 from app.services.search_intelligence import search_observability_summary
 from app.services.shared_status import StatusCondition, compute_shared_status
 from app.services.system_truth import (
@@ -122,6 +123,7 @@ def production_observability_summary(session: Session) -> dict[str, object]:
     latest_self_test = _latest(session, UISelfTestRun, desc(UISelfTestRun.created_at), desc(UISelfTestRun.id))
     recovery = recovery_risk_assessment(session)
     recovery_job = latest_recovery_job_summary(session)
+    reliability = reliability_summary(session)
     buttons = button_health_summary(session)
     cleanup = chat_cleanup_metrics(session)
     team_ux = team_ux_readiness(session)
@@ -226,6 +228,13 @@ def production_observability_summary(session: Session) -> dict[str, object]:
                 "Open Button Health." if buttons.open_issue_count else None,
             ),
             StatusCondition(
+                "reliability",
+                str(reliability["status"]),
+                "Callback speed, active failures, webhook delivery, and long-running jobs.",
+                int(reliability["active_issue_count"]),
+                "Open Reliability Center." if reliability["status"] != "healthy" else None,
+            ),
+            StatusCondition(
                 "issue_lifecycle",
                 "needs_review" if active_callback_recommendations else "healthy",
                 "Self-healing issue lifecycle tracks unresolved callback recommendations only.",
@@ -307,6 +316,8 @@ def production_observability_summary(session: Session) -> dict[str, object]:
     button_issue_count = buttons.open_issue_count + buttons.telegram_ui_issue_count
     if button_issue_count:
         observability_issues.append(f"Navigation/Button Health: {button_issue_count} open issue(s).")
+    if reliability["status"] != "healthy":
+        observability_issues.append(f"Reliability: open Reliability Center; slowest area is {reliability['slowest_area']}.")
     if active_callback_recommendations:
         observability_issues.append(f"Callback Issue Lifecycle: {active_callback_recommendations} active callback recommendation(s).")
     if cleanup.old_menu_risk:
@@ -582,4 +593,10 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         "agency_awareness_degraded": agency_awareness.get("degraded"),
         "agency_awareness_missing_inputs": agency_awareness.get("missing_inputs", []),
         "agency_awareness_next_action": agency_awareness.get("next_action"),
+        "reliability_status": reliability["status"],
+        "reliability_button_score": reliability["button_reliability"],
+        "reliability_average_response_ms": reliability["average_response_ms"],
+        "reliability_slowest_area": reliability["slowest_area"],
+        "reliability_active_issues": reliability["active_issue_count"],
+        "reliability_active_jobs": len(reliability["active_jobs"]),
     }

@@ -44,6 +44,7 @@ from app.models.prediction import OpportunityPrediction
 from app.models.proxy import Proxy, ProxyHealthCheckResult, ProxyRotationHistory, ProxySessionMemory
 from app.models.recovery import BackupRun, BackupStorageTarget, RestoreTestRun
 from app.models.recommendation import Recommendation
+from app.models.reliability import CallbackLatencyRecord, ReliabilityJob, ResponseCacheEntry
 from app.models.search import ExternalSearchQuery, ExternalSearchResult
 from app.models.reporting import (
     AccountabilitySnapshot,
@@ -92,6 +93,7 @@ __all__ = [
     "AgencyActivationState",
     "AuditLog",
     "CallbackErrorLog",
+    "CallbackLatencyRecord",
     "ButtonIssue",
     "BotChatMessage",
     "ChatCleanupPreference",
@@ -156,7 +158,9 @@ __all__ = [
     "ProxyRotationHistory",
     "ProxySessionMemory",
     "Recommendation",
+    "ReliabilityJob",
     "Report",
+    "ResponseCacheEntry",
     "Role",
     "RolePermission",
     "BackupRun",

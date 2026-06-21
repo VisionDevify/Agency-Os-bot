@@ -79,6 +79,7 @@ def owner_advanced_home_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="🔎 Search Intelligence", callback_data=callback_for("search"))],
             [InlineKeyboardButton(text="🧠 AI Brain", callback_data=callback_for("ai_brain"))],
             [InlineKeyboardButton(text="🧭 Agency Awareness", callback_data=callback_for("agency_awareness"))],
+            [InlineKeyboardButton(text="🛡 Reliability Center", callback_data=callback_for("reliability"))],
             [InlineKeyboardButton(text="Simple Mode", callback_data=callback_for("menu"))],
             *page_controls(back_to="menu"),
         ]

@@ -646,6 +646,12 @@ def render_production_observability_page(
             "",
             "Navigation:",
             f"{summary['button_health_open_issue_count']} open button/navigation issue(s).",
+            "",
+            "Reliability:",
+            f"Status: {str(summary['reliability_status']).replace('_', ' ').title()}",
+            f"Average Response: {int(summary['reliability_average_response_ms']) / 1000:.1f}s",
+            f"Slowest Area: {summary['reliability_slowest_area']}",
+            f"Active Jobs: {summary['reliability_active_jobs']}",
         ]
         if summary["chat_cleanup_status"] != "healthy":
             recovery_lines.extend(
@@ -861,6 +867,14 @@ def render_production_observability_page(
         f"UX Issues: {summary['button_health_ux_issue_count']}",
         f"Telegram UI Status: {summary['button_health_telegram_ui_status']}",
         f"Last Button Scan: {_observability_time(summary['button_health_last_scan_at'], user)}",
+        "",
+        "Reliability:",
+        f"Status: {str(summary['reliability_status']).replace('_', ' ').title()}",
+        f"Button Reliability: {summary['reliability_button_score']}%",
+        f"Average Response: {int(summary['reliability_average_response_ms']) / 1000:.1f}s",
+        f"Slowest Area: {summary['reliability_slowest_area']}",
+        f"Active Issues: {summary['reliability_active_issues']}",
+        f"Active Jobs: {summary['reliability_active_jobs']}",
         "",
         "Chat Cleanup:",
         f"Status: {summary['chat_cleanup_label']}",

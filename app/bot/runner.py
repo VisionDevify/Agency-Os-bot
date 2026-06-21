@@ -124,6 +124,17 @@ from app.services.callback_protection import (
     classify_telegram_error,
 )
 from app.services.recovery import run_backup, run_restore_test, start_backup_job, start_restore_job
+from app.services.reliability import (
+    SHORTCUT_BY_COMMAND,
+    SHORTCUT_COMMANDS,
+    CallbackTiming,
+    record_callback_latency,
+    render_command_shortcut,
+    start_reliability_job,
+    update_reliability_job,
+    working_screen_for,
+    working_screen_for_page,
+)
 from app.services.chat_cleanup import (
     STALE_MENU_RESPONSE,
     TEMPORARY_ERROR,
@@ -214,6 +225,14 @@ def _mark_backup_job_failed(run_identifier: str, error_summary: str) -> None:
             run.finished_at = datetime.now(UTC)
             run.error_summary = error_summary
             run.result_summary = "Backup did not finish with verified artifact evidence."
+            update_reliability_job(
+                session,
+                f"backup:{run_identifier}",
+                status="failed",
+                current_step="Backup failed safely",
+                safe_error_summary=error_summary,
+                result_summary="Backup did not finish with verified artifact evidence.",
+            )
             session.commit()
 
 
@@ -230,6 +249,14 @@ def _mark_restore_job_failed(run_identifier: str, error_summary: str) -> None:
             run.checksum_verified = False
             run.decrypt_verified = False
             run.full_restore_performed = False
+            update_reliability_job(
+                session,
+                f"restore:{run_identifier}",
+                status="failed",
+                current_step="Restore validation failed safely",
+                safe_error_summary=error_summary,
+                result_summary="Restore validation did not finish with verified evidence.",
+            )
             session.commit()
 
 
@@ -237,8 +264,24 @@ def _execute_backup_job_sync(run_identifier: str, actor_id: int | None, backup_t
     if SessionLocal is None:
         return
     with SessionLocal() as session:
+        update_reliability_job(
+            session,
+            f"backup:{run_identifier}",
+            status="uploading",
+            current_step="Creating and uploading encrypted backup",
+            progress_percent=40,
+        )
+        session.commit()
         actor = session.get(User, actor_id) if actor_id is not None else None
         run_backup(session, actor=actor, backup_type=backup_type, run_identifier=run_identifier)
+        update_reliability_job(
+            session,
+            f"backup:{run_identifier}",
+            status="completed",
+            current_step="Backup verified",
+            progress_percent=100,
+            result_summary="Backup completed; Recovery evidence was recalculated.",
+        )
         session.commit()
 
 
@@ -246,8 +289,24 @@ def _execute_restore_job_sync(run_identifier: str, actor_id: int | None) -> None
     if SessionLocal is None:
         return
     with SessionLocal() as session:
+        update_reliability_job(
+            session,
+            f"restore:{run_identifier}",
+            status="verifying",
+            current_step="Verifying latest backup",
+            progress_percent=50,
+        )
+        session.commit()
         actor = session.get(User, actor_id) if actor_id is not None else None
         run_restore_test(session, actor=actor, run_identifier=run_identifier)
+        update_reliability_job(
+            session,
+            f"restore:{run_identifier}",
+            status="completed",
+            current_step="Restore validation recorded",
+            progress_percent=100,
+            result_summary="Restore validation finished with honest evidence.",
+        )
         session.commit()
 
 
@@ -858,6 +917,40 @@ async def _safe_callback_answer(
         await callback.answer(text, show_alert=show_alert)
 
 
+def _record_callback_latency_safe(
+    session,
+    *,
+    page: str,
+    received_at: datetime,
+    acknowledged_at: datetime | None = None,
+    render_started_at: datetime | None = None,
+    render_finished_at: datetime | None = None,
+    edit_or_send_completed_at: datetime | None = None,
+    result: str = "succeeded",
+    safe_error_summary: str | None = None,
+    metadata: dict | None = None,
+) -> None:
+    if session is None:
+        return
+    try:
+        record_callback_latency(
+            session,
+            CallbackTiming(
+                callback_route=page or "unknown",
+                received_at=received_at,
+                acknowledged_at=acknowledged_at,
+                render_started_at=render_started_at,
+                render_finished_at=render_finished_at,
+                edit_or_send_completed_at=edit_or_send_completed_at,
+            ),
+            result=result,
+            safe_error_summary=safe_error_summary,
+            metadata=metadata,
+        )
+    except Exception:
+        logger.warning("Unable to record callback latency for %s", page, exc_info=True)
+
+
 def _record_callback_button_issue(
     session,
     *,
@@ -1352,6 +1445,115 @@ async def callback_failures(message: Message) -> None:
             screen="callback_failure_review",
         )
         session.commit()
+
+
+@dp.message(Command(*[shortcut.command for shortcut in SHORTCUT_COMMANDS]))
+async def shortcut_command(message: Message) -> None:
+    if message.from_user is None or SessionLocal is None or not message.text:
+        await message.answer("That command is unavailable right now.")
+        return
+
+    command_name = message.text.split()[0].split("@", 1)[0].lstrip("/").lower()
+    shortcut = SHORTCUT_BY_COMMAND.get(command_name)
+    if shortcut is None:
+        return
+
+    with SessionLocal() as session:
+        telegram_id = message.from_user.id
+        _record_bot_heartbeat(session, status="healthy", source=f"telegram_command_{command_name}")
+        user = get_or_create_telegram_user(
+            session,
+            telegram_user_id=telegram_id,
+            display_name=_display_name_from_message_user(message.from_user),
+            username=_username_from_message_user(message.from_user),
+            owner_telegram_id=settings.owner_telegram_id,
+        )
+        user.last_seen = datetime.now(UTC)
+        if shortcut.owner_only and not user.is_owner:
+            audit_action(
+                session,
+                actor=user,
+                action="access.denied",
+                resource_type="telegram_command",
+                resource_id=command_name,
+                status="denied",
+                details={"permission": "owner"},
+            )
+            session.commit()
+            await message.answer("That screen is owner-only.")
+            return
+
+        principal = _principal_from_user(user)
+        working = working_screen_for(shortcut)
+        if working is not None:
+            await _send_tracked_temporary_message(
+                message,
+                session,
+                user=user,
+                text=working.text,
+                reply_markup=working.reply_markup,
+                screen=f"command:{command_name}:working",
+                message_label=TEMPORARY_STATUS,
+            )
+            session.commit()
+
+        started_backup = False
+        started_restore = False
+        if command_name == "run_backup":
+            run, started_backup = start_backup_job(session, actor=user)
+            start_reliability_job(
+                session,
+                job_id=f"backup:{run.run_identifier}",
+                job_type="backup",
+                status="running",
+                current_step="Creating encrypted backup",
+                related_chat_id=message.chat.id,
+                progress_percent=10,
+            )
+            screen = render_backup_job_started_page(run, reused=not started_backup)
+            run_identifier = run.run_identifier
+            actor_id = user.id
+        elif command_name == "restore_test":
+            test, started_restore = start_restore_job(session, actor=user)
+            start_reliability_job(
+                session,
+                job_id=f"restore:{test.run_identifier}",
+                job_type="restore_validation",
+                status="running",
+                current_step="Checking latest backup",
+                related_chat_id=message.chat.id,
+                progress_percent=10,
+            )
+            screen = render_restore_job_started_page(test, reused=not started_restore)
+            run_identifier = test.run_identifier
+            actor_id = user.id
+        else:
+            screen = render_command_shortcut(
+                session,
+                command=command_name,
+                principal=principal,
+                user=user,
+                chat_id=message.chat.id,
+                chat_title=getattr(message.chat, "title", None),
+            )
+            run_identifier = None
+            actor_id = None
+
+        navigation_version = reset_navigation_session(session, chat_id=message.chat.id, user=user)
+        await _send_tracked_navigation_message(
+            message,
+            session,
+            user=user,
+            screen=screen,
+            page=shortcut.page,
+            navigation_version=navigation_version,
+        )
+        session.commit()
+
+        if command_name == "run_backup" and started_backup and run_identifier is not None:
+            asyncio.create_task(_run_backup_job_background(run_identifier, actor_id))
+        if command_name == "restore_test" and started_restore and run_identifier is not None:
+            asyncio.create_task(_run_restore_job_background(run_identifier, actor_id))
 
 
 @dp.message(F.text)
@@ -2089,9 +2291,18 @@ async def navigate(callback: CallbackQuery) -> None:
 
 
 async def _navigate_locked(callback: CallbackQuery, page: str) -> None:
+    latency_received_at = datetime.now(UTC)
+    latency_acknowledged_at: datetime | None = None
+    latency_render_started_at: datetime | None = None
+    latency_render_finished_at: datetime | None = None
+    latency_edit_completed_at: datetime | None = None
+    latency_result = "succeeded"
+    latency_error: str | None = None
     with SessionLocal() as session:
         user: User | None = None
         try:
+            await _safe_callback_answer(callback)
+            latency_acknowledged_at = datetime.now(UTC)
             _record_bot_heartbeat(session, status="healthy", source="telegram_callback")
             user = get_or_create_telegram_user(
                 session,
@@ -2189,10 +2400,14 @@ async def _navigate_locked(callback: CallbackQuery, page: str) -> None:
                 message_id=callback.message.message_id,
             )
             if navigation_state.is_stale:
+                latency_result = "stale"
+                latency_render_started_at = datetime.now(UTC)
                 screen = render_main_menu(session=session, user=user)
+                latency_render_finished_at = datetime.now(UTC)
                 navigation_version = reset_navigation_session(session, chat_id=chat_id, user=user)
                 try:
                     sent = await callback.message.answer(screen.text, reply_markup=screen.reply_markup)
+                    latency_edit_completed_at = datetime.now(UTC)
                     track_bot_message(
                         session,
                         chat_id=sent.chat.id,
@@ -2218,6 +2433,7 @@ async def _navigate_locked(callback: CallbackQuery, page: str) -> None:
                 session.commit()
                 return
             if page == "settings:chat_cleanup:clean":
+                latency_render_started_at = datetime.now(UTC)
                 navigation_version = await _cleanup_navigation_messages_on_start(
                     callback.bot,
                     session,
@@ -2225,7 +2441,9 @@ async def _navigate_locked(callback: CallbackQuery, page: str) -> None:
                     chat_id=chat_id,
                 )
                 screen = render_main_menu(session=session, user=user)
+                latency_render_finished_at = datetime.now(UTC)
                 sent = await callback.message.answer(screen.text, reply_markup=screen.reply_markup)
+                latency_edit_completed_at = datetime.now(UTC)
                 track_bot_message(
                     session,
                     chat_id=sent.chat.id,
@@ -2246,12 +2464,25 @@ async def _navigate_locked(callback: CallbackQuery, page: str) -> None:
                 chat_id=chat_id,
                 page=page,
             ):
+                latency_result = "duplicate"
                 await _safe_callback_answer(callback, "One moment.")
                 session.commit()
                 return
             if page == "recovery:backup:run":
+                latency_render_started_at = datetime.now(UTC)
                 run, started = start_backup_job(session, actor=user)
+                start_reliability_job(
+                    session,
+                    job_id=f"backup:{run.run_identifier}",
+                    job_type="backup",
+                    status="running",
+                    current_step="Creating encrypted backup",
+                    related_chat_id=chat_id,
+                    related_message_id=callback.message.message_id if callback.message else None,
+                    progress_percent=10,
+                )
                 screen = render_backup_job_started_page(run, reused=not started)
+                latency_render_finished_at = datetime.now(UTC)
                 run_identifier = run.run_identifier
                 actor_id = user.id
                 session.commit()
@@ -2264,12 +2495,25 @@ async def _navigate_locked(callback: CallbackQuery, page: str) -> None:
                     user=user,
                     page=page,
                 )
+                latency_edit_completed_at = datetime.now(UTC)
                 await _safe_callback_answer(callback, "Backup started." if started else "Backup is already running.")
                 session.commit()
                 return
             if page == "recovery:restore:test":
+                latency_render_started_at = datetime.now(UTC)
                 test, started = start_restore_job(session, actor=user)
+                start_reliability_job(
+                    session,
+                    job_id=f"restore:{test.run_identifier}",
+                    job_type="restore_validation",
+                    status="running",
+                    current_step="Checking latest backup",
+                    related_chat_id=chat_id,
+                    related_message_id=callback.message.message_id if callback.message else None,
+                    progress_percent=10,
+                )
                 screen = render_restore_job_started_page(test, reused=not started)
+                latency_render_finished_at = datetime.now(UTC)
                 run_identifier = test.run_identifier
                 actor_id = user.id
                 session.commit()
@@ -2282,6 +2526,7 @@ async def _navigate_locked(callback: CallbackQuery, page: str) -> None:
                     user=user,
                     page=page,
                 )
+                latency_edit_completed_at = datetime.now(UTC)
                 await _safe_callback_answer(
                     callback,
                     "Restore validation started." if started else "Restore validation is already running.",
@@ -2289,6 +2534,16 @@ async def _navigate_locked(callback: CallbackQuery, page: str) -> None:
                 session.commit()
                 return
             chat_title = getattr(callback.message.chat, "title", None)
+            working = working_screen_for_page(page)
+            if working is not None:
+                await _edit_or_send_callback_screen(
+                    callback,
+                    working,
+                    session=session,
+                    user=user,
+                    page=page,
+                )
+            latency_render_started_at = datetime.now(UTC)
             screen = screen_for_page(
                 page,
                 principal,
@@ -2297,6 +2552,7 @@ async def _navigate_locked(callback: CallbackQuery, page: str) -> None:
                 chat_id=chat_id,
                 chat_title=chat_title,
             )
+            latency_render_finished_at = datetime.now(UTC)
             _set_pending_callback_state(callback.from_user.id, page, session, user)
             await _edit_or_send_callback_screen(
                 callback,
@@ -2305,6 +2561,7 @@ async def _navigate_locked(callback: CallbackQuery, page: str) -> None:
                 user=user,
                 page=page,
             )
+            latency_edit_completed_at = datetime.now(UTC)
             target_id = _notification_target_id_for_send_test(page)
             if target_id is not None:
                 target = get_notification_target(session, target_id)
@@ -2340,7 +2597,24 @@ async def _navigate_locked(callback: CallbackQuery, page: str) -> None:
             session.commit()
             await _safe_callback_answer(callback, "You do not have permission to open this page.", show_alert=True)
         except Exception as exc:
+            latency_result = "failed_safe"
+            latency_error = type(exc).__name__
             await _handle_callback_failure(callback, session, user=user, page=page, exc=exc)
+        finally:
+            _record_callback_latency_safe(
+                session,
+                page=page,
+                received_at=latency_received_at,
+                acknowledged_at=latency_acknowledged_at,
+                render_started_at=latency_render_started_at,
+                render_finished_at=latency_render_finished_at,
+                edit_or_send_completed_at=latency_edit_completed_at,
+                result=latency_result,
+                safe_error_summary=latency_error,
+                metadata={"source": "telegram_callback"},
+            )
+            with contextlib.suppress(Exception):
+                session.commit()
 
 
 async def main() -> None:

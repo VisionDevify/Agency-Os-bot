@@ -76,6 +76,31 @@ Protections include:
 
 Navigation idempotency must be narrow and short-lived. Back, Home, Help, Refresh, and Main Menu should not become stuck behind broad "Already handled" blocking.
 
+## Reliability and Command Shortcuts
+
+Fortuna must feel heard on every interaction:
+
+- Telegram callback queries should be acknowledged quickly.
+- Known slow routes should show a visible Working/Checking/Searching/Backing Up state before heavy work.
+- AI, search, backup, restore, observability, callback scans, and reliability scans must not silently block the UI.
+- Long-running work should use shared job state with queued, running, checking, uploading, verifying, summarizing, completed, failed, timed_out, and cancelled states.
+- Completed jobs should update evidence-backed status or leave a safe result summary; failed jobs should never fake success.
+- Recovery backup success still requires encrypted artifact, checksum, upload, and verification evidence.
+
+Important screens must be reachable by command because Telegram Desktop automation can expose inline buttons as unlabeled controls. Command shortcuts should reuse the same renderers as buttons and bypass stale menu state:
+
+- `/home`, `/more`, `/coo`, `/today`
+- `/agency`, `/agency_active`, `/agency_missing`, `/agency_connected`
+- `/ai`, `/ai_settings`, `/ai_critic`, `/ai_evidence`, `/ai_coo`
+- `/search`, `/search_settings`, `/search_history`
+- `/recovery`, `/backup_history`, `/run_backup`, `/restore_test`
+- `/reliability`, `/verify_navigation`, `/callback_failures`, `/button_health`
+- `/notifications`, `/platforms`, `/decision_memory`, `/reality`, `/intelligence`, `/observability`
+
+Reliability Center is the owner-facing place for button reliability, callback speed, active failures, historical failures, stale menus, webhook delivery, and long-running jobs. Historical issues remain available in Details but should not count against current status after fresh revalidation passes.
+
+Expensive safe summaries may be cached with a source evidence version, expiry, and commit. Caches must not contain secrets and must be invalidated when evidence changes.
+
 ## /start Cleanup Behavior
 
 `/start` should make Fortuna feel like an app reset:

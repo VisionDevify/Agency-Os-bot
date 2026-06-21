@@ -30,6 +30,7 @@ MORE_CHILDREN = {
     "search",
     "ai_brain",
     "agency_awareness",
+    "reliability",
 }
 
 
@@ -134,6 +135,8 @@ def parent_page_for(page: str | None) -> str:
         return "ai_brain"
     if current.startswith("agency_awareness:"):
         return "agency_awareness"
+    if current.startswith("reliability:"):
+        return "reliability"
     if current.startswith("team_intelligence:"):
         return "team_intelligence"
     if current.startswith("notification_") or current.startswith("notification:"):
@@ -149,7 +152,7 @@ def root_page_for(page: str | None) -> str:
         return ROOT_SCREEN
     if current.startswith("settings:chat_cleanup"):
         return "settings"
-    if current in MORE_CHILDREN or current.startswith(("coo", "decision", "intelligence", "automations", "reports", "settings", "recovery", "team_intelligence", "platforms", "search", "ai_brain", "agency_awareness")):
+    if current in MORE_CHILDREN or current.startswith(("coo", "decision", "intelligence", "automations", "reports", "settings", "recovery", "team_intelligence", "platforms", "search", "ai_brain", "agency_awareness", "reliability")):
         return "owner_advanced"
     if current.startswith(("proxy:", "proxies:")):
         return "proxies"

@@ -6,6 +6,7 @@ def test_model_tables_are_registered() -> None:
         AIAuditLog,
         AuditLog,
         CallbackErrorLog,
+        CallbackLatencyRecord,
         Automation,
         AutomationApproval,
         AutomationRule,
@@ -58,6 +59,8 @@ def test_model_tables_are_registered() -> None:
         Recommendation,
         Report,
         RestoreTestRun,
+        ReliabilityJob,
+        ResponseCacheEntry,
         Role,
         SocialDiscoveryLead,
         SocialDiscoveryRun,
@@ -82,6 +85,7 @@ def test_model_tables_are_registered() -> None:
         "activation_blocker_decisions",
         "audit_logs",
         "callback_error_logs",
+        "callback_latency_records",
         "automations",
         "automation_approvals",
         "automation_rules",
@@ -131,6 +135,8 @@ def test_model_tables_are_registered() -> None:
         "recommendations",
         "reports",
         "restore_test_runs",
+        "reliability_jobs",
+        "response_cache_entries",
         "roles",
         "social_discovery_leads",
         "social_discovery_runs",
@@ -163,6 +169,7 @@ def test_model_tables_are_registered() -> None:
     assert PredictiveCOOPrediction.__tablename__ == "predictive_coo_predictions"
     assert FrictionItem.__tablename__ == "friction_items"
     assert CallbackErrorLog.__tablename__ == "callback_error_logs"
+    assert CallbackLatencyRecord.__tablename__ == "callback_latency_records"
     assert DailyBriefing.__tablename__ == "daily_briefings"
     assert AccountabilitySnapshot.__tablename__ == "accountability_snapshots"
     assert ActivationBlockerDecision.__tablename__ == "activation_blocker_decisions"
@@ -197,6 +204,8 @@ def test_model_tables_are_registered() -> None:
     assert BackupRun.__tablename__ == "backup_runs"
     assert BackupStorageTarget.__tablename__ == "backup_storage_targets"
     assert RestoreTestRun.__tablename__ == "restore_test_runs"
+    assert ReliabilityJob.__tablename__ == "reliability_jobs"
+    assert ResponseCacheEntry.__tablename__ == "response_cache_entries"
     assert Recommendation.__tablename__ == "recommendations"
     assert SystemHeartbeat.__tablename__ == "system_heartbeats"
     assert IntelligenceSignal.__tablename__ == "intelligence_signals"
