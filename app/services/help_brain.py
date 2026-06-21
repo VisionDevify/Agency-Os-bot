@@ -381,6 +381,20 @@ HELP_KB_SEEDS: tuple[dict[str, str], ...] = (
         "content": "Knowledge Memory stores durable lessons that came from evidence, such as recovery setup lessons or notification rollout notes.",
         "related_route": "knowledge:memory",
     },
+    {
+        "topic": "search_intelligence",
+        "title": "Search Intelligence",
+        "role_scope": "owner,admin,manager",
+        "content": "Fortuna uses approved search APIs for public web evidence. Search results are clues, not truth.",
+        "related_route": "search",
+    },
+    {
+        "topic": "external_evidence",
+        "title": "External Evidence",
+        "role_scope": "owner,admin,manager",
+        "content": "External evidence is a timestamped public search result with a source URL/domain, scores, and evidence strength. It supports review but does not prove a claim by itself.",
+        "related_route": "search:history",
+    },
 )
 
 
@@ -473,6 +487,22 @@ def detect_help_intent(question: str) -> str:
         return "evidence_capture"
     if "feedback" in text and ("override" in text or "system record" in text or "system truth" in text):
         return "feedback_override"
+    if "search intelligence" in text or "what is search" in text:
+        return "search_intelligence"
+    if "scrape google" in text or ("google" in text and "scrape" in text):
+        return "search_no_google_scrape"
+    if "external evidence" in text or ("search result" in text and ("truth" in text or "prove" in text)):
+        return "external_evidence"
+    if "citation" in text or ("search" in text and "source" in text):
+        return "search_citations"
+    if "private profile" in text or ("search" in text and "private" in text):
+        return "search_private_profiles"
+    if "tavily" in text:
+        return "search_tavily"
+    if "search" in text and "opportun" in text:
+        return "search_opportunities"
+    if "search" in text and "notification" in text:
+        return "search_notifications"
     if "predictions facts" in text or ("are predictions" in text and "facts" in text):
         return "prediction_not_facts"
     if "restore testing" in text and ("likely next" in text or "prediction" in text):
@@ -934,6 +964,62 @@ def help_brain_answer(
             "Next button to press: Reality Check."
         )
         next_action = "reality:check" if _adminish(user) else "help"
+    elif intent == "search_intelligence":
+        answer = (
+            "Search Intelligence lets Fortuna use approved search APIs for public outside-world context.\n\n"
+            "Why: internal evidence says what happened inside Fortuna; external search evidence can show public trends, sources, or signals outside Fortuna.\n\n"
+            "Next button to press: Search Intelligence."
+        )
+        next_action = "search" if _adminish(user) else "help"
+    elif intent == "search_no_google_scrape":
+        answer = (
+            "No. Fortuna does not scrape Google directly.\n\n"
+            "Why: it uses approved search APIs like Tavily for public web evidence and respects safety, rate limits, and source attribution.\n\n"
+            "Next button to press: Search Settings."
+        )
+        next_action = "search:settings" if _adminish(user) else "help"
+    elif intent == "external_evidence":
+        answer = (
+            "External evidence is a cited public search result with a timestamp, source domain, snippet, and scores.\n\n"
+            "Why: search results are clues, not truth. They can support a recommendation, but they must be scored, cited, and reviewed.\n\n"
+            "Next button to press: Search History."
+        )
+        next_action = "search:history" if _adminish(user) else "help"
+    elif intent == "search_citations":
+        answer = (
+            "Search results need citations so the owner can inspect where the signal came from.\n\n"
+            "Why: Fortuna should not ask you to trust an external claim without a source domain, retrieval time, and evidence strength.\n\n"
+            "Next button to press: Search Results."
+        )
+        next_action = "search:results" if _adminish(user) else "help"
+    elif intent == "search_private_profiles":
+        answer = (
+            "No. Fortuna cannot search private profiles, login-required pages, leaked data, or sensitive personal data.\n\n"
+            "Why: Search Intelligence is for public web evidence only. Private or sensitive queries are blocked before a provider call is made.\n\n"
+            "Next button to press: Search Intelligence."
+        )
+        next_action = "search" if _adminish(user) else "help"
+    elif intent == "search_tavily":
+        answer = (
+            "Tavily is the first approved search provider for Fortuna.\n\n"
+            "Why: using one provider keeps configuration, rate limits, evidence scoring, and safety checks consistent before adding other providers later.\n\n"
+            "Next button to press: Search Settings."
+        )
+        next_action = "search:settings" if _adminish(user) else "help"
+    elif intent == "search_opportunities":
+        answer = (
+            "Search can help validate opportunities with public trend or source evidence.\n\n"
+            "Why: weak external evidence should not create a high-priority opportunity by itself, and humans still review before any outreach or posting.\n\n"
+            "Next button to press: Opportunity Research."
+        )
+        next_action = "search:opportunity" if _adminish(user) else "help"
+    elif intent == "search_notifications":
+        answer = (
+            "Search can inform notifications only when a relevant, fresh public signal clears a threshold.\n\n"
+            "Why: Fortuna should send fewer alerts, not more noise. Search-triggered notifications must explain what changed and why it matters.\n\n"
+            "Next button to press: Search Intelligence."
+        )
+        next_action = "search" if _adminish(user) else "help"
     elif intent == "prediction_not_facts":
         answer = (
             "No. Predictions are not facts.\n\n"

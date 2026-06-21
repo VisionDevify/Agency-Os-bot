@@ -13,6 +13,7 @@ EVIDENCE_TYPES = (
     "system_record",
     "uploaded_reference",
     "operational_outcome",
+    "external_search",
 )
 
 EVIDENCE_STRENGTHS = ("weak", "medium", "strong")
@@ -32,7 +33,7 @@ class EvidenceRecord(TimestampMixin, Base):
     __tablename__ = "evidence_records"
     __table_args__ = (
         CheckConstraint(
-            "evidence_type in ('owner_note', 'owner_validation', 'system_record', 'uploaded_reference', 'operational_outcome')",
+            "evidence_type in ('owner_note', 'owner_validation', 'system_record', 'uploaded_reference', 'operational_outcome', 'external_search')",
             name="ck_evidence_records_type",
         ),
         CheckConstraint(

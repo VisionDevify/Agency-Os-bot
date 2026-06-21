@@ -276,6 +276,28 @@ Evidence capture and owner validation:
 - Decision Review and Decision Timeline should show the chain from prediction to recommendation to evidence to validation to outcome to lesson.
 - If evidence capture fails, prediction, decision, COO Briefing, and calibration should continue from system evidence and show evidence status as unavailable.
 
+Search Intelligence and external evidence:
+
+- Search Intelligence gives Fortuna safe public-world awareness through one approved provider first: Tavily.
+- `SearchProvider` is the abstraction; `TavilySearchProvider` is the only implemented provider for now.
+- Future providers such as Google Custom Search API, Brave Search API, Bing Web Search, SerpAPI, or Exa must plug into the provider abstraction instead of bypassing search safety.
+- Search is controlled by `SEARCH_ENABLED`, `SEARCH_PROVIDER`, `TAVILY_API_KEY`, `SEARCH_DAILY_LIMIT`, `SEARCH_TIMEOUT_SECONDS`, and `SEARCH_DEFAULT_RECENCY_DAYS`.
+- Missing `TAVILY_API_KEY` means Search Intelligence is not configured yet; it is not a production-critical failure unless an active search-dependent workflow requires it.
+- Search workflows must pass the compliance gate before any provider call.
+- Allowed search: public web research, public news, public platform pages available without login, compliant public niche/trend research, public competitor research, and source validation.
+- Blocked search: private profiles, login-required pages, password/session scraping, private data harvesting, bot-detection evasion, doxxing, sensitive personal data collection, bulk profile scraping, or bypassing rate limits.
+- Search result does not equal truth. Search result equals external evidence that must be URL/domain-backed, timestamped, scored, cited, and reviewed.
+- Store search records in `ExternalSearchQuery` and `ExternalSearchResult`; never store raw HTML dumps or provider secrets.
+- `EvidenceRecord.evidence_type=external_search` links public results into owner evidence while preserving source URL/domain/retrieved_at/query metadata.
+- Evidence scoring uses relevance, freshness, credibility, and risk. Low credibility or high risk must lower confidence.
+- One search result is usually weak or medium evidence; strong evidence should require official/reputable sources and low risk.
+- Search may support Opportunity Intelligence, Notification Intelligence, COO Briefing, and Recommendations, but it must not auto-contact, auto-post, auto-comment, auto-like, or auto-follow.
+- Weak external evidence must not create high-priority opportunities by itself.
+- Search-triggered notifications require relevance and freshness thresholds and must explain why the signal matters.
+- COO Briefing should include external context only when it changes what the owner should do; random or stale results belong in Details.
+- Rate limits and cached repeated queries prevent search API spam and cost surprises.
+- If search provider calls fail, show a safe reason, keep old results if useful, and never expose the API key.
+
 ## Compliance Rules
 
 Fortuna may observe, summarize, recommend, and route human-reviewed work.

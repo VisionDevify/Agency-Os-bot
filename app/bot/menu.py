@@ -76,6 +76,7 @@ def owner_advanced_home_menu() -> InlineKeyboardMarkup:
             ],
             [InlineKeyboardButton(text="👑 COO Briefing", callback_data=callback_for("coo:briefing"))],
             [InlineKeyboardButton(text="🔌 Platform Connections", callback_data=callback_for("platforms"))],
+            [InlineKeyboardButton(text="🔎 Search Intelligence", callback_data=callback_for("search"))],
             [InlineKeyboardButton(text="Simple Mode", callback_data=callback_for("menu"))],
             *page_controls(back_to="menu"),
         ]
@@ -838,6 +839,61 @@ def team_qa_detail_menu(user_id: int) -> InlineKeyboardMarkup:
     )
 
 
+def search_center_menu(*, configured: bool = False) -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(text="🔍 Run Search", callback_data=callback_for("search:run"))],
+        [
+            InlineKeyboardButton(text="🎯 Opportunity Research", callback_data=callback_for("search:opportunity")),
+            InlineKeyboardButton(text="📱 Platform Signals", callback_data=callback_for("search:platform_signals")),
+        ],
+        [InlineKeyboardButton(text="🧠 COO Context", callback_data=callback_for("search:coo_context"))],
+        [
+            InlineKeyboardButton(text="📚 Search History", callback_data=callback_for("search:history")),
+            InlineKeyboardButton(text="⚙️ Search Settings", callback_data=callback_for("search:settings")),
+        ],
+        [InlineKeyboardButton(text="🔎 Details", callback_data=callback_for("search:details"))],
+    ]
+    if not configured:
+        rows.insert(1, [InlineKeyboardButton(text="⚙️ Setup Tavily", callback_data=callback_for("search:settings"))])
+    rows.extend(page_controls(back_to="owner_advanced"))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def search_history_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Re-run Latest", callback_data=callback_for("search:history:rerun"))],
+            [InlineKeyboardButton(text="🔎 View Results", callback_data=callback_for("search:results"))],
+            [InlineKeyboardButton(text="🧾 Attach Evidence", callback_data=callback_for("search:results:attach"))],
+            *page_controls(back_to="search"),
+        ]
+    )
+
+
+def search_results_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🧾 Attach as Evidence", callback_data=callback_for("search:results:attach"))],
+            [
+                InlineKeyboardButton(text="🎯 Create Opportunity", callback_data=callback_for("search:results:opportunity")),
+                InlineKeyboardButton(text="🔔 Notification Watch", callback_data=callback_for("search:results:notification")),
+            ],
+            [InlineKeyboardButton(text="❌ Ignore", callback_data=callback_for("search:results:ignore"))],
+            *page_controls(back_to="search:history"),
+        ]
+    )
+
+
+def search_settings_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Refresh", callback_data=callback_for("search:settings"))],
+            [InlineKeyboardButton(text="🔎 Search Intelligence", callback_data=callback_for("search"))],
+            *page_controls(back_to="search"),
+        ]
+    )
+
+
 def scheduled_automations_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -1261,6 +1317,7 @@ def intelligence_menu() -> InlineKeyboardMarkup:
             [InlineKeyboardButton(text="View Priorities", callback_data=callback_for("reports:executive:recommendations"))],
             [InlineKeyboardButton(text="View Trends", callback_data=callback_for("intelligence:trends"))],
             [InlineKeyboardButton(text="🧠 Intelligence Quality", callback_data=callback_for("intelligence:quality"))],
+            [InlineKeyboardButton(text="🔎 Search Intelligence", callback_data=callback_for("search"))],
             [InlineKeyboardButton(text="Ask Fortuna", callback_data=callback_for("help_copilot:next"))],
             [InlineKeyboardButton(text="More Details", callback_data=callback_for("intelligence:details"))],
             *page_controls(back_to="owner_advanced"),

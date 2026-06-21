@@ -42,6 +42,7 @@ from app.models.prediction import OpportunityPrediction
 from app.models.proxy import Proxy, ProxyHealthCheckResult, ProxyRotationHistory, ProxySessionMemory
 from app.models.recovery import BackupRun, BackupStorageTarget, RestoreTestRun
 from app.models.recommendation import Recommendation
+from app.models.search import ExternalSearchQuery, ExternalSearchResult
 from app.models.reporting import (
     AccountabilitySnapshot,
     DailyBriefing,
@@ -142,6 +143,8 @@ __all__ = [
     "PostWatch",
     "PriorityItem",
     "PredictionOutcome",
+    "ExternalSearchQuery",
+    "ExternalSearchResult",
     "PredictiveCOOPrediction",
     "Proxy",
     "ProxyHealthCheckResult",

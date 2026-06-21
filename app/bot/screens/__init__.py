@@ -18,6 +18,7 @@ from .settings import *
 from .team import *
 from .team_intelligence import *
 from .coo import *
+from .search import *
 from .help import *
 from .errors import *
 from .router import render_page

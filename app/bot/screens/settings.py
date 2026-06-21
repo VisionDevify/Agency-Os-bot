@@ -698,6 +698,16 @@ def render_production_observability_page(
                     f"Next: {summary['evidence_capture_next_action']}",
                 ]
             )
+        if summary.get("search_intelligence_meaningful"):
+            recovery_lines.extend(
+                [
+                    "",
+                    "Search Intelligence:",
+                    f"Status: {summary['search_intelligence_label']}",
+                    f"Latest results: {summary['search_intelligence_latest_result_count']}",
+                    f"Next: {summary['search_intelligence_next_action']}",
+                ]
+            )
         summary_line = (
             "Fortuna checked this. Operations are running, but recovery still needs setup."
             if summary["recovery_status"] != "healthy" and operations_ok
@@ -912,6 +922,17 @@ def render_production_observability_page(
         f"Owner Validations: {summary['owner_validation_count']}",
         f"Knowledge Lessons: {summary['knowledge_memory_count']}",
         f"Next Action: {summary['evidence_capture_next_action']}",
+        "",
+        "Search Intelligence:",
+        f"Status: {summary['search_intelligence_label']}",
+        f"Provider: {summary['search_intelligence_provider']}",
+        f"Enabled: {'Yes' if summary['search_intelligence_enabled'] else 'No'}",
+        f"Configured: {'Yes' if summary['search_intelligence_configured'] else 'No'}",
+        f"Daily Searches: {summary['search_intelligence_daily_count']}/{summary['search_intelligence_daily_limit']}",
+        f"Latest Query Status: {str(summary['search_intelligence_latest_query_status']).replace('_', ' ').title()}",
+        f"Latest Result Count: {summary['search_intelligence_latest_result_count']}",
+        f"Failed/Skipped Searches: {summary['search_intelligence_failed_or_skipped_count']}",
+        f"Next Action: {summary['search_intelligence_next_action']}",
         "",
         "Logs:",
         summary["railway_note"],

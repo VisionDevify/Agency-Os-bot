@@ -28,6 +28,8 @@ def test_model_tables_are_registered() -> None:
         EvidenceRecord,
         EventLog,
         ExecutiveInsight,
+        ExternalSearchQuery,
+        ExternalSearchResult,
         FrictionItem,
         IntelligenceRun,
         IntelligenceSignal,
@@ -93,6 +95,8 @@ def test_model_tables_are_registered() -> None:
         "decision_quality_trends",
         "evidence_records",
         "event_logs",
+        "external_search_queries",
+        "external_search_results",
         "executive_insights",
         "friction_items",
         "incidents",
@@ -146,6 +150,8 @@ def test_model_tables_are_registered() -> None:
     assert DecisionMemory.__tablename__ == "decision_memory"
     assert DecisionQualityTrend.__tablename__ == "decision_quality_trends"
     assert EvidenceRecord.__tablename__ == "evidence_records"
+    assert ExternalSearchQuery.__tablename__ == "external_search_queries"
+    assert ExternalSearchResult.__tablename__ == "external_search_results"
     assert OwnerValidation.__tablename__ == "owner_validations"
     assert KnowledgeMemory.__tablename__ == "knowledge_memory"
     assert PredictionOutcome.__tablename__ == "prediction_outcomes"

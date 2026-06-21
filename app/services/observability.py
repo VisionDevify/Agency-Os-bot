@@ -32,6 +32,7 @@ from app.services.notification_intelligence import alert_health_summary
 from app.services.platform_connections import platform_connections_overview
 from app.services.reality_calibration import safe_reality_calibration_report
 from app.services.recovery import latest_recovery_job_summary, recovery_risk_assessment
+from app.services.search_intelligence import search_observability_summary
 from app.services.shared_status import StatusCondition, compute_shared_status
 from app.services.system_truth import (
     AlembicRevisionStatus,
@@ -128,6 +129,7 @@ def production_observability_summary(session: Session) -> dict[str, object]:
     predictive_coo = safe_predictive_coo_report(session, decisions=decisions_for_quality)
     reality_calibration = safe_reality_calibration_report(session)
     evidence_capture = safe_evidence_capture_report(session)
+    search_intelligence = search_observability_summary(session)
     decision_quality_meaningful = (
         not decision_quality.available
         or decision_quality.status in {"needs_attention", "critical"}
@@ -149,6 +151,7 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         or evidence_capture.validation_count
         or evidence_capture.knowledge_count
     )
+    search_meaningful = bool(search_intelligence["meaningful"])
     reality_observability_status = "needs_review" if reality_meaningful and reality_calibration.available else "healthy"
     owner_count = session.scalar(select(func.count(User.id)).where(User.is_owner.is_(True))) or 0
     role_count = session.scalar(select(func.count(Role.id))) or 0
@@ -239,6 +242,13 @@ def production_observability_summary(session: Session) -> dict[str, object]:
                 1 if not reality_calibration.available else 0,
                 "Open Reality Check." if reality_meaningful else None,
             ),
+            StatusCondition(
+                "search_intelligence",
+                search_intelligence["health"],
+                "Search Intelligence tracks approved public external evidence.",
+                1 if search_meaningful and search_intelligence["health"] != "healthy" else 0,
+                "Open Search Intelligence." if search_meaningful and search_intelligence["health"] != "healthy" else None,
+            ),
         ]
     )
     observability_issues = list(truth.current_issues)
@@ -264,6 +274,8 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         observability_issues.append("Prediction Health: prediction checks are unavailable.")
     if reality_meaningful and not reality_calibration.available:
         observability_issues.append("Reality Calibration: calibration checks are unavailable.")
+    if search_meaningful and search_intelligence["health"] != "healthy":
+        observability_issues.append(f"Search Intelligence: {search_intelligence['next_action']}")
 
     return {
         "app_display_name": build_metadata["app_name"],
@@ -465,4 +477,16 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         "owner_validation_count": evidence_capture.validation_count,
         "knowledge_memory_count": evidence_capture.knowledge_count,
         "evidence_capture_next_action": evidence_capture.next_best_move,
+        "search_intelligence_status": search_intelligence["health"],
+        "search_intelligence_label": search_intelligence["label"],
+        "search_intelligence_meaningful": search_meaningful,
+        "search_intelligence_provider": search_intelligence["provider"],
+        "search_intelligence_enabled": search_intelligence["enabled"],
+        "search_intelligence_configured": search_intelligence["configured"],
+        "search_intelligence_daily_count": search_intelligence["daily_count"],
+        "search_intelligence_daily_limit": search_intelligence["daily_limit"],
+        "search_intelligence_latest_query_status": search_intelligence["latest_query_status"],
+        "search_intelligence_latest_result_count": search_intelligence["latest_result_count"],
+        "search_intelligence_failed_or_skipped_count": search_intelligence["failed_or_skipped_count"],
+        "search_intelligence_next_action": search_intelligence["next_action"],
     }

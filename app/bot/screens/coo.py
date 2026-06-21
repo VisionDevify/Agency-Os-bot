@@ -15,6 +15,7 @@ from app.services.decision_quality import safe_decision_quality_report
 from app.services.decision_trends import safe_predictive_coo_report
 from app.services.evidence_capture import safe_evidence_capture_report
 from app.services.reality_calibration import safe_reality_calibration_report
+from app.services.search_intelligence import latest_external_context
 
 
 def _decision_status_icon(status: str) -> str:
@@ -183,6 +184,7 @@ def render_coo_briefing_page(session: Session, user: User | None = None, *, deta
     prediction_report = safe_predictive_coo_report(session, decisions=briefing.decisions, actor=user)
     reality = safe_reality_calibration_report(session, actor=user)
     evidence = safe_evidence_capture_report(session)
+    external_context = latest_external_context(session)
     prediction = prediction_report.primary
     top = briefing.top_priority
     if details:
@@ -201,6 +203,7 @@ def render_coo_briefing_page(session: Session, user: User | None = None, *, deta
             f"Reality Check: {'Unavailable' if not reality.available else reality.status.replace('_', ' ').title()}",
             f"Evidence Records: {evidence.evidence_count if evidence.available else 'Unavailable'}",
             f"Knowledge Lessons: {evidence.knowledge_count if evidence.available else 'Unavailable'}",
+            f"External Search Results: {external_context.get('count', 0)}",
             "",
             "Ranked decisions:",
         ]
@@ -233,6 +236,17 @@ def render_coo_briefing_page(session: Session, user: User | None = None, *, deta
                 )
         else:
             lines.append("- No evidence-backed prediction is ready yet.")
+        lines.extend(["", "External Evidence:"])
+        if external_context.get("available"):
+            lines.extend(
+                [
+                    f"- {external_context['title']}",
+                    f"  Source: {external_context['source_domain']} | Strength: {str(external_context['strength']).title()}",
+                    f"  Evidence: {external_context['summary']}",
+                ]
+            )
+        else:
+            lines.append("- No useful external search evidence yet.")
         return Screen("\n".join(lines), decision_details_menu())
 
     lines = [
@@ -278,6 +292,17 @@ def render_coo_briefing_page(session: Session, user: User | None = None, *, deta
     if evidence.available and evidence.knowledge_count:
         lines.extend(["", "📚 Evidence Lesson"])
         lines.extend(f"- {item}" for item in evidence.learned_lines[:2])
+    if external_context.get("available"):
+        lines.extend(
+            [
+                "",
+                "🔎 External Signal",
+                str(external_context["title"]),
+                "",
+                "Why it matters:",
+                f"Public evidence from {external_context['source_domain']} may support manual review.",
+            ]
+        )
     if not quality.available:
         lines.extend(["", "Intelligence Quality", "Quality check unavailable; current evidence is still being used."])
     elif quality.status in {"needs_attention", "critical"} and quality.findings:

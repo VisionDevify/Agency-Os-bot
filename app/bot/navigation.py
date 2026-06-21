@@ -311,6 +311,7 @@ def permissions_for_page(page: str) -> tuple[str, ...] | None:
         or page.startswith("owner_validation:")
         or page.startswith("evidence:")
         or page.startswith("knowledge:")
+        or page.startswith("search")
     ):
         return ("manage_reports", "view_dashboard")
     if page.startswith("playbook:"):
@@ -1380,6 +1381,7 @@ def screen_for_page(
         or normalized.startswith("owner_validation:")
         or normalized.startswith("evidence:")
         or normalized.startswith("knowledge:")
+        or normalized.startswith("search")
         or normalized.startswith("prediction:")
         or normalized.startswith("reality:")
         or normalized == "executive_mode"
@@ -1418,6 +1420,7 @@ def screen_for_page(
         or normalized.startswith("team_qa:")
         or normalized.startswith("notification_digest:")
         or normalized.startswith("platforms")
+        or normalized.startswith("search")
     ):
         if normalized.startswith("settings:chat_cleanup"):
             return render_chat_cleanup_page(session, user, chat_id, details=normalized.endswith(":details"))

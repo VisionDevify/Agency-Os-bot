@@ -18,6 +18,7 @@ from .settings import *
 from .team import *
 from .team_intelligence import *
 from .coo import *
+from .search import *
 from .help import *
 from .errors import *
 from app.models.opportunity import CreatorPostAlert, OwnPostAlert
@@ -102,6 +103,28 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_coo_briefing_page(session, user)
     if page == "coo:briefing:details" and session is not None:
         return render_coo_briefing_page(session, user, details=True)
+    if page == "search" and session is not None:
+        return render_search_center_page(session, user)
+    if page == "search:details" and session is not None:
+        return render_search_center_page(session, user, details=True)
+    if page == "search:run" and session is not None:
+        return render_search_guided_page(session, "run", user)
+    if page == "search:opportunity" and session is not None:
+        return render_search_guided_page(session, "opportunity", user)
+    if page == "search:platform_signals" and session is not None:
+        return render_search_guided_page(session, "platform_signals", user)
+    if page == "search:coo_context" and session is not None:
+        return render_search_guided_page(session, "coo_context", user)
+    if page == "search:history" and session is not None:
+        return render_search_history_page(session, user)
+    if page == "search:history:rerun" and session is not None:
+        return render_search_history_page(session, user, rerun=True)
+    if page == "search:results" and session is not None:
+        return render_search_results_page(session, user)
+    if page.startswith("search:results:") and session is not None:
+        return render_search_results_page(session, user, action=page.split(":")[-1])
+    if page == "search:settings" and session is not None:
+        return render_search_settings_page(session, user)
     if page == "decision:top" and session is not None:
         return render_decision_top_priority_page(session, user)
     if page == "decision:details" and session is not None:

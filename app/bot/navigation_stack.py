@@ -27,6 +27,7 @@ MORE_CHILDREN = {
     "recovery_center",
     "team_intelligence",
     "platforms",
+    "search",
 }
 
 
@@ -123,6 +124,10 @@ def parent_page_for(page: str | None) -> str:
         return "platforms:notifications"
     if current.startswith("platforms:"):
         return "platforms"
+    if current in {"search:details", "search:run", "search:opportunity", "search:platform_signals", "search:coo_context", "search:history", "search:settings"}:
+        return "search"
+    if current == "search:history:rerun" or current.startswith("search:results"):
+        return "search:history"
     if current.startswith("team_intelligence:"):
         return "team_intelligence"
     if current.startswith("notification_") or current.startswith("notification:"):
@@ -138,7 +143,7 @@ def root_page_for(page: str | None) -> str:
         return ROOT_SCREEN
     if current.startswith("settings:chat_cleanup"):
         return "settings"
-    if current in MORE_CHILDREN or current.startswith(("coo", "decision", "intelligence", "automations", "reports", "settings", "recovery", "team_intelligence", "platforms")):
+    if current in MORE_CHILDREN or current.startswith(("coo", "decision", "intelligence", "automations", "reports", "settings", "recovery", "team_intelligence", "platforms", "search")):
         return "owner_advanced"
     if current.startswith(("proxy:", "proxies:")):
         return "proxies"
