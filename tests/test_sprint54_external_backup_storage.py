@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import io
+import urllib.error
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
@@ -18,6 +20,7 @@ from app.services.auth import setup_owner_if_needed
 from app.services.automations import execute_action
 from app.services.backup_storage import (
     ProviderOperationResult,
+    _safe_http_error_summary,
     decrypt_storage_config,
     mask_credential,
     upsert_storage_target,
@@ -115,6 +118,26 @@ def _active_target(session, owner, provider: FakeStorageProvider) -> BackupStora
         config=_storage_config(),
         provider=provider,
     )
+
+
+def test_storage_http_error_summary_includes_safe_provider_code() -> None:
+    error = urllib.error.HTTPError(
+        "https://s3.us-east-005.backblazeb2.com/fortuna-backups/test",
+        403,
+        "Forbidden",
+        hdrs=None,
+        fp=io.BytesIO(
+            b"<?xml version='1.0' encoding='UTF-8'?><Error><Code>AccessDenied</Code>"
+            b"<Message>Application key does not allow writeFiles.</Message></Error>"
+        ),
+    )
+
+    summary = _safe_http_error_summary(error)
+
+    assert "HTTP 403" in summary
+    assert "AccessDenied" in summary
+    assert "writeFiles" in summary
+    assert "fortuna-backups/test" not in summary
 
 
 def test_storage_credentials_are_encrypted_masked_and_never_rendered() -> None:

@@ -7,6 +7,7 @@ import json
 import urllib.error
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -65,6 +66,30 @@ def _safe_summary(value: str | None, *, fallback: str = "The storage provider co
         redacted = redacted.replace(marker, "[redacted]")
         redacted = redacted.replace(marker.upper(), "[redacted]")
     return redacted[:300]
+
+
+def _safe_http_error_summary(exc: urllib.error.HTTPError) -> str:
+    base = f"Storage provider returned HTTP {exc.code}."
+    try:
+        body = exc.read(4096)
+    except Exception:
+        body = b""
+    if not body:
+        return base
+    try:
+        root = ET.fromstring(body.decode("utf-8", errors="replace"))
+        code = root.findtext("Code") or root.findtext("{*}Code")
+        message = root.findtext("Message") or root.findtext("{*}Message")
+    except Exception:
+        return base
+    safe_parts: list[str] = []
+    if code:
+        safe_parts.append(f"code={_safe_summary(code, fallback='unknown')}")
+    if message:
+        safe_parts.append(f"message={_safe_summary(message)}")
+    if not safe_parts:
+        return base
+    return f"{base} ({'; '.join(safe_parts)})"
 
 
 def mask_credential(value: str | None) -> str:
@@ -325,7 +350,7 @@ class S3CompatibleProvider:
             with urllib.request.urlopen(request, timeout=15) as response:
                 return response.read()
         except urllib.error.HTTPError as exc:
-            raise RuntimeError(f"Storage provider returned HTTP {exc.code}.") from exc
+            raise RuntimeError(_safe_http_error_summary(exc)) from exc
 
     def _signing_key(self, date_stamp: str) -> bytes:
         key = ("AWS4" + self.secret_key).encode("utf-8")
