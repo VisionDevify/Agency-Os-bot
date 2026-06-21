@@ -1447,8 +1447,10 @@ async def callback_failures(message: Message) -> None:
         session.commit()
 
 
-@dp.message(Command("coo"))
+@dp.message(lambda message: bool(message.text) and message.text.split()[0].split("@", 1)[0].lower() == "/coo")
 async def coo_shortcut_command(message: Message) -> None:
+    with contextlib.suppress(Exception):
+        await message.answer("Checking priorities...\n\nFortuna heard you.")
     await shortcut_command(message)
 
 
