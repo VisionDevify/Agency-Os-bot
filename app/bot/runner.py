@@ -1249,9 +1249,15 @@ async def clean_chat(message: Message) -> None:
 
 @dp.message(Command("selftest"))
 async def selftest(message: Message) -> None:
+    received_at = datetime.now(UTC)
     if message.from_user is None or SessionLocal is None:
         await message.answer("Self-test is owner-only.")
         return
+
+    acknowledged_at: datetime | None = None
+    with contextlib.suppress(Exception):
+        await message.answer("Running self-test...\n\nFortuna heard you.")
+        acknowledged_at = datetime.now(UTC)
 
     with SessionLocal() as session:
         telegram_id = message.from_user.id
@@ -1275,7 +1281,31 @@ async def selftest(message: Message) -> None:
             session.commit()
             await message.answer("UI Self-Test is owner-only.")
             return
-        screen = render_ui_self_test_page(session, user, run_now=True)
+        render_started_at = datetime.now(UTC)
+        try:
+            screen = render_ui_self_test_page(session, user, run_now=True)
+        except Exception:
+            session.rollback()
+            logger.error("Self-test command render failed", exc_info=True)
+            with contextlib.suppress(Exception):
+                await message.answer(
+                    "Fortuna heard /selftest, but the self-test screen could not render safely.\n\n"
+                    "Use /botstatus and /reliability while I keep this logged for review."
+                )
+            _record_callback_latency_safe(
+                session,
+                page="selftest",
+                received_at=received_at,
+                acknowledged_at=acknowledged_at,
+                render_started_at=render_started_at,
+                render_finished_at=datetime.now(UTC),
+                edit_or_send_completed_at=datetime.now(UTC),
+                result="failed_safe",
+                safe_error_summary="selftest render failed",
+            )
+            session.commit()
+            return
+        render_finished_at = datetime.now(UTC)
         await _send_tracked_temporary_message(
             message,
             session,
@@ -1283,6 +1313,16 @@ async def selftest(message: Message) -> None:
             text=screen.text,
             reply_markup=screen.reply_markup,
             screen="selftest",
+        )
+        _record_callback_latency_safe(
+            session,
+            page="selftest",
+            received_at=received_at,
+            acknowledged_at=acknowledged_at,
+            render_started_at=render_started_at,
+            render_finished_at=render_finished_at,
+            edit_or_send_completed_at=datetime.now(UTC),
+            result="succeeded",
         )
         session.commit()
 

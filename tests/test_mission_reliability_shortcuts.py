@@ -1,8 +1,17 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from app.db.base import Base
+from app.models import *  # noqa: F403
+from app.bot.screens.formatting import Screen
 from app.bot.screens import render_page
+from app.bot import runner as runner_module
 from app.bot.screens.reliability import render_reliability_center_page, render_reliability_verify_page
 from app.models.reliability import CallbackLatencyRecord, ReliabilityJob
 from app.services.auth import setup_owner_if_needed
@@ -29,6 +38,33 @@ def _owner(session):
 
 def _principal(owner) -> PermissionPrincipal:
     return PermissionPrincipal(telegram_id=owner.telegram_id, is_owner=True, role=RoleName.OWNER)
+
+
+class _FakeChat:
+    id = 10
+
+
+class _FakeSentMessage:
+    def __init__(self, message_id: int) -> None:
+        self.chat = _FakeChat()
+        self.message_id = message_id
+
+
+class _FakeTelegramMessage:
+    def __init__(self, telegram_id: int = 6701) -> None:
+        self.chat = _FakeChat()
+        self.message_id = 100
+        self.from_user = SimpleNamespace(
+            id=telegram_id,
+            first_name="Owner",
+            last_name=None,
+            username="owner",
+        )
+        self.answers: list[str] = []
+
+    async def answer(self, text: str, reply_markup=None):
+        self.answers.append(text)
+        return _FakeSentMessage(1000 + len(self.answers))
 
 
 def test_latency_labels_and_records_are_persisted() -> None:
@@ -130,6 +166,29 @@ def test_coo_shortcut_does_not_call_ai_inline(monkeypatch) -> None:
         screen = render_command_shortcut(session, command="coo", principal=_principal(owner), user=owner)
 
         assert "COO Briefing" in screen.text
+
+
+def test_selftest_command_acknowledges_before_render(monkeypatch) -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    TestSessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
+    message = _FakeTelegramMessage()
+
+    monkeypatch.setattr(runner_module, "SessionLocal", TestSessionLocal)
+    monkeypatch.setattr(runner_module.settings, "owner_telegram_id", 6701, raising=False)
+
+    def fake_render(session, user, *, run_now=False, details=False):
+        assert message.answers
+        assert message.answers[0].startswith("Running self-test")
+        assert run_now is True
+        return Screen("Self-test final", reply_markup=None)
+
+    monkeypatch.setattr(runner_module, "render_ui_self_test_page", fake_render)
+
+    asyncio.run(runner_module.selftest(message))
+
+    assert message.answers[0].startswith("Running self-test")
+    assert "Self-test final" in message.answers[-1]
 
 
 def test_verify_navigation_harness_reports_passed_routes(monkeypatch) -> None:
