@@ -251,7 +251,7 @@ Decision quality trends and Predictive COO:
 
 Reality calibration:
 
-- `PredictionOutcome` tracks whether a prediction is pending, proven correct, proven wrong, unresolved, expired, or not supported by enough evidence.
+- `PredictionOutcome` tracks whether a prediction is pending, partially correct, proven correct, proven wrong, unresolved, expired, or not supported by enough evidence.
 - Default prediction outcome is `pending`; no prediction may be marked correct or wrong without later evidence.
 - `PredictionEvaluationEngine` compares predictions against later Recovery, Platform, Notification, Friction, ButtonIssue, Opportunity, and bot-status records.
 - Owner feedback can record perceived usefulness, but feedback alone does not prove correctness unless supporting evidence is attached.
@@ -262,6 +262,19 @@ Reality calibration:
 - Recovery calibration example: restore-test-path predictions stay pending while backup is verified but full restore evidence is missing; they become correct only after later restore evidence confirms the blocker or after the restore path is addressed.
 - `REALITY_CALIBRATION_ENABLED` can hide Reality Check screens without breaking Prediction Preview, COO Briefing, Today, or the Decision Engine.
 - If evaluation or calibration fails, show Reality Check or Calibration unavailable, log safely, and keep current decisions visible.
+
+Evidence capture and owner validation:
+
+- `EvidenceRecord` stores traceable owner notes, owner validations, system records, uploaded references, and operational outcomes.
+- Evidence strength is explicit: weak, medium, or strong.
+- Weak evidence is owner opinion or limited notes. Medium evidence is owner context plus supporting records. Strong evidence is confirmed operational outcome, multiple records, or owner validation plus system outcome.
+- Owner notes are evidence, but they are not automatically truth.
+- Owner Validation can mark a prediction correct, incorrect, partially correct, too early to tell, or add evidence.
+- `partially_correct` means evidence supports part of the prediction while uncertainty or contradiction remains.
+- Owner feedback helps Fortuna learn, but it cannot override contradictory system records by itself.
+- `KnowledgeMemory` stores durable lessons only when they originate from evidence and include confidence.
+- Decision Review and Decision Timeline should show the chain from prediction to recommendation to evidence to validation to outcome to lesson.
+- If evidence capture fails, prediction, decision, COO Briefing, and calibration should continue from system evidence and show evidence status as unavailable.
 
 ## Compliance Rules
 

@@ -25,6 +25,7 @@ def test_model_tables_are_registered() -> None:
         DailyAutopilotSetting,
         DecisionMemory,
         DecisionQualityTrend,
+        EvidenceRecord,
         EventLog,
         ExecutiveInsight,
         FrictionItem,
@@ -32,6 +33,7 @@ def test_model_tables_are_registered() -> None:
         IntelligenceSignal,
         IssuePattern,
         LearningEvent,
+        KnowledgeMemory,
         ModelBrand,
         ModelBrandMember,
         NotificationDigest,
@@ -41,6 +43,7 @@ def test_model_tables_are_registered() -> None:
         OpportunityResult,
         OpportunitySource,
         OutcomeMemory,
+        OwnerValidation,
         PredictionOutcome,
         Playbook,
         PlaybookRun,
@@ -88,6 +91,7 @@ def test_model_tables_are_registered() -> None:
         "daily_autopilot_settings",
         "decision_memory",
         "decision_quality_trends",
+        "evidence_records",
         "event_logs",
         "executive_insights",
         "friction_items",
@@ -97,6 +101,7 @@ def test_model_tables_are_registered() -> None:
         "issue_patterns",
         "confidence_records",
         "learning_events",
+        "knowledge_memory",
         "model_brand_members",
         "model_brands",
         "notification_targets",
@@ -106,6 +111,7 @@ def test_model_tables_are_registered() -> None:
         "opportunity_results",
         "opportunity_sources",
         "outcome_memory",
+        "owner_validations",
         "playbook_runs",
         "playbooks",
         "post_watches",
@@ -139,6 +145,9 @@ def test_model_tables_are_registered() -> None:
     assert EventLog.__tablename__ == "event_logs"
     assert DecisionMemory.__tablename__ == "decision_memory"
     assert DecisionQualityTrend.__tablename__ == "decision_quality_trends"
+    assert EvidenceRecord.__tablename__ == "evidence_records"
+    assert OwnerValidation.__tablename__ == "owner_validations"
+    assert KnowledgeMemory.__tablename__ == "knowledge_memory"
     assert PredictionOutcome.__tablename__ == "prediction_outcomes"
     assert PredictiveCOOPrediction.__tablename__ == "predictive_coo_predictions"
     assert FrictionItem.__tablename__ == "friction_items"

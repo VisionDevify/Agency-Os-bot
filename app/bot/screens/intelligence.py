@@ -1,7 +1,16 @@
 from .formatting import *
+from app.models.decision_trends import PredictiveCOOPrediction
 from app.services.decision_engine import generate_decisions
 from app.services.decision_quality import safe_decision_quality_report
 from app.services.decision_trends import record_prediction_feedback, safe_decision_trend_report, safe_predictive_coo_report
+from app.services.evidence_capture import (
+    VALIDATION_LABELS,
+    create_knowledge_lesson,
+    decision_timeline,
+    record_evidence_note,
+    record_owner_validation,
+    safe_evidence_capture_report,
+)
 from app.services.reality_calibration import record_prediction_outcome_feedback, safe_reality_calibration_report
 
 
@@ -76,6 +85,14 @@ def _category_label(category: str) -> str:
         "friction": "Friction",
         "opportunity": "Opportunities",
     }.get(category, category.replace("_", " ").title())
+
+
+def _evidence_strength_label(strength: str) -> str:
+    return {
+        "weak": "Weak",
+        "medium": "Medium",
+        "strong": "Strong",
+    }.get(strength, strength.replace("_", " ").title())
 
 
 def render_intelligence_home(session: Session | None = None) -> Screen:
@@ -430,6 +447,7 @@ def render_reality_check_page(
     details: bool = False,
 ) -> Screen:
     report = safe_reality_calibration_report(session, actor=user)
+    evidence = safe_evidence_capture_report(session)
     if not report.enabled:
         lines = [
             "🧪 Reality Check",
@@ -472,6 +490,7 @@ def render_reality_check_page(
             "",
             "What Fortuna checked:",
             f"- Predictions pending evidence: {counts.get('pending', 0)}",
+            f"- Predictions partially correct: {counts.get('partially_correct', 0)}",
             f"- Predictions proven correct: {counts.get('proven_correct', 0)}",
             f"- Predictions proven wrong: {counts.get('proven_wrong', 0)}",
             f"- {confidence_line}",
@@ -479,6 +498,8 @@ def render_reality_check_page(
             "✨ Next Best Move",
             report.next_best_move,
         ]
+        if evidence.evidence_count or evidence.knowledge_count:
+            lines.extend(["", "📚 What Fortuna Learned", *[f"- {item}" for item in evidence.learned_lines[:3]]])
     if details:
         lines.extend(["", "Details:"])
         if report.outcomes:
@@ -575,6 +596,199 @@ def render_accuracy_by_category_page(session: Session, user: User | None = None)
             )
     lines.extend(["", "✨ Next Best Move", report.next_best_move])
     return Screen(text="\n".join(lines), reply_markup=accuracy_by_category_menu())
+
+
+def _latest_prediction_for_review(session: Session) -> PredictiveCOOPrediction | None:
+    return session.scalar(
+        select(PredictiveCOOPrediction).order_by(desc(PredictiveCOOPrediction.created_at), desc(PredictiveCOOPrediction.id)).limit(1)
+    )
+
+
+def render_decision_review_page(
+    session: Session,
+    user: User | None = None,
+    *,
+    details: bool = False,
+) -> Screen:
+    prediction = _latest_prediction_for_review(session)
+    reality = safe_reality_calibration_report(session, actor=user)
+    evidence = safe_evidence_capture_report(session)
+    latest_outcome = None
+    if prediction is not None:
+        latest_outcome = next((outcome for outcome in reality.outcomes if outcome.prediction_id == prediction.id), None)
+    lines = [
+        "🔍 Decision Review",
+        "",
+        "Status:",
+        "Ready for owner validation" if prediction is not None else "Waiting for a prediction",
+        "",
+        "Prediction:",
+        prediction.prediction_title if prediction is not None else "No prediction is ready to review yet.",
+        "",
+        "Recommendation:",
+        prediction.recommended_next_action if prediction is not None else "Open Prediction Preview first.",
+        "",
+        "Evidence:",
+        evidence.latest_evidence.summary if evidence.latest_evidence is not None else "No owner evidence captured yet.",
+        "",
+        "Outcome:",
+        _outcome_label(latest_outcome.outcome) if latest_outcome is not None else "Pending evidence.",
+        "",
+        "Confidence at prediction:",
+        prediction.confidence.title() if prediction is not None else "Not available",
+        "",
+        "Next Best Move:",
+        "Validate what happened after the recommendation." if prediction is not None else "Open Prediction Preview.",
+    ]
+    if details:
+        lines.extend(
+            [
+                "",
+                "Details:",
+                f"Evidence records: {evidence.evidence_count}",
+                f"Owner validations: {evidence.validation_count}",
+                f"Knowledge lessons: {evidence.knowledge_count}",
+            ]
+        )
+        if evidence.latest_evidence is not None:
+            lines.extend(
+                [
+                    "",
+                    "Latest Evidence:",
+                    evidence.latest_evidence.summary,
+                    f"Strength: {_evidence_strength_label(evidence.latest_evidence.evidence_strength)}",
+                ]
+            )
+        if evidence.latest_validation is not None:
+            lines.extend(
+                [
+                    "",
+                    "Latest Validation:",
+                    VALIDATION_LABELS.get(evidence.latest_validation.validation_outcome, "Recorded"),
+                    evidence.latest_validation.summary,
+                ]
+            )
+    menu = decision_review_details_menu() if details else decision_review_menu()
+    return Screen(text="\n".join(lines), reply_markup=menu)
+
+
+def render_owner_validation_page(session: Session, action: str, user: User | None = None) -> Screen:
+    validation = record_owner_validation(session, validation_outcome=action, actor=user)
+    label = VALIDATION_LABELS.get(action, "Evidence recorded")
+    lines = [
+        "✅ Owner Validation",
+        "",
+        label,
+        "",
+        "What changed:",
+        "Fortuna saved this as owner evidence. It will support calibration, but system truth still matters.",
+        "",
+        "Evidence strength:",
+        _evidence_strength_label((validation.metadata_json or {}).get("evidence_strength", "weak")),
+        "",
+        "Next Best Move:",
+        "Open Reality Check to see how this affects prediction outcomes.",
+    ]
+    return Screen(text="\n".join(lines), reply_markup=owner_validation_result_menu())
+
+
+def render_evidence_notes_page(
+    session: Session,
+    user: User | None = None,
+    *,
+    record_note: bool = False,
+) -> Screen:
+    note = None
+    if record_note:
+        note = record_evidence_note(
+            session,
+            actor=user,
+            summary="Owner noted that a real-world outcome should be reviewed.",
+            details="Placeholder owner evidence note captured from Telegram. Add richer detail through a future secure evidence-entry flow.",
+        )
+    report = safe_evidence_capture_report(session)
+    lines = [
+        "📝 Evidence Notes",
+        "",
+        "Status:",
+        "Captured" if note is not None else "Ready",
+        "",
+        "What Fortuna noticed:",
+        report.latest_evidence.summary if report.latest_evidence is not None else "No owner evidence notes have been captured yet.",
+        "",
+        "Why it matters:",
+        "Notes help Fortuna learn from reality, but notes are not automatically treated as truth.",
+        "",
+        "Next Best Move:",
+        report.next_best_move,
+    ]
+    if note is not None:
+        lines.extend(["", "Recorded:", note.summary])
+    menu = evidence_note_recorded_menu() if note is not None else evidence_notes_menu()
+    return Screen(text="\n".join(lines), reply_markup=menu)
+
+
+def render_knowledge_memory_page(
+    session: Session,
+    user: User | None = None,
+    *,
+    create_lesson: bool = False,
+) -> Screen:
+    report = safe_evidence_capture_report(session)
+    lesson = None
+    if create_lesson and report.latest_evidence is not None:
+        lesson = create_knowledge_lesson(
+            session,
+            actor=user,
+            category=report.latest_evidence.category,
+            lesson=f"Lesson from evidence: {report.latest_evidence.summary}",
+            evidence_records=[report.latest_evidence],
+            source_summary="Owner evidence was promoted to durable knowledge.",
+        )
+        report = safe_evidence_capture_report(session)
+    lines = [
+        "📚 Knowledge Memory",
+        "",
+        "Status:",
+        "Learning" if report.knowledge_count else "Waiting for lessons",
+        "",
+        "What Fortuna noticed:",
+    ]
+    if report.lessons:
+        for item in report.lessons[:3]:
+            lines.extend([f"- {item.lesson}", f"  Confidence: {item.confidence.title()}"])
+    else:
+        lines.append("- No durable lessons have been saved yet.")
+    lines.extend(
+        [
+            "",
+            "Next Best Move:",
+            "Save a lesson after evidence is clear." if report.latest_evidence is not None else "Capture evidence first.",
+        ]
+    )
+    if lesson is not None:
+        lines.extend(["", "Saved:", lesson.lesson])
+    return Screen(text="\n".join(lines), reply_markup=knowledge_memory_menu())
+
+
+def render_decision_timeline_page(session: Session, user: User | None = None) -> Screen:
+    timeline = decision_timeline(session)
+    lines = [
+        "🕒 Decision Timeline",
+        "",
+        "Status:",
+        "Ready" if timeline.available else "Unavailable",
+        "",
+        "What Fortuna traced:",
+    ]
+    if timeline.steps:
+        for step in timeline.steps:
+            lines.extend([step.label, step.status, step.summary])
+    else:
+        lines.append(timeline.unavailable_reason or "No timeline records are available yet.")
+    lines.extend(["", "Next Best Move:", timeline.next_best_move])
+    return Screen(text="\n".join(lines), reply_markup=decision_timeline_menu())
+
 
 def render_intelligence_runs_page(session: Session) -> Screen:
     runs = list_intelligence_runs(session, limit=10)

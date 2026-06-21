@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.button_issue import ButtonIssue
 from app.models.decision_trends import PredictiveCOOPrediction
+from app.models.evidence import EvidenceRecord, OwnerValidation
 from app.models.platform import PlatformConnection
 from app.models.reality_calibration import PredictionOutcome
 from app.models.recovery import RestoreTestRun
@@ -230,6 +231,7 @@ class PredictionEvaluationEngine:
         outcome.due_at = outcome.due_at or predicted_at + timedelta(days=PREDICTION_WINDOW_DAYS)
 
         decision = self._evaluate_by_type(session, prediction, category=category, predicted_at=predicted_at)
+        decision = self._apply_owner_evidence(session, prediction, decision)
         now = _now()
         if decision.outcome == "pending" and outcome.due_at and now > _as_aware(outcome.due_at):
             decision = OutcomeDecision(
@@ -412,6 +414,88 @@ class PredictionEvaluationEngine:
             ("ButtonIssue:none_open",),
         )
 
+    def _apply_owner_evidence(
+        self,
+        session: Session,
+        prediction: PredictiveCOOPrediction,
+        decision: OutcomeDecision,
+    ) -> OutcomeDecision:
+        validations = list(
+            session.scalars(
+                select(OwnerValidation)
+                .where(OwnerValidation.linked_prediction_id == prediction.id)
+                .order_by(desc(OwnerValidation.created_at), desc(OwnerValidation.id))
+            ).all()
+        )
+        evidence = list(
+            session.scalars(
+                select(EvidenceRecord)
+                .where(EvidenceRecord.linked_prediction_id == prediction.id)
+                .order_by(desc(EvidenceRecord.created_at), desc(EvidenceRecord.id))
+            ).all()
+        )
+        if not validations and not evidence:
+            return decision
+        latest_validation = validations[0] if validations else None
+        supporting_records = tuple(f"EvidenceRecord:{record.id}" for record in evidence[:5])
+        strongest = next((record for record in evidence if record.evidence_strength == "strong"), None)
+        medium = next((record for record in evidence if record.evidence_strength == "medium"), None)
+        if latest_validation is None:
+            if strongest is not None and decision.outcome in {"pending", "unresolved", "not_enough_evidence"}:
+                return OutcomeDecision(
+                    "partially_correct",
+                    f"Owner evidence supports this prediction but needs validation: {strongest.summary}",
+                    supporting_records or decision.evidence_records,
+                    "Review owner evidence before marking fully correct.",
+                )
+            return decision
+        validation = latest_validation.validation_outcome
+        strength = str((latest_validation.metadata_json or {}).get("evidence_strength") or "")
+        strong_enough = strength in {"medium", "strong"} or strongest is not None or medium is not None
+        if validation == "too_early":
+            return OutcomeDecision(
+                "unresolved",
+                "Owner validation says it is too early to tell.",
+                supporting_records or decision.evidence_records,
+            )
+        if validation == "partially_correct":
+            return OutcomeDecision(
+                "partially_correct",
+                f"Owner validation says this was partially correct: {latest_validation.summary}",
+                supporting_records or decision.evidence_records,
+                "Keep uncertainty visible and collect stronger evidence.",
+            )
+        if validation == "correct":
+            if decision.outcome == "proven_wrong":
+                return OutcomeDecision(
+                    "partially_correct",
+                    "Owner validation supports the prediction, but system evidence contradicts it.",
+                    supporting_records + decision.evidence_records,
+                    "Review disagreement between owner evidence and system records.",
+                )
+            if strong_enough and decision.outcome in {"pending", "unresolved", "not_enough_evidence", "expired"}:
+                return OutcomeDecision(
+                    "proven_correct",
+                    f"Owner validation with evidence supports the prediction: {latest_validation.summary}",
+                    supporting_records or decision.evidence_records,
+                )
+        if validation == "incorrect":
+            if decision.outcome == "proven_correct":
+                return OutcomeDecision(
+                    "partially_correct",
+                    "Owner validation contradicts system evidence that supported the prediction.",
+                    supporting_records + decision.evidence_records,
+                    "Review disagreement before changing future confidence.",
+                )
+            if strong_enough and decision.outcome in {"pending", "unresolved", "not_enough_evidence", "expired"}:
+                return OutcomeDecision(
+                    "proven_wrong",
+                    f"Owner validation with evidence contradicts the prediction: {latest_validation.summary}",
+                    supporting_records or decision.evidence_records,
+                    "Use this correction to reduce similar prediction confidence.",
+                )
+        return decision
+
 
 class CalibrationEngine:
     """Measures confidence accuracy from evaluated prediction outcomes."""
@@ -423,7 +507,18 @@ class CalibrationEngine:
         outcomes: tuple[PredictionOutcome, ...] | None = None,
     ) -> RealityCalibrationReport:
         records = tuple(outcomes if outcomes is not None else session.scalars(select(PredictionOutcome)).all())
-        counts = {name: 0 for name in ("pending", "proven_correct", "proven_wrong", "unresolved", "expired", "not_enough_evidence")}
+        counts = {
+            name: 0
+            for name in (
+                "pending",
+                "partially_correct",
+                "proven_correct",
+                "proven_wrong",
+                "unresolved",
+                "expired",
+                "not_enough_evidence",
+            )
+        }
         for outcome in records:
             counts[outcome.outcome] = counts.get(outcome.outcome, 0) + 1
         confidence_buckets = tuple(self._bucket(records, "confidence", value, _confidence_label(value)) for value in ("high", "medium", "low"))
@@ -460,9 +555,10 @@ class CalibrationEngine:
     ) -> CalibrationBucket:
         attr = "confidence_at_prediction" if scope_type == "confidence" else scope_type
         scoped = [outcome for outcome in records if getattr(outcome, attr) == scope_value]
-        evaluated = [item for item in scoped if item.outcome in {"proven_correct", "proven_wrong"}]
+        evaluated = [item for item in scoped if item.outcome in {"partially_correct", "proven_correct", "proven_wrong"}]
         correct = sum(1 for item in evaluated if item.outcome == "proven_correct")
         wrong = sum(1 for item in evaluated if item.outcome == "proven_wrong")
+        partial = sum(1 for item in evaluated if item.outcome == "partially_correct")
         unresolved = sum(1 for item in scoped if item.outcome in {"pending", "unresolved"})
         unknown = sum(1 for item in scoped if item.outcome in {"expired", "not_enough_evidence"})
         if len(evaluated) < MIN_CALIBRATION_OUTCOMES:
@@ -483,7 +579,7 @@ class CalibrationEngine:
                 evidence_summary="Not enough evaluated predictions yet.",
                 next_improvement="Keep collecting evidence before changing confidence.",
             )
-        accuracy = correct / len(evaluated)
+        accuracy = (correct + (partial * 0.5)) / len(evaluated)
         expected = _confidence_weight(scope_value) if scope_type == "confidence" else 0.6
         overconfidence = max(0, int(round((expected - accuracy) * 100)))
         underconfidence = max(0, int(round((accuracy - expected) * 100)))

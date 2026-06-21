@@ -360,6 +360,27 @@ HELP_KB_SEEDS: tuple[dict[str, str], ...] = (
         "content": "Confidence Calibration checks whether low, medium, and high confidence predictions matched real outcomes. It can reduce future confidence wording when Fortuna is overconfident.",
         "related_route": "reality:calibration",
     },
+    {
+        "topic": "evidence_capture",
+        "title": "Evidence",
+        "role_scope": "owner,admin,manager",
+        "content": "Evidence is a traceable note, validation, system record, reference, or operational outcome that helps Fortuna compare predictions with reality.",
+        "related_route": "evidence:notes",
+    },
+    {
+        "topic": "owner_validation",
+        "title": "Owner Validation",
+        "role_scope": "owner,admin,manager",
+        "content": "Owner Validation records whether a prediction looked correct, incorrect, partially correct, or too early to tell. It helps Fortuna learn, but it does not override system truth by itself.",
+        "related_route": "decision:review",
+    },
+    {
+        "topic": "knowledge_memory",
+        "title": "Knowledge Memory",
+        "role_scope": "owner,admin,manager",
+        "content": "Knowledge Memory stores durable lessons that came from evidence, such as recovery setup lessons or notification rollout notes.",
+        "related_route": "knowledge:memory",
+    },
 )
 
 
@@ -442,6 +463,16 @@ def detect_help_intent(question: str) -> str:
         return "owner_feedback_prediction_proof"
     if "confidence calibration" in text or ("calibration" in text and "confidence" in text):
         return "confidence_calibration"
+    if "owner validation" in text or ("validate" in text and "owner" in text):
+        return "owner_validation"
+    if "partially correct" in text or "partial correct" in text:
+        return "partially_correct"
+    if "knowledge memory" in text or "institutional knowledge" in text:
+        return "knowledge_memory"
+    if "what is evidence" in text or ("evidence" in text and "learn" in text):
+        return "evidence_capture"
+    if "feedback" in text and ("override" in text or "system record" in text or "system truth" in text):
+        return "feedback_override"
     if "predictions facts" in text or ("are predictions" in text and "facts" in text):
         return "prediction_not_facts"
     if "restore testing" in text and ("likely next" in text or "prediction" in text):
@@ -868,6 +899,41 @@ def help_brain_answer(
             "Next button to press: Calibration."
         )
         next_action = "reality:calibration" if _adminish(user) else "help"
+    elif intent == "evidence_capture":
+        answer = (
+            "Evidence is a traceable record of what happened in reality.\n\n"
+            "Why: owner notes, validations, system records, references, and operational outcomes help Fortuna learn without guessing.\n\n"
+            "Next button to press: Evidence Notes."
+        )
+        next_action = "evidence:notes" if _adminish(user) else "help"
+    elif intent == "owner_validation":
+        answer = (
+            "Owner Validation lets you mark a prediction correct, incorrect, partially correct, too early, or add evidence.\n\n"
+            "Why: owner feedback helps Fortuna learn, but evidence still matters.\n\n"
+            "Next button to press: Decision Review."
+        )
+        next_action = "decision:review" if _adminish(user) else "help"
+    elif intent == "partially_correct":
+        answer = (
+            "Partially Correct means some evidence supported the prediction, but uncertainty or disagreement remains.\n\n"
+            "Why: Fortuna should not force messy real-world outcomes into only right or wrong.\n\n"
+            "Next button to press: Prediction Outcomes."
+        )
+        next_action = "reality:outcomes" if _adminish(user) else "help"
+    elif intent == "knowledge_memory":
+        answer = (
+            "Knowledge Memory stores durable lessons that came from evidence.\n\n"
+            "Why: lessons such as recovery setup notes or rollout blockers should be reusable later, not buried in one chat screen.\n\n"
+            "Next button to press: Knowledge Memory."
+        )
+        next_action = "knowledge:memory" if _adminish(user) else "help"
+    elif intent == "feedback_override":
+        answer = (
+            "No. Owner feedback cannot override system records by itself.\n\n"
+            "Why: owner feedback helps Fortuna learn, but contradictory system evidence stays visible until reviewed.\n\n"
+            "Next button to press: Reality Check."
+        )
+        next_action = "reality:check" if _adminish(user) else "help"
     elif intent == "prediction_not_facts":
         answer = (
             "No. Predictions are not facts.\n\n"

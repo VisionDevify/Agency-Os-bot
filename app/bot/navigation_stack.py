@@ -74,6 +74,18 @@ def parent_page_for(page: str | None) -> str:
         return "intelligence:quality"
     if current.startswith("reality:"):
         return "reality:check"
+    if current in {"decision:review", "decision:timeline", "knowledge:memory"}:
+        return "reality:check"
+    if current == "decision:review:details":
+        return "decision:review"
+    if current.startswith("owner_validation:"):
+        return "decision:review"
+    if current == "evidence:notes":
+        return "decision:review"
+    if current.startswith("evidence:notes:"):
+        return "evidence:notes"
+    if current.startswith("knowledge:memory:"):
+        return "knowledge:memory"
     if current.startswith("coo:"):
         return "coo"
     if current in MORE_CHILDREN:

@@ -13,6 +13,7 @@ from app.services.decision_engine import (
 )
 from app.services.decision_quality import safe_decision_quality_report
 from app.services.decision_trends import safe_predictive_coo_report
+from app.services.evidence_capture import safe_evidence_capture_report
 from app.services.reality_calibration import safe_reality_calibration_report
 
 
@@ -181,6 +182,7 @@ def render_coo_briefing_page(session: Session, user: User | None = None, *, deta
     quality = safe_decision_quality_report(session, briefing.decisions, actor=user)
     prediction_report = safe_predictive_coo_report(session, decisions=briefing.decisions, actor=user)
     reality = safe_reality_calibration_report(session, actor=user)
+    evidence = safe_evidence_capture_report(session)
     prediction = prediction_report.primary
     top = briefing.top_priority
     if details:
@@ -197,6 +199,8 @@ def render_coo_briefing_page(session: Session, user: User | None = None, *, deta
             f"Quality Status: {'Unavailable' if not quality.available else quality.status.replace('_', ' ').title()}",
             f"Prediction Status: {'Disabled' if not prediction_report.enabled else 'Unavailable' if not prediction_report.available else prediction_report.status.replace('_', ' ').title()}",
             f"Reality Check: {'Unavailable' if not reality.available else reality.status.replace('_', ' ').title()}",
+            f"Evidence Records: {evidence.evidence_count if evidence.available else 'Unavailable'}",
+            f"Knowledge Lessons: {evidence.knowledge_count if evidence.available else 'Unavailable'}",
             "",
             "Ranked decisions:",
         ]
@@ -271,6 +275,9 @@ def render_coo_briefing_page(session: Session, user: User | None = None, *, deta
     if briefing.learning_summary:
         lines.extend(["", "What Fortuna Learned"])
         lines.extend(f"- {item}" for item in briefing.learning_summary[:2])
+    if evidence.available and evidence.knowledge_count:
+        lines.extend(["", "📚 Evidence Lesson"])
+        lines.extend(f"- {item}" for item in evidence.learned_lines[:2])
     if not quality.available:
         lines.extend(["", "Intelligence Quality", "Quality check unavailable; current evidence is still being used."])
     elif quality.status in {"needs_attention", "critical"} and quality.findings:

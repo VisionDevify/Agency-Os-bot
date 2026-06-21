@@ -16,6 +16,7 @@ from app.models.core import Automation, Report
 from app.models.coo import PriorityItem
 from app.models.decision_memory import DecisionMemory
 from app.models.decision_trends import DecisionQualityTrend, PredictiveCOOPrediction
+from app.models.evidence import EvidenceRecord, KnowledgeMemory, OwnerValidation
 from app.models.reality_calibration import PredictionOutcome
 from app.models.event_log import EventLog
 from app.models.friction import FrictionItem
@@ -104,6 +105,7 @@ __all__ = [
     "EventLog",
     "DecisionMemory",
     "DecisionQualityTrend",
+    "EvidenceRecord",
     "ExecutiveInsight",
     "FirstDayChecklist",
     "FollowUp",
@@ -117,6 +119,7 @@ __all__ = [
     "IntelligenceSignal",
     "IssuePattern",
     "LearningEvent",
+    "KnowledgeMemory",
     "ModelBrand",
     "ModelBrandMember",
     "NotificationTarget",
@@ -131,6 +134,7 @@ __all__ = [
     "OutcomeMemory",
     "OperationsAction",
     "OperationsWorkflow",
+    "OwnerValidation",
     "Permission",
     "PlatformConnection",
     "Playbook",

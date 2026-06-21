@@ -22,6 +22,7 @@ from app.services.chat_cleanup import chat_cleanup_metrics
 from app.services.decision_engine import decision_memory_summary, generate_decisions
 from app.services.decision_quality import safe_decision_quality_report
 from app.services.decision_trends import safe_decision_trend_report, safe_predictive_coo_report
+from app.services.evidence_capture import safe_evidence_capture_report
 from app.services.help_brain import help_questions_today, notification_pilot_status, proxy_pilot_status
 from app.services.heartbeats import list_heartbeats, system_status_summary
 from app.services.bot_instances import bot_instance_diagnostics
@@ -126,6 +127,7 @@ def production_observability_summary(session: Session) -> dict[str, object]:
     decision_trends = safe_decision_trend_report(session)
     predictive_coo = safe_predictive_coo_report(session, decisions=decisions_for_quality)
     reality_calibration = safe_reality_calibration_report(session)
+    evidence_capture = safe_evidence_capture_report(session)
     decision_quality_meaningful = (
         not decision_quality.available
         or decision_quality.status in {"needs_attention", "critical"}
@@ -141,6 +143,11 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         not reality_calibration.available
         or reality_calibration.status in {"needs_review", "unavailable"}
         or bool(reality_calibration.outcome_counts.get("proven_wrong"))
+    )
+    evidence_meaningful = bool(
+        not evidence_capture.available
+        or evidence_capture.validation_count
+        or evidence_capture.knowledge_count
     )
     reality_observability_status = "needs_review" if reality_meaningful and reality_calibration.available else "healthy"
     owner_count = session.scalar(select(func.count(User.id)).where(User.is_owner.is_(True))) or 0
@@ -448,7 +455,14 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         "reality_calibration_status": reality_calibration.status,
         "reality_calibration_meaningful": reality_meaningful,
         "reality_calibration_pending_count": reality_calibration.outcome_counts.get("pending", 0),
+        "reality_calibration_partial_count": reality_calibration.outcome_counts.get("partially_correct", 0),
         "reality_calibration_correct_count": reality_calibration.outcome_counts.get("proven_correct", 0),
         "reality_calibration_wrong_count": reality_calibration.outcome_counts.get("proven_wrong", 0),
         "reality_calibration_next_action": reality_calibration.next_best_move,
+        "evidence_capture_available": evidence_capture.available,
+        "evidence_capture_meaningful": evidence_meaningful,
+        "evidence_capture_count": evidence_capture.evidence_count,
+        "owner_validation_count": evidence_capture.validation_count,
+        "knowledge_memory_count": evidence_capture.knowledge_count,
+        "evidence_capture_next_action": evidence_capture.next_best_move,
     }

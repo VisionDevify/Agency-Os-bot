@@ -11,6 +11,7 @@ from app.models.mixins import TimestampMixin
 
 PREDICTION_OUTCOMES = (
     "pending",
+    "partially_correct",
     "proven_correct",
     "proven_wrong",
     "unresolved",
@@ -30,7 +31,7 @@ class PredictionOutcome(TimestampMixin, Base):
     __tablename__ = "prediction_outcomes"
     __table_args__ = (
         CheckConstraint(
-            "outcome in ('pending', 'proven_correct', 'proven_wrong', 'unresolved', 'expired', 'not_enough_evidence')",
+            "outcome in ('pending', 'partially_correct', 'proven_correct', 'proven_wrong', 'unresolved', 'expired', 'not_enough_evidence')",
             name="ck_prediction_outcomes_outcome",
         ),
         CheckConstraint(

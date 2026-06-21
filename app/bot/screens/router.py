@@ -592,6 +592,22 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_calibration_page(session, user)
     if page == "reality:accuracy" and session is not None:
         return render_accuracy_by_category_page(session, user)
+    if page == "decision:review" and session is not None:
+        return render_decision_review_page(session, user)
+    if page == "decision:review:details" and session is not None:
+        return render_decision_review_page(session, user, details=True)
+    if page.startswith("owner_validation:") and session is not None:
+        return render_owner_validation_page(session, page.split(":")[-1], user)
+    if page == "evidence:notes" and session is not None:
+        return render_evidence_notes_page(session, user)
+    if page == "evidence:notes:record" and session is not None:
+        return render_evidence_notes_page(session, user, record_note=True)
+    if page == "knowledge:memory" and session is not None:
+        return render_knowledge_memory_page(session, user)
+    if page == "knowledge:memory:create" and session is not None:
+        return render_knowledge_memory_page(session, user, create_lesson=True)
+    if page == "decision:timeline" and session is not None:
+        return render_decision_timeline_page(session, user)
     if page == "intelligence:runs" and session is not None:
         return render_intelligence_runs_page(session)
     if page.startswith("intelligence:run_detail:") and session is not None:

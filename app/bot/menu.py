@@ -516,10 +516,18 @@ def reality_check_menu() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Refresh", callback_data=callback_for("reality:check"))],
             [
+                InlineKeyboardButton(text="🔍 Decision Review", callback_data=callback_for("decision:review")),
+                InlineKeyboardButton(text="📝 Evidence Notes", callback_data=callback_for("evidence:notes")),
+            ],
+            [
                 InlineKeyboardButton(text="🔮 Prediction Outcomes", callback_data=callback_for("reality:outcomes")),
                 InlineKeyboardButton(text="📊 Calibration", callback_data=callback_for("reality:calibration")),
             ],
-            [InlineKeyboardButton(text="🎯 Accuracy by Category", callback_data=callback_for("reality:accuracy"))],
+            [
+                InlineKeyboardButton(text="🎯 Accuracy by Category", callback_data=callback_for("reality:accuracy")),
+                InlineKeyboardButton(text="📚 Knowledge Memory", callback_data=callback_for("knowledge:memory")),
+            ],
+            [InlineKeyboardButton(text="🕒 Decision Timeline", callback_data=callback_for("decision:timeline"))],
             [InlineKeyboardButton(text="🔎 Details", callback_data=callback_for("reality:check:details"))],
             *page_controls(back_to="intelligence:quality"),
         ]
@@ -551,6 +559,96 @@ def accuracy_by_category_menu() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="🔄 Refresh", callback_data=callback_for("reality:accuracy"))],
             [InlineKeyboardButton(text="📊 Calibration", callback_data=callback_for("reality:calibration"))],
+            *page_controls(back_to="reality:check"),
+        ]
+    )
+
+
+def decision_review_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Correct", callback_data=callback_for("owner_validation:correct")),
+                InlineKeyboardButton(text="❌ Incorrect", callback_data=callback_for("owner_validation:incorrect")),
+            ],
+            [
+                InlineKeyboardButton(text="🟡 Partially Correct", callback_data=callback_for("owner_validation:partially_correct")),
+                InlineKeyboardButton(text="⏳ Too Early", callback_data=callback_for("owner_validation:too_early")),
+            ],
+            [InlineKeyboardButton(text="🧾 Add Evidence", callback_data=callback_for("owner_validation:add_evidence"))],
+            [
+                InlineKeyboardButton(text="📝 Evidence Notes", callback_data=callback_for("evidence:notes")),
+                InlineKeyboardButton(text="🕒 Timeline", callback_data=callback_for("decision:timeline")),
+            ],
+            [InlineKeyboardButton(text="🔎 Details", callback_data=callback_for("decision:review:details"))],
+            [InlineKeyboardButton(text="🏠 Home", callback_data=callback_for("menu"))],
+            *page_controls(back_to="reality:check"),
+        ]
+    )
+
+
+def decision_review_details_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🏠 Home", callback_data=callback_for("menu"))],
+            *page_controls(back_to="decision:review"),
+        ]
+    )
+
+
+def owner_validation_result_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔍 Decision Review", callback_data=callback_for("decision:review"))],
+            [InlineKeyboardButton(text="🏠 Home", callback_data=callback_for("menu"))],
+            *page_controls(back_to="decision:review"),
+        ]
+    )
+
+
+def evidence_notes_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📝 Record Outcome Note", callback_data=callback_for("evidence:notes:record"))],
+            [
+                InlineKeyboardButton(text="🔍 Decision Review", callback_data=callback_for("decision:review")),
+                InlineKeyboardButton(text="📚 Knowledge Memory", callback_data=callback_for("knowledge:memory")),
+            ],
+            [InlineKeyboardButton(text="🏠 Home", callback_data=callback_for("menu"))],
+            *page_controls(back_to="decision:review"),
+        ]
+    )
+
+
+def evidence_note_recorded_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📚 Knowledge Memory", callback_data=callback_for("knowledge:memory"))],
+            [InlineKeyboardButton(text="🏠 Home", callback_data=callback_for("menu"))],
+            *page_controls(back_to="evidence:notes"),
+        ]
+    )
+
+
+def knowledge_memory_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🧠 Save Lesson", callback_data=callback_for("knowledge:memory:create"))],
+            [InlineKeyboardButton(text="🕒 Decision Timeline", callback_data=callback_for("decision:timeline"))],
+            [InlineKeyboardButton(text="🏠 Home", callback_data=callback_for("menu"))],
+            *page_controls(back_to="reality:check"),
+        ]
+    )
+
+
+def decision_timeline_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🔍 Decision Review", callback_data=callback_for("decision:review")),
+                InlineKeyboardButton(text="📝 Evidence Notes", callback_data=callback_for("evidence:notes")),
+            ],
+            [InlineKeyboardButton(text="🏠 Home", callback_data=callback_for("menu"))],
             *page_controls(back_to="reality:check"),
         ]
     )

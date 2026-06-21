@@ -688,6 +688,16 @@ def render_production_observability_page(
                     f"Next: {summary['reality_calibration_next_action']}",
                 ]
             )
+        if summary.get("evidence_capture_meaningful"):
+            recovery_lines.extend(
+                [
+                    "",
+                    "Evidence Capture:",
+                    f"Owner validations: {summary['owner_validation_count']}",
+                    f"Knowledge lessons: {summary['knowledge_memory_count']}",
+                    f"Next: {summary['evidence_capture_next_action']}",
+                ]
+            )
         summary_line = (
             "Fortuna checked this. Operations are running, but recovery still needs setup."
             if summary["recovery_status"] != "healthy" and operations_ok
@@ -891,9 +901,17 @@ def render_production_observability_page(
         f"Status: {str(summary['reality_calibration_status']).replace('_', ' ').title()}",
         f"Available: {'Yes' if summary['reality_calibration_available'] else 'No'}",
         f"Pending: {summary['reality_calibration_pending_count']}",
+        f"Partially Correct: {summary['reality_calibration_partial_count']}",
         f"Proven Correct: {summary['reality_calibration_correct_count']}",
         f"Proven Wrong: {summary['reality_calibration_wrong_count']}",
         f"Next Action: {summary['reality_calibration_next_action']}",
+        "",
+        "Evidence Capture:",
+        f"Available: {'Yes' if summary['evidence_capture_available'] else 'No'}",
+        f"Evidence Records: {summary['evidence_capture_count']}",
+        f"Owner Validations: {summary['owner_validation_count']}",
+        f"Knowledge Lessons: {summary['knowledge_memory_count']}",
+        f"Next Action: {summary['evidence_capture_next_action']}",
         "",
         "Logs:",
         summary["railway_note"],
