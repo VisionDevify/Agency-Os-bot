@@ -34,8 +34,8 @@ def _trend_label(direction: str) -> str:
         "improving": "Improving",
         "stable": "Stable",
         "declining": "Needs review",
-        "insufficient_data": "Insufficient data",
-    }.get(direction, "Insufficient data")
+        "insufficient_data": "More information needed",
+    }.get(direction, "More information needed")
 
 
 def _trend_icon(direction: str) -> str:
@@ -62,7 +62,7 @@ def _calibration_label(status: str) -> str:
         "calibrated": "Calibrated",
         "overconfident": "Overconfident",
         "underconfident": "Underconfident",
-        "insufficient_data": "Insufficient data",
+        "insufficient_data": "More information needed",
     }.get(status, status.replace("_", " ").title())
 
 
@@ -175,6 +175,7 @@ def render_intelligence_quality_page(
         "",
         "Decision Quality:",
         f"{report.decision_quality_score}/100",
+        "How useful Fortuna's recommendations look right now.",
         "",
         "Recommendation Accuracy:",
         f"{report.recommendation_accuracy}/100",
@@ -456,7 +457,7 @@ def render_reality_check_page(
             "Disabled",
             "",
             "What Fortuna checked:",
-            "- Reality Calibration is disabled.",
+            "- Reality Check is disabled.",
             "",
             "✨ Next Best Move",
             "Use Prediction Preview and COO Briefing from current evidence.",
@@ -480,7 +481,7 @@ def render_reality_check_page(
         confidence_line = (
             f"Medium confidence is currently {_calibration_label(medium.calibration_status).lower()}."
             if medium is not None
-            else "Confidence calibration is still learning."
+            else "Fortuna is still learning how accurate its confidence is."
         )
         lines = [
             "🧪 Reality Check",
@@ -547,7 +548,9 @@ def render_prediction_outcomes_page(session: Session, user: User | None = None) 
 def render_calibration_page(session: Session, user: User | None = None) -> Screen:
     report = safe_reality_calibration_report(session, actor=user)
     lines = [
-        "📊 Confidence Calibration",
+        "📊 How Accurate Fortuna Is",
+        "",
+        "Confidence Calibration",
         "",
         "Status:",
         report.status.replace("_", " ").title() if report.available else "Unavailable",
@@ -555,7 +558,7 @@ def render_calibration_page(session: Session, user: User | None = None) -> Scree
         "What Fortuna checked:",
     ]
     if not report.available:
-        lines.append("- Calibration is unavailable right now.")
+        lines.append("- Accuracy checks are unavailable right now.")
     else:
         for bucket in report.confidence_buckets:
             lines.extend(

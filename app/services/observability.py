@@ -42,6 +42,7 @@ from app.services.system_truth import (
     expected_alembic_head,
     system_truth,
 )
+from app.services.team_ux import team_ux_readiness
 
 REQUIRED_NOTIFICATION_PURPOSES: tuple[tuple[str, str], ...] = (
     ("hq", "Fortuna HQ"),
@@ -121,6 +122,7 @@ def production_observability_summary(session: Session) -> dict[str, object]:
     recovery_job = latest_recovery_job_summary(session)
     buttons = button_health_summary(session)
     cleanup = chat_cleanup_metrics(session)
+    team_ux = team_ux_readiness(session)
     platform_overview = platform_connections_overview(session)
     alert_health = alert_health_summary(session)
     decision_learning = decision_memory_summary(session)
@@ -218,6 +220,13 @@ def production_observability_summary(session: Session) -> dict[str, object]:
                 cleanup.next_action if cleanup.old_menu_risk else None,
             ),
             StatusCondition(
+                "team_ux",
+                "healthy" if team_ux.status == "ready" else "needs_review" if team_ux.status == "needs_review" else "needs_attention",
+                team_ux.evidence,
+                1 if team_ux.meaningful else 0,
+                team_ux.next_action if team_ux.meaningful else None,
+            ),
+            StatusCondition(
                 "alert_health",
                 alert_health.status,
                 alert_health.evidence,
@@ -273,6 +282,8 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         observability_issues.append(f"Navigation/Button Health: {button_issue_count} open issue(s).")
     if cleanup.old_menu_risk:
         observability_issues.append(f"Telegram UI Cleanup: {cleanup.next_action}")
+    if team_ux.meaningful:
+        observability_issues.append(f"Team UX: {team_ux.next_action}")
     if alert_health.status != "healthy":
         observability_issues.append(f"Alert Health: {alert_health.next_action}")
     if decision_quality_meaningful:
@@ -422,6 +433,23 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         "chat_cleanup_label": cleanup.label,
         "chat_cleanup_evidence": cleanup.evidence,
         "chat_cleanup_next_action": cleanup.next_action,
+        "team_ux_status": team_ux.status,
+        "team_ux_label": team_ux.label,
+        "team_ux_score": team_ux.score,
+        "team_ux_meaningful": team_ux.meaningful,
+        "team_ux_navigation_clarity": team_ux.navigation_clarity,
+        "team_ux_screen_clarity": team_ux.screen_clarity,
+        "team_ux_stale_menu_safety": team_ux.stale_menu_safety,
+        "team_ux_callback_reliability": team_ux.callback_reliability,
+        "team_ux_onboarding_friendliness": team_ux.onboarding_friendliness,
+        "team_ux_next_action_clarity": team_ux.next_action_clarity,
+        "team_ux_evidence": team_ux.evidence,
+        "team_ux_next_action": team_ux.next_action,
+        "team_ux_callback_failures": team_ux.trust_signals.callback_failures,
+        "team_ux_navigation_failures": team_ux.trust_signals.navigation_failures,
+        "team_ux_stale_menu_confusion": team_ux.trust_signals.stale_menu_confusion,
+        "team_ux_repeated_back_usage": team_ux.trust_signals.repeated_back_usage,
+        "team_ux_help_usage_after_screen_open": team_ux.trust_signals.help_usage_after_screen_open,
         "platform_connections_total": platform_overview["total"],
         "platform_connections_ready": platform_overview["ready"],
         "platform_connections_waiting": platform_overview["waiting"],

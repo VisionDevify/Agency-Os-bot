@@ -32,6 +32,7 @@ from app.models.chat import (
 from app.models.user import User
 
 CANONICAL_MESSAGE_LABELS = MESSAGE_LABELS
+STALE_MENU_RESPONSE = "That menu is no longer active. Opening the latest screen..."
 
 LEGACY_LABEL_MAP = {
     "error_fallback": TEMPORARY_ERROR,
@@ -553,19 +554,22 @@ def chat_cleanup_metrics(session: Session) -> CleanupMetrics:
     failed_count = latest.failed_count if latest else 0
     if multiple_active_count:
         status = "needs_attention"
-        evidence = f"{multiple_active_count} extra active navigation message(s) are tracked."
+        evidence = f"{multiple_active_count} extra active navigation message(s) are tracked. Active screen safety needs review."
         next_action = "Run Chat Cleanup."
     elif failed_count >= 3:
         status = "needs_review"
-        evidence = f"{failed_count} recent cleanup deletion failure(s) were recorded."
+        evidence = f"{failed_count} recent cleanup deletion failure(s) were recorded. Active screens still render, but old menus may remain visible."
         next_action = "Open Chat Cleanup settings."
     elif remaining_count:
         status = "needs_review"
-        evidence = f"{remaining_count} old temporary menu message(s) remain tracked for cleanup."
+        evidence = (
+            f"{remaining_count} old temporary menu message(s) remain tracked for cleanup. "
+            "They are inactive and ignored if clicked."
+        )
         next_action = "Run /clean or /start again."
     else:
         status = "healthy"
-        evidence = "One active Telegram menu session is tracked and no old temporary menus are pending cleanup."
+        evidence = "One active Telegram screen is tracked. Old menus are ignored."
         next_action = "No cleanup action needed."
     return CleanupMetrics(
         latest_cleanup_at=latest.completed_at if latest and latest.completed_at else None,

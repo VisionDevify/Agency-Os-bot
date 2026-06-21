@@ -125,6 +125,7 @@ from app.services.callback_protection import (
 )
 from app.services.recovery import run_backup, run_restore_test, start_backup_job, start_restore_job
 from app.services.chat_cleanup import (
+    STALE_MENU_RESPONSE,
     TEMPORARY_ERROR,
     TEMPORARY_NAVIGATION,
     TEMPORARY_STATUS,
@@ -2213,7 +2214,7 @@ async def _navigate_locked(callback: CallbackQuery, page: str) -> None:
                         evidence_summary="A stale menu callback could not open a fresh Home screen.",
                         recommended_fix="Inspect Telegram send permissions and stale callback handling.",
                     )
-                await _safe_callback_answer(callback, "That menu is old. I opened a fresh Home for you.")
+                await _safe_callback_answer(callback, STALE_MENU_RESPONSE)
                 session.commit()
                 return
             if page == "settings:chat_cleanup:clean":

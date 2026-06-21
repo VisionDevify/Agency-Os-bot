@@ -314,6 +314,22 @@ AI Brain and grounded reasoning:
 - AI audit logs store safe metadata only: use case, provider, model, status, evidence count, safe error summary, output hash, and estimates. They must not store API keys, raw secrets, or full unredacted production prompts.
 - Rate limits, timeouts, cached repeated summaries, and disabled fallbacks prevent AI call loops and cost surprises.
 
+Team UX readiness and active screens:
+
+- Fortuna should feel like one active Telegram app screen, not a stack of historical menus.
+- The newest tracked temporary navigation screen is the active screen. It wins over older visible Telegram messages.
+- Stale old-menu callbacks must not mutate or overwrite the current screen. They should redirect safely with human wording.
+- Unknown or untracked temporary callbacks default to safe Home when active-session metadata is missing.
+- Persistent alerts, reports, exports, approvals, incidents, delivery messages, verification reports, and backup/export instructions remain protected.
+- Temporary menu cleanup is best effort. Telegram deletion failures must not block `/start`, `/clean`, Home, Back, `/botstatus`, or `/selftest`.
+- Screens intended for real team use should answer: what this is, why it matters, and what to do next.
+- Simple screens should hide raw IDs, stack traces, internal enum names, database constraints, and architecture terms unless the user opens Details.
+- Prefer human wording: "Fortuna needs more information here" over "insufficient data" on simple screens.
+- `UserTrustSignals` and `TeamUXReadiness` use existing callback, Button Health, Friction, and Chat Cleanup records to detect stale-menu confusion and navigation trust issues.
+- Role metadata currently prepares four audiences: Owner, Manager, Chatter, and VA. It is metadata only until future role-specific UI permissions are implemented.
+- The New Team Member Test asks whether a new hire can understand the screen in under 30 seconds.
+- AI wording should pass a readability check: a manager or chatter should understand the point, the risk, and the next action.
+
 ## Compliance Rules
 
 Fortuna may observe, summarize, recommend, and route human-reviewed work.

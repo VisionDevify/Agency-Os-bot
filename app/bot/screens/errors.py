@@ -8,6 +8,7 @@ from app.bot.screens.formatting import Screen
 from app.models.user import User
 from app.services.button_health import button_health_summary, run_button_issue_scan
 from app.services.callbacks import callback_failure_review, latest_callback_error, run_callback_health_smoke_test
+from app.services.team_ux import team_ux_readiness
 from app.services.team_operations import format_user_datetime
 
 
@@ -128,6 +129,7 @@ def render_button_health_report_page(
     if user is None:
         return Screen(text="Button Health Report\n\nOwner access required.", reply_markup=page_controls_markup("settings"))
     health = run_button_issue_scan(session, actor=user) if run_now or not details else button_health_summary(session)
+    team_ux = team_ux_readiness(session)
     review = callback_failure_review(session, limit=3)
     if not details:
         total_issues = health.open_issue_count + health.telegram_ui_issue_count
@@ -147,6 +149,8 @@ def render_button_health_report_page(
             if total_issues == 0
             else "Review button issues."
         )
+        if team_ux.meaningful and health.telegram_ui_status == "healthy":
+            recommended_action = team_ux.next_action
         last_check = format_user_datetime(user, datetime.now(UTC))
         return Screen(
             text="\n".join(
@@ -161,6 +165,9 @@ def render_button_health_report_page(
                     "",
                     "UX:",
                     ux,
+                    "",
+                    "Team UX:",
+                    f"{team_ux.label} - {team_ux.evidence}",
                     "",
                     f"Issues Found: {total_issues}",
                     f"Last Check: {last_check}",
@@ -195,6 +202,18 @@ def render_button_health_report_page(
         f"Status: {health.telegram_ui_status}",
         f"Evidence: {health.telegram_ui_evidence}",
         f"Next: {health.telegram_ui_next_action}",
+        "",
+        "Team UX:",
+        f"Status: {team_ux.label}",
+        f"Score: {team_ux.score}/100",
+        f"Navigation Clarity: {team_ux.navigation_clarity}",
+        f"Screen Clarity: {team_ux.screen_clarity}",
+        f"Stale Menu Safety: {team_ux.stale_menu_safety}",
+        f"Callback Reliability: {team_ux.callback_reliability}",
+        f"Onboarding Friendliness: {team_ux.onboarding_friendliness}",
+        f"Next Action Clarity: {team_ux.next_action_clarity}",
+        f"Evidence: {team_ux.evidence}",
+        f"Next: {team_ux.next_action}",
         "",
         f"Health Score: {report.score}%",
         f"Working: {len(report.working)}",

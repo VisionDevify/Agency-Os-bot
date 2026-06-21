@@ -37,7 +37,11 @@ def render_agency_activation_page(session: Session) -> Screen:
     lines = [
         "Fortuna Activation",
         "",
+        "Status:",
         f"Fortuna Readiness: {_status_marker('healthy' if report['readiness_score'] >= 85 else 'warning' if report['readiness_score'] >= 60 else 'critical')} {report['readiness_score']}% ({_readiness_label(report['readiness_score'])})",
+        "",
+        "Why it matters:",
+        "This shows what must be ready before the agency can run smoothly.",
         "",
         f"Models Ready: {report['models_ready']}%",
         f"Accounts Ready: {report['accounts_ready']}%",
@@ -46,6 +50,7 @@ def render_agency_activation_page(session: Session) -> Screen:
         f"Opportunities Ready: {report['opportunities_ready']}%",
         f"Notifications Ready: {report['notifications_ready']}%",
         "",
+        "What Fortuna noticed:",
         "Top Blockers:",
     ]
     if not blockers:
@@ -63,7 +68,8 @@ def render_agency_activation_page(session: Session) -> Screen:
     lines.extend(
         [
             "",
-            "Run Activation Scan to save this readiness snapshot, refresh recommendations, and create setup tasks without duplicates.",
+            "Next Best Move:",
+            "Run Activation Scan to refresh this setup checklist.",
         ]
     )
     return Screen("\n".join(lines), agency_activation_menu())
@@ -81,7 +87,7 @@ def render_activation_section_page(session: Session, section: str) -> Screen:
     }.get(section, "Fix Setup")
     lines = [title, ""]
     if not blockers:
-        lines.append("Nothing blocking this area right now.")
+        lines.append("Fortuna needs no extra information here right now.")
     for blocker in blockers[:10]:
         lines.append(f"- {blocker['title']}")
         lines.append(f"  Next: {blocker['description']}")

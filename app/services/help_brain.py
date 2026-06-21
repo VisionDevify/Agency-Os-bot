@@ -361,6 +361,27 @@ HELP_KB_SEEDS: tuple[dict[str, str], ...] = (
         "related_route": "reality:calibration",
     },
     {
+        "topic": "old_menu",
+        "title": "Old Menus",
+        "role_scope": "owner,admin,manager,chatter,viewer",
+        "content": "An old menu is a previous Fortuna screen still visible in Telegram. The latest active screen wins, so old menus are ignored and redirected safely.",
+        "related_route": "settings:chat_cleanup",
+    },
+    {
+        "topic": "active_screen",
+        "title": "Active Screen",
+        "role_scope": "owner,admin,manager,chatter,viewer",
+        "content": "The active screen is the newest tracked Fortuna menu for the chat. It is the one Back, Home, and buttons should use.",
+        "related_route": "menu",
+    },
+    {
+        "topic": "chat_cleanup",
+        "title": "Chat Cleanup",
+        "role_scope": "owner,admin,manager",
+        "content": "Chat Cleanup removes old temporary Fortuna menus when Telegram allows it. Reports, alerts, exports, approvals, and delivery messages are preserved.",
+        "related_route": "settings:chat_cleanup",
+    },
+    {
         "topic": "evidence_capture",
         "title": "Evidence",
         "role_scope": "owner,admin,manager",
@@ -473,6 +494,18 @@ def help_article_count(session: Session) -> int:
 
 def detect_help_intent(question: str) -> str:
     text = question.casefold()
+    if "old menu" in text or "menu is old" in text or "stale menu" in text:
+        return "old_menu"
+    if "active screen" in text or "current screen" in text:
+        return "active_screen"
+    if "redirected" in text or ("why" in text and "redirect" in text):
+        return "old_menu_redirect"
+    if "cleanup" in text and ("menu" in text or "chat" in text):
+        return "chat_cleanup"
+    if "what should i do first" in text or "what do i do first" in text:
+        return "safe_next"
+    if "difference" in text and "home" in text and "back" in text:
+        return "back_navigation"
     if "coo briefing" in text or ("briefing" in text and "coo" in text):
         return "coo_briefing"
     if "decide priorities" in text or "decides priorities" in text or "rank decisions" in text or "decide priority" in text:
@@ -803,7 +836,35 @@ def help_brain_answer(
     role = _role_label(user)
     next_action = current_page or "help"
 
-    if intent == "coo_briefing":
+    if intent == "old_menu":
+        answer = (
+            "That menu is old means Telegram still shows a previous Fortuna screen.\n\n"
+            "Why: Fortuna keeps one active screen so old visible menus cannot overwrite the current screen or confuse testing.\n\n"
+            "Next button to press: Main Menu, or run /clean if old menus keep showing."
+        )
+        next_action = "settings:chat_cleanup" if _adminish(user) else "menu"
+    elif intent == "active_screen":
+        answer = (
+            "The active screen is the newest Fortuna menu tracked for this chat.\n\n"
+            "Why: active screen wins, stale screens are ignored, and persistent alerts/reports remain protected.\n\n"
+            "Next button to press: Main Menu if you want a fresh Home."
+        )
+        next_action = "menu"
+    elif intent == "old_menu_redirect":
+        answer = (
+            "Fortuna redirects when a button came from an old menu.\n\n"
+            "Why: redirecting protects the current screen from being overwritten by an older Telegram box.\n\n"
+            "Next button to press: use the newest visible Fortuna screen."
+        )
+        next_action = "menu"
+    elif intent == "chat_cleanup":
+        answer = (
+            "Chat Cleanup removes old temporary Fortuna menu screens when Telegram allows it.\n\n"
+            "Why: it keeps testing and daily work focused on the newest active screen. Reports, alerts, exports, approvals, and delivery messages are preserved.\n\n"
+            "Next button to press: Clean Now."
+        )
+        next_action = "settings:chat_cleanup" if _adminish(user) else "menu"
+    elif intent == "coo_briefing":
         answer = (
             "COO Briefing shows what matters, why it matters, and what should happen next.\n\n"
             "Why: it compares recovery, bot health, notifications, platform readiness, opportunities, and recent activity so the owner sees one top priority instead of a dashboard wall.\n\n"

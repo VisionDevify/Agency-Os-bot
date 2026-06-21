@@ -656,6 +656,15 @@ def render_production_observability_page(
                     f"Next: {summary['chat_cleanup_next_action']}",
                 ]
             )
+        if summary.get("team_ux_meaningful"):
+            recovery_lines.extend(
+                [
+                    "",
+                    "Team UX:",
+                    f"{summary['team_ux_label']} - {summary['team_ux_evidence']}",
+                    f"Next: {summary['team_ux_next_action']}",
+                ]
+            )
         if recovery_alerts:
             recovery_lines.insert(2, f"Alert: {recovery_alerts[0]}")
         if summary.get("decision_learning_lines"):
@@ -857,6 +866,18 @@ def render_production_observability_page(
         f"Extra Active Menus: {summary['chat_cleanup_multiple_active_count']}",
         f"Reused Active Batch: {summary['chat_cleanup_reuse_count']}",
         f"Inactive Temporary Menus: {summary['chat_cleanup_stale_count']}",
+        "",
+        "Team UX:",
+        f"Status: {summary['team_ux_label']}",
+        f"Score: {summary['team_ux_score']}/100",
+        f"Navigation Clarity: {summary['team_ux_navigation_clarity']}",
+        f"Screen Clarity: {summary['team_ux_screen_clarity']}",
+        f"Stale Menu Safety: {summary['team_ux_stale_menu_safety']}",
+        f"Callback Reliability: {summary['team_ux_callback_reliability']}",
+        f"Onboarding Friendliness: {summary['team_ux_onboarding_friendliness']}",
+        f"Next Action Clarity: {summary['team_ux_next_action_clarity']}",
+        f"Evidence: {summary['team_ux_evidence']}",
+        f"Next: {summary['team_ux_next_action']}",
         "",
         "Recovery:",
         f"Backup Health: {summary['recovery_backup_health']}",
