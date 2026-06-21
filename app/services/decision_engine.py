@@ -19,6 +19,7 @@ from app.services.audit import sanitize_details
 from app.services.auth import audit_action
 from app.services.bot_instances import bot_instance_diagnostics
 from app.services.button_health import button_health_summary
+from app.services.db_safety import safe_db_side_effect
 from app.services.events import emit_event
 from app.services.learning import create_learning_event
 from app.services.notification_intelligence import alert_health_summary
@@ -1028,34 +1029,51 @@ def generate_coo_briefing(session: Session, *, actor: User | None = None) -> Coo
         learning_summary=learning_lines,
     )
     if actor is not None:
-        try:
+        def record_shown_memory() -> None:
             for decision in decisions[:5]:
                 record_decision_memory_event(session, decision=decision, action="shown", actor=actor)
-        except Exception as exc:
-            try:
-                emit_event(
+
+        _, memory_result = safe_db_side_effect(session, "decision_memory.record_shown", record_shown_memory)
+        if not memory_result.ok:
+            safe_db_side_effect(
+                session,
+                "decision_memory.record_unavailable_event",
+                lambda: emit_event(
                     session,
                     actor=actor,
                     event_name="decision_memory.record_unavailable",
                     resource_type="decision_memory",
                     status="warning",
-                    payload={"error": str(exc)[:160]},
-                )
-            except Exception:
-                pass
-        audit_action(
+                    payload={
+                        "error": memory_result.safe_error_summary,
+                        "table": memory_result.table,
+                        "constraint": memory_result.constraint,
+                        "column": memory_result.column,
+                    },
+                ),
+            )
+
+        safe_db_side_effect(
             session,
-            actor=actor,
-            action="decision_engine.briefing.generated",
-            resource_type="coo_briefing",
-            details={"decisions": len(decisions), "top_priority": top.title if top else "None"},
+            "decision_engine.briefing_audit",
+            lambda: audit_action(
+                session,
+                actor=actor,
+                action="decision_engine.briefing.generated",
+                resource_type="coo_briefing",
+                details={"decisions": len(decisions), "top_priority": top.title if top else "None"},
+            ),
         )
-        emit_event(
+        safe_db_side_effect(
             session,
-            actor=actor,
-            event_name="decision_engine.briefing.generated",
-            resource_type="coo_briefing",
-            payload={"decisions": len(decisions), "top_priority": top.title if top else "None"},
+            "decision_engine.briefing_event",
+            lambda: emit_event(
+                session,
+                actor=actor,
+                event_name="decision_engine.briefing.generated",
+                resource_type="coo_briefing",
+                payload={"decisions": len(decisions), "top_priority": top.title if top else "None"},
+            ),
         )
     return briefing
 

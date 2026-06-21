@@ -105,6 +105,7 @@ from app.services.notifications import (
     test_notification_target,
 )
 from app.services.chat_cleanup import toggle_chat_cleanup
+from app.services.db_safety import safe_db_side_effect
 from app.services.backup_storage import (
     configure_b2_storage_from_environment,
     configure_s3_storage_from_environment,
@@ -1182,12 +1183,16 @@ def screen_for_page(
     normalized = "dashboard" if page == "dashboard:refresh" else page
     if normalized == "menu":
         if session is not None:
-            audit_action(
+            safe_db_side_effect(
                 session,
-                actor=user,
-                action="admin_area.opened",
-                resource_type="telegram_menu",
-                details={"telegram_id_masked": mask_telegram_id(principal.telegram_id)},
+                "navigation.menu_audit",
+                lambda: audit_action(
+                    session,
+                    actor=user,
+                    action="admin_area.opened",
+                    resource_type="telegram_menu",
+                    details={"telegram_id_masked": mask_telegram_id(principal.telegram_id)},
+                ),
             )
         else:
             recorder.record(
@@ -1299,13 +1304,17 @@ def screen_for_page(
             normalized = action_target
 
     if session is not None:
-        audit_action(
+        safe_db_side_effect(
             session,
-            actor=user,
-            action="management_action.performed",
-            resource_type="telegram_page",
-            resource_id=normalized,
-            details={"telegram_id_masked": mask_telegram_id(principal.telegram_id)},
+            "navigation.management_action_audit",
+            lambda: audit_action(
+                session,
+                actor=user,
+                action="management_action.performed",
+                resource_type="telegram_page",
+                resource_id=normalized[:120],
+                details={"telegram_id_masked": mask_telegram_id(principal.telegram_id)},
+            ),
         )
     else:
         recorder.record(

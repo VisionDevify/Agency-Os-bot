@@ -11,7 +11,7 @@ from typing import Any
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
-from app.models.ai import AIAuditLog
+from app.models.ai import AI_AUDIT_STATUSES, AIAuditLog
 from app.models.decision_memory import DecisionMemory
 from app.models.evidence import EvidenceRecord, KnowledgeMemory, OwnerValidation
 from app.models.event_log import EventLog
@@ -31,6 +31,7 @@ from app.services.ai.providers import (
     get_ai_provider,
 )
 from app.services.audit import sanitize_details
+from app.services.db_safety import safe_db_side_effect
 from app.services.events import emit_event
 
 
@@ -74,6 +75,10 @@ UNSAFE_RECOMMENDATION_MARKERS = (
     "bot detection",
 )
 TRUTH_WORDS = ("healthy", "protected", "passed", "fixed", "successful")
+
+
+class _AIAuditPlaceholder:
+    id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -218,22 +223,28 @@ def _create_audit(
 ) -> AIAuditLog:
     context_text = json.dumps(_redact_context(input_context or {}), ensure_ascii=True, default=str)
     output_text = json.dumps(output.__dict__, ensure_ascii=True, default=list) if output is not None else ""
-    audit = AIAuditLog(
-        use_case=use_case,
-        provider=provider_status.provider,
-        model=provider_status.model,
-        status=status,
-        evidence_count=evidence_count,
-        estimated_input_chars=len(context_text),
-        estimated_output_chars=len(output_text),
-        safe_error_summary=_truncate(safe_error_summary, 500) if safe_error_summary else None,
-        output_hash=_hash_output(output) if output is not None else None,
-        completed_at=_now(),
-        metadata_json=sanitize_details(metadata or {}),
-    )
-    session.add(audit)
-    session.flush()
-    return audit
+    audit: AIAuditLog | None = None
+
+    def write_audit() -> AIAuditLog:
+        nonlocal audit
+        audit = AIAuditLog(
+            use_case=use_case[:80],
+            provider=(provider_status.provider or "unknown")[:40],
+            model=(provider_status.model[:120] if provider_status.model else None),
+            status=status if status in AI_AUDIT_STATUSES else "failed",
+            evidence_count=max(0, int(evidence_count or 0)),
+            estimated_input_chars=len(context_text),
+            estimated_output_chars=len(output_text),
+            safe_error_summary=_truncate(safe_error_summary, 500) if safe_error_summary else None,
+            output_hash=_hash_output(output) if output is not None else None,
+            completed_at=_now(),
+            metadata_json=sanitize_details(metadata or {}),
+        )
+        session.add(audit)
+        return audit
+
+    _, result = safe_db_side_effect(session, f"ai_audit.{use_case}", write_audit)
+    return audit or _AIAuditPlaceholder()  # type: ignore[return-value]
 
 
 def _fallback_output(
@@ -651,12 +662,16 @@ class FortunaAIBrain:
                     safe_error_summary=f"Critic blocked: {', '.join(flags)}",
                     metadata={"critic_flags": list(flags)},
                 )
-                emit_event(
+                safe_db_side_effect(
                     session,
-                    actor=actor,
-                    event_name="ai.critic_blocked",
-                    resource_type="ai_brain",
-                    payload=sanitize_details({"use_case": use_case, "critic_flags": list(flags)}),
+                    "ai.critic_blocked_event",
+                    lambda: emit_event(
+                        session,
+                        actor=actor,
+                        event_name="ai.critic_blocked",
+                        resource_type="ai_brain",
+                        payload=sanitize_details({"use_case": use_case, "critic_flags": list(flags)}),
+                    ),
                 )
                 return AIReasoningResult("blocked_by_critic", fallback, provider_status, critic_status, True, audit.id, "AI critic blocked output.")
             audit = _create_audit(
@@ -701,12 +716,16 @@ class FortunaAIBrain:
             output=output,
             safe_error_summary=error,
         )
-        emit_event(
+        safe_db_side_effect(
             session,
-            actor=actor,
-            event_name="ai.fallback_used",
-            resource_type="ai_brain",
-            payload=sanitize_details({"use_case": use_case, "status": status, "error": error}),
+            "ai.fallback_used_event",
+            lambda: emit_event(
+                session,
+                actor=actor,
+                event_name="ai.fallback_used",
+                resource_type="ai_brain",
+                payload=sanitize_details({"use_case": use_case, "status": status, "error": error}),
+            ),
         )
         return AIReasoningResult(status, output, provider_status, "fallback", True, audit.id, error)
 

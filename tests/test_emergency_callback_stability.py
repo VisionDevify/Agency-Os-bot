@@ -6,14 +6,17 @@ from app.bot.screens import (
     render_debug_last_error_page,
 )
 from app.models.audit import AuditLog
+from app.models.ai import AIAuditLog
 from app.models.callback_error import CallbackErrorLog
 from app.models.event_log import EventLog
 from app.models.friction import FrictionItem
 from app.models.recommendation import Recommendation
 from app.services.auth import setup_owner_if_needed
-from app.services.callbacks import latest_callback_error, log_callback_failure, run_callback_health_smoke_test
+from app.services.callbacks import latest_callback_error, log_callback_failure, run_callback_health_smoke_test, safe_exception_message
 from app.services.permissions import PermissionPrincipal, RoleName
 from tests.utils import session_scope
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
 
 def _callbacks(markup) -> list[str]:
@@ -185,3 +188,71 @@ def test_callback_failure_review_route_renders() -> None:
 
         assert "Callback Failure Review" in screen.text
         assert "Callback errors:" in screen.text
+
+
+def _owner_principal(session):
+    owner = setup_owner_if_needed(session, telegram_user_id=1, owner_telegram_id=1)
+    principal = PermissionPrincipal(telegram_id=owner.telegram_id, is_owner=True, role=RoleName.OWNER)
+    return owner, principal
+
+
+def _integrity_error(*, table: str = "decision_memory", constraint: str = "ix_decision_memory_decision_id") -> IntegrityError:
+    return IntegrityError(
+        f"INSERT INTO {table} (...) VALUES (...)",
+        {},
+        Exception(f'duplicate key value violates unique constraint "{constraint}"'),
+    )
+
+
+def test_integrity_error_message_is_normalized_without_values() -> None:
+    message = safe_exception_message(_integrity_error(table="ai_audit_logs", constraint="ck_ai_audit_logs_status"))
+
+    assert "IntegrityError" in message
+    assert "table=ai_audit_logs" in message
+    assert "constraint=ck_ai_audit_logs_status" in message
+    assert "VALUES" not in message
+
+
+def test_coo_briefing_renders_when_decision_memory_side_effect_fails(monkeypatch) -> None:
+    import app.services.decision_engine as decision_engine
+
+    def fail_memory(*args, **kwargs):
+        raise _integrity_error()
+
+    monkeypatch.setattr(decision_engine, "record_decision_memory_event", fail_memory)
+    with session_scope() as session:
+        owner, principal = _owner_principal(session)
+
+        screen = screen_for_page("coo:briefing", principal, session=session, user=owner)
+        count = session.scalar(select(func.count(AuditLog.id)))
+
+        assert "COO Briefing" in screen.text
+        assert count is not None
+
+
+def test_named_ai_and_coo_callbacks_render_without_integrity_error() -> None:
+    with session_scope() as session:
+        owner, principal = _owner_principal(session)
+
+        for page in ("coo:briefing", "ai_brain:coo", "ai_brain:evidence", "ai_brain:opportunity"):
+            screen = screen_for_page(page, principal, session=session, user=owner)
+            assert screen.text
+            assert "IntegrityError" not in screen.text
+
+
+def test_ai_audit_logging_failure_does_not_break_ai_routes(monkeypatch) -> None:
+    import app.services.ai.brain as ai_brain
+
+    class BrokenAIAuditLog:
+        def __init__(self, *args, **kwargs):
+            raise _integrity_error(table="ai_audit_logs", constraint="ck_ai_audit_logs_status")
+
+    monkeypatch.setattr(ai_brain, "AIAuditLog", BrokenAIAuditLog)
+    with session_scope() as session:
+        owner, principal = _owner_principal(session)
+
+        for page in ("ai_brain:coo", "ai_brain:evidence"):
+            screen = screen_for_page(page, principal, session=session, user=owner)
+            assert screen.text
+            assert "AI" in screen.text
+        assert session.scalar(select(func.count(AIAuditLog.id))) == 0

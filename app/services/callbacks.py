@@ -15,6 +15,7 @@ from app.models.recommendation import Recommendation
 from app.models.user import User
 from app.services.audit import sanitize_details
 from app.services.auth import audit_action
+from app.services.db_safety import normalize_db_error, safe_db_side_effect
 from app.services.events import emit_event
 from app.services.friction import create_friction_item
 from app.services.recommendations import upsert_recommendation
@@ -177,6 +178,16 @@ SECRET_PATTERNS = (
 
 
 def safe_exception_message(exc: BaseException) -> str:
+    if exc.__class__.__name__ == "IntegrityError":
+        details = normalize_db_error(exc)
+        parts = ["IntegrityError"]
+        if details.get("table"):
+            parts.append(f"table={details['table']}")
+        if details.get("constraint"):
+            parts.append(f"constraint={details['constraint']}")
+        if details.get("column"):
+            parts.append(f"column={details['column']}")
+        return " ".join(parts)[:MAX_ERROR_LENGTH]
     raw = str(exc).strip() or type(exc).__name__
     for pattern in SECRET_PATTERNS:
         raw = pattern.sub(lambda match: f"{match.group(1)}=[redacted]" if match.lastindex else "[redacted]", raw)
@@ -212,54 +223,71 @@ def log_callback_failure(
     session.add(error)
     session.flush()
     issue = f"Button failed on {page or 'unknown'}: {type(exc).__name__}."
-    create_friction_item(
+    safe_db_side_effect(
         session,
-        screen=(affected_screen or page or "unknown")[:120],
-        issue=issue,
-        severity="high",
-        fix_recommendation="Review the callback route and renderer; keep fallback screen active until fixed.",
+        "callback_failure.friction",
+        lambda: create_friction_item(
+            session,
+            screen=(affected_screen or page or "unknown")[:120],
+            issue=issue,
+            severity="high",
+            fix_recommendation="Review the callback route and renderer; keep fallback screen active until fixed.",
+        ),
     )
-    recommendation = upsert_recommendation(
+    recommendation, _ = safe_db_side_effect(
         session,
-        actor=actor,
-        recommendation_type="callback_failure",
-        title="Button Needs Repair",
-        description=f"Fortuna caught a failing button for {page or 'unknown'} and kept the bot alive.",
-        severity="warning",
-        entity_type="telegram_callback",
-        entity_id=(page or callback_data or "unknown")[:120],
-        metadata={
-            "callback_error_log_id": error.id,
-            "exception_type": type(exc).__name__,
-            "affected_screen": affected_screen or page,
-        },
+        "callback_failure.recommendation",
+        lambda: upsert_recommendation(
+            session,
+            actor=actor,
+            recommendation_type="callback_failure",
+            title="Button Needs Repair",
+            description=f"Fortuna caught a failing button for {page or 'unknown'} and kept the bot alive.",
+            severity="warning",
+            entity_type="telegram_callback",
+            entity_id=(page or callback_data or "unknown")[:120],
+            metadata={
+                "callback_error_log_id": error.id,
+                "exception_type": type(exc).__name__,
+                "affected_screen": affected_screen or page,
+            },
+        ),
     )
-    audit_action(
+    recommendation_id = getattr(recommendation, "id", None)
+    safe_db_side_effect(
         session,
-        actor=actor,
-        action="callback.failed",
-        resource_type="telegram_callback",
-        resource_id=(page or callback_data or "unknown")[:120],
-        status="failed",
-        details={
-            "callback_error_log_id": error.id,
-            "recommendation_id": recommendation.id,
-            "exception_type": type(exc).__name__,
-            "affected_screen": affected_screen or page,
-        },
+        "callback_failure.audit",
+        lambda: audit_action(
+            session,
+            actor=actor,
+            action="callback.failed",
+            resource_type="telegram_callback",
+            resource_id=(page or callback_data or "unknown")[:120],
+            status="failed",
+            details={
+                "callback_error_log_id": error.id,
+                "recommendation_id": recommendation_id,
+                "exception_type": type(exc).__name__,
+                "affected_screen": affected_screen or page,
+            },
+        ),
     )
-    emit_event(
+    safe_db_side_effect(
         session,
-        actor=actor,
-        event_name="callback.failed",
-        resource_type="telegram_callback",
-        resource_id=(page or callback_data or "unknown")[:120],
-        status="failed",
-        payload={
-            "callback_error_log_id": error.id,
-            "exception_type": type(exc).__name__,
-            "affected_screen": affected_screen or page,
-        },
+        "callback_failure.event",
+        lambda: emit_event(
+            session,
+            actor=actor,
+            event_name="callback.failed",
+            resource_type="telegram_callback",
+            resource_id=(page or callback_data or "unknown")[:120],
+            status="failed",
+            payload={
+                "callback_error_log_id": error.id,
+                "exception_type": type(exc).__name__,
+                "affected_screen": affected_screen or page,
+            },
+        ),
     )
     return error
 
