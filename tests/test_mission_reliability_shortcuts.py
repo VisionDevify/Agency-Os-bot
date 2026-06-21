@@ -114,6 +114,24 @@ def test_command_shortcuts_reuse_screen_renderers(monkeypatch) -> None:
             assert expected in screen.text
 
 
+def test_coo_shortcut_does_not_call_ai_inline(monkeypatch) -> None:
+    import app.bot.screens.coo as coo_module
+
+    monkeypatch.setattr(coo_module, "ai_configuration_status", lambda session: {"enabled": True, "configured": True})
+    monkeypatch.setattr(
+        coo_module,
+        "generate_ai_decision_explanation",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("COO shortcut must not call AI inline")),
+        raising=False,
+    )
+
+    with session_scope() as session:
+        owner = _owner(session)
+        screen = render_command_shortcut(session, command="coo", principal=_principal(owner), user=owner)
+
+        assert "COO Briefing" in screen.text
+
+
 def test_verify_navigation_harness_reports_passed_routes(monkeypatch) -> None:
     monkeypatch.setenv("AI_ENABLED", "false")
     monkeypatch.setenv("SEARCH_ENABLED", "false")

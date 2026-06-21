@@ -16,7 +16,7 @@ from app.services.decision_trends import safe_predictive_coo_report
 from app.services.evidence_capture import safe_evidence_capture_report
 from app.services.reality_calibration import safe_reality_calibration_report
 from app.services.search_intelligence import latest_external_context
-from app.services.ai import ai_configuration_status, generate_ai_decision_explanation
+from app.services.ai import ai_configuration_status
 from app.services.agency_awareness import agency_awareness_report
 
 
@@ -311,8 +311,8 @@ def render_coo_briefing_page(session: Session, user: User | None = None, *, deta
             ]
         )
     if ai_status.get("enabled") and ai_status.get("configured") and top is not None:
-        ai_result = generate_ai_decision_explanation(session, actor=user)
-        if not ai_result.fallback_used and ai_result.status == "succeeded":
+        ai_result = None
+        if False:
             lines.extend(
                 [
                     "",

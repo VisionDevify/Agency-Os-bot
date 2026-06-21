@@ -1486,16 +1486,20 @@ async def shortcut_command(message: Message) -> None:
         principal = _principal_from_user(user)
         working = working_screen_for(shortcut)
         if working is not None:
-            await _send_tracked_temporary_message(
-                message,
-                session,
-                user=user,
-                text=working.text,
-                reply_markup=working.reply_markup,
-                screen=f"command:{command_name}:working",
-                message_label=TEMPORARY_STATUS,
-            )
-            session.commit()
+            try:
+                await _send_tracked_temporary_message(
+                    message,
+                    session,
+                    user=user,
+                    text=working.text,
+                    reply_markup=working.reply_markup,
+                    screen=f"command:{command_name}:working",
+                    message_label=TEMPORARY_STATUS,
+                )
+                session.commit()
+            except Exception:
+                logger.warning("Unable to send command working state for /%s", command_name, exc_info=True)
+                session.rollback()
 
         started_backup = False
         started_restore = False
@@ -1528,27 +1532,45 @@ async def shortcut_command(message: Message) -> None:
             run_identifier = test.run_identifier
             actor_id = user.id
         else:
-            screen = render_command_shortcut(
-                session,
-                command=command_name,
-                principal=principal,
-                user=user,
-                chat_id=message.chat.id,
-                chat_title=getattr(message.chat, "title", None),
-            )
+            try:
+                screen = render_command_shortcut(
+                    session,
+                    command=command_name,
+                    principal=principal,
+                    user=user,
+                    chat_id=message.chat.id,
+                    chat_title=getattr(message.chat, "title", None),
+                )
+            except Exception:
+                logger.error("Command shortcut render failed for /%s", command_name, exc_info=True)
+                session.rollback()
+                await message.answer(
+                    "Fortuna hit a reliability issue while opening that command.\n\n"
+                    "The issue was logged safely. Try /home, then /reliability."
+                )
+                return
             run_identifier = None
             actor_id = None
 
         navigation_version = reset_navigation_session(session, chat_id=message.chat.id, user=user)
-        await _send_tracked_navigation_message(
-            message,
-            session,
-            user=user,
-            screen=screen,
-            page=shortcut.page,
-            navigation_version=navigation_version,
-        )
-        session.commit()
+        try:
+            await _send_tracked_navigation_message(
+                message,
+                session,
+                user=user,
+                screen=screen,
+                page=shortcut.page,
+                navigation_version=navigation_version,
+            )
+            session.commit()
+        except Exception:
+            logger.error("Command shortcut send failed for /%s", command_name, exc_info=True)
+            session.rollback()
+            await message.answer(
+                "Fortuna heard the command, but the screen could not be sent safely.\n\n"
+                "Try /home, then /reliability."
+            )
+            return
 
         if command_name == "run_backup" and started_backup and run_identifier is not None:
             asyncio.create_task(_run_backup_job_background(run_identifier, actor_id))
