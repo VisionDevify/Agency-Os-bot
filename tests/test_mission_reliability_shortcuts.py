@@ -231,6 +231,23 @@ def test_verify_navigation_harness_uses_working_state_for_heavy_routes(monkeypat
         assert {item.command for item in result.passed}.issuperset({"coo", "observability"})
 
 
+def test_verify_navigation_screen_falls_back_when_harness_fails(monkeypatch) -> None:
+    import app.bot.screens.reliability as reliability_screen_module
+
+    monkeypatch.setattr(
+        reliability_screen_module,
+        "run_command_verification_harness",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
+    )
+
+    with session_scope() as session:
+        owner = _owner(session)
+        screen = render_reliability_verify_page(session, owner)
+
+        assert "Navigation Verification" in screen.text
+        assert "could not finish safely (RuntimeError)" in screen.text
+
+
 def test_reliability_center_excludes_historical_when_healthy() -> None:
     with session_scope() as session:
         owner = _owner(session)

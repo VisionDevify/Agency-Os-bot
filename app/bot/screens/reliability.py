@@ -158,7 +158,25 @@ def render_reliability_history_page(session: Session, user: User | None = None) 
 def render_reliability_verify_page(session: Session, user: User | None = None) -> Screen:
     if user is None:
         return Screen("✅ Navigation Verification\n\nOwner context is unavailable.", _reliability_menu(details=True))
-    result = run_command_verification_harness(session, actor=user)
+    try:
+        result = run_command_verification_harness(session, actor=user)
+    except Exception as exc:
+        lines = [
+            "âœ… Navigation Verification",
+            "",
+            "Passed Routes: unavailable",
+            "Failed Routes: unavailable",
+            "Slow Routes: unavailable",
+            "Callback Issue Count: unavailable",
+            "Stale Menu Issues: unavailable",
+            "",
+            "Failures:",
+            f"- Verification harness could not finish safely ({type(exc).__name__}).",
+            "",
+            "Next Best Move:",
+            "Open /reliability and retry after the current issue is fixed.",
+        ]
+        return Screen("\n".join(lines), _reliability_menu(details=True))
     failed = [f"- /{item.command}: {item.safe_error_summary or 'failed'}" for item in result.failed]
     slow = [f"- /{item.command}: {item.latency_ms}ms" for item in result.slow]
     lines = [
