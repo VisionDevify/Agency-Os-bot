@@ -352,6 +352,15 @@ async def _idle_without_polling(reason: str, *, status: str = "blocked") -> None
         await asyncio.sleep(300)
 
 
+async def _telegram_webhook_delivery_active(bot: Bot, *, timeout_seconds: float = 10) -> bool:
+    try:
+        info = await asyncio.wait_for(bot.get_webhook_info(), timeout=timeout_seconds)
+    except Exception:
+        logger.warning("Unable to check Telegram webhook status before polling", exc_info=True)
+        return False
+    return bool(getattr(info, "url", None))
+
+
 def _principal_from_user(user: User) -> PermissionPrincipal:
     role = RoleName.OWNER if user.is_owner else RoleName.VIEWER
     return PermissionPrincipal(telegram_id=user.telegram_id, is_owner=user.is_owner, role=role)
@@ -2395,6 +2404,10 @@ async def main() -> None:
                     logger.warning("Unable to record bot polling heartbeat", exc_info=True)
 
     bot = Bot(token=token)
+    if await _telegram_webhook_delivery_active(bot):
+        guard.release()
+        await _idle_without_polling("Telegram webhook delivery is active; API receives updates.", status="healthy")
+        return
     try:
         logger.info("Starting Telegram bot")
         if SessionLocal is not None:
