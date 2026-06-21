@@ -205,6 +205,33 @@ def test_verify_navigation_harness_reports_passed_routes(monkeypatch) -> None:
         assert "Passed Routes" in screen.text
 
 
+def test_verify_navigation_harness_uses_working_state_for_heavy_routes(monkeypatch) -> None:
+    import app.services.reliability as reliability_module
+
+    original_render = reliability_module.render_command_shortcut
+
+    def guarded_render(session, *, command, principal, user, chat_id=None, chat_title=None):
+        if command in {"coo", "observability"}:
+            raise AssertionError("heavy shortcut render should not run inside verification harness")
+        return original_render(
+            session,
+            command=command,
+            principal=principal,
+            user=user,
+            chat_id=chat_id,
+            chat_title=chat_title,
+        )
+
+    monkeypatch.setattr(reliability_module, "render_command_shortcut", guarded_render)
+
+    with session_scope() as session:
+        owner = _owner(session)
+        result = run_command_verification_harness(session, actor=owner)
+
+        assert not result.failed
+        assert {item.command for item in result.passed}.issuperset({"coo", "observability"})
+
+
 def test_reliability_center_excludes_historical_when_healthy() -> None:
     with session_scope() as session:
         owner = _owner(session)

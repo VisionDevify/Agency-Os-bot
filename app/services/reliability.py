@@ -416,7 +416,8 @@ def working_screen_for(command: ShortcutCommand) -> Screen | None:
                 "Fortuna heard you.",
                 "This screen may take a moment, so I am checking it now.",
             ]
-        )
+        ),
+        reply_markup=None,
     )
 
 
@@ -476,7 +477,10 @@ def run_command_verification_harness(session: Session, *, actor: User) -> Verifi
             continue
         started = now_utc()
         try:
-            screen = render_command_shortcut(session, command=shortcut.command, principal=principal, user=actor)
+            if shortcut.working_label:
+                screen = working_screen_for(shortcut)
+            else:
+                screen = render_command_shortcut(session, command=shortcut.command, principal=principal, user=actor)
             if not screen.text.strip():
                 raise ValueError("screen returned empty text")
             latency = _ms(started, now_utc()) or 0
