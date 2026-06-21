@@ -329,17 +329,18 @@ def bot_instance_diagnostics(session: Session, *, current_instance_id: str | Non
     )
     preflight = polling_preflight(current)
     redis_configured = bool(settings.redis_url)
-    duplicate_count = len(duplicates)
     conflict_active = str(metadata.get("polling_conflict_active", "false")).lower() == "true"
     webhook_delivery_active = (
         str(metadata.get("telegram_delivery_mode", "")).strip().casefold() == "webhook"
         and str(metadata.get("webhook_active", "false")).strip().casefold() == "true"
     )
+    active_for_status = [] if webhook_delivery_active else active
+    duplicate_count = 0 if webhook_delivery_active else len(duplicates)
     if conflict_active:
         risk = "critical"
     elif not preflight.allowed:
         risk = "blocked"
-    elif not active and not webhook_delivery_active:
+    elif not active_for_status and not webhook_delivery_active:
         risk = "no_active_polling_owner"
     elif duplicate_count:
         risk = "warning"
@@ -377,13 +378,13 @@ def bot_instance_diagnostics(session: Session, *, current_instance_id: str | Non
         "db_backend": current.backend,
         "db_durable": current.durable,
         "environment": current.environment,
-        "active_instance_count": len(active),
+        "active_instance_count": len(active_for_status),
         "duplicate_instance_count": duplicate_count,
         "non_polling_instance_count": len(classified.non_polling),
         "stale_instance_count": len(classified.stale),
         "active_polling_owners": [
             mask_instance_id(heartbeat.service_name.removeprefix(BOT_INSTANCE_PREFIX))
-            for heartbeat in active
+            for heartbeat in active_for_status
         ],
         "non_polling_instances": [
             {

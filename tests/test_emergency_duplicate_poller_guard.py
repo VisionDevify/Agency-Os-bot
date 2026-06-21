@@ -12,6 +12,7 @@ from app.bot.runner import TELEGRAM_DELIVERY_MODE, _record_bot_heartbeat, _watch
 from app.core.config import settings
 from app.services.bot_instances import (
     bot_instance_diagnostics,
+    record_bot_instance_heartbeat,
     record_polling_conflict,
     telegram_polling_lock_key,
 )
@@ -197,6 +198,17 @@ def test_webhook_delivery_does_not_count_as_duplicate_poller(monkeypatch) -> Non
             _record_bot_heartbeat(session, status="healthy", source="telegram_start")
         finally:
             TELEGRAM_DELIVERY_MODE.reset(delivery_token)
+        record_bot_instance_heartbeat(
+            session,
+            instance_id="old-polling-worker",
+            status="healthy",
+            metadata={
+                "service_role": "worker",
+                "primary": "True",
+                "polling_allowed": "True",
+                "polling_active": "True",
+            },
+        )
 
         diagnostics = bot_instance_diagnostics(session)
 
