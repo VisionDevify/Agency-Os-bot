@@ -12,7 +12,9 @@ from app.models import *  # noqa: F403
 from app.bot.screens.formatting import Screen
 from app.bot.screens import render_page
 from app.bot import runner as runner_module
+from app.bot.screens.recovery import render_backup_history_page
 from app.bot.screens.reliability import render_reliability_center_page, render_reliability_verify_page
+from app.models.recovery import BackupRun
 from app.models.reliability import CallbackLatencyRecord, ReliabilityJob
 from app.services.auth import setup_owner_if_needed
 from app.services.observability import production_observability_summary
@@ -24,6 +26,7 @@ from app.services.reliability import (
     latency_label,
     mark_stale_reliability_jobs,
     record_callback_latency,
+    reliability_summary,
     render_command_shortcut,
     run_command_verification_harness,
     start_reliability_job,
@@ -240,6 +243,50 @@ def test_reliability_center_excludes_historical_when_healthy() -> None:
         assert "Reliability Center" in screen.text
         assert "Status:" in screen.text
         assert "Active Issues:" in screen.text
+
+
+def test_recent_failed_job_counts_as_reliability_issue() -> None:
+    with session_scope() as session:
+        owner = _owner(session)
+        start_reliability_job(session, job_id="backup:failed", job_type="backup", status="running")
+        update_reliability_job(
+            session,
+            "backup:failed",
+            status="failed",
+            current_step="Backup failed safely",
+            safe_error_summary="Storage provider returned HTTP 403.",
+        )
+
+        summary = reliability_summary(session)
+        screen = render_reliability_center_page(session, owner)
+
+        assert summary["status"] == "needs_review"
+        assert summary["active_issue_count"] >= 1
+        assert "Recent Backup: Failed" in screen.text
+
+
+def test_backup_history_shows_safe_failure_reason() -> None:
+    with session_scope() as session:
+        owner = _owner(session)
+        session.add(
+            BackupRun(
+                run_identifier="backup-failed",
+                backup_type="manual",
+                status="failed",
+                started_at=datetime.now(UTC),
+                finished_at=datetime.now(UTC),
+                storage_target="S3-Compatible Backup Storage",
+                encrypted=True,
+                checksum="abc123",
+                error_summary="Storage provider returned HTTP 403.",
+            )
+        )
+        session.flush()
+
+        screen = render_backup_history_page(session, owner)
+
+        assert "Reason: Storage provider returned HTTP 403." in screen.text
+        assert "abc123" not in screen.text
 
 
 def test_slow_callback_appears_in_reliability_and_observability() -> None:

@@ -274,6 +274,19 @@ def _execute_backup_job_sync(run_identifier: str, actor_id: int | None, backup_t
         session.commit()
         actor = session.get(User, actor_id) if actor_id is not None else None
         run_backup(session, actor=actor, backup_type=backup_type, run_identifier=run_identifier)
+        run = session.scalar(select(BackupRun).where(BackupRun.run_identifier == run_identifier))
+        if run is not None and run.status not in {"success", "succeeded"}:
+            update_reliability_job(
+                session,
+                f"backup:{run_identifier}",
+                status="failed",
+                current_step="Backup failed safely",
+                progress_percent=100,
+                safe_error_summary=run.error_summary or run.result_summary or "Backup did not finish successfully.",
+                result_summary="Backup did not finish with verified artifact evidence.",
+            )
+            session.commit()
+            return
         update_reliability_job(
             session,
             f"backup:{run_identifier}",
@@ -299,6 +312,19 @@ def _execute_restore_job_sync(run_identifier: str, actor_id: int | None) -> None
         session.commit()
         actor = session.get(User, actor_id) if actor_id is not None else None
         run_restore_test(session, actor=actor, run_identifier=run_identifier)
+        test = session.scalar(select(RestoreTestRun).where(RestoreTestRun.run_identifier == run_identifier))
+        if test is not None and test.status not in {"passed", "succeeded", "verified", "verified_only"}:
+            update_reliability_job(
+                session,
+                f"restore:{run_identifier}",
+                status="failed",
+                current_step="Restore validation failed safely",
+                progress_percent=100,
+                safe_error_summary=test.error_summary or test.result_summary or "Restore validation did not finish successfully.",
+                result_summary="Restore validation did not finish with verified evidence.",
+            )
+            session.commit()
+            return
         update_reliability_job(
             session,
             f"restore:{run_identifier}",

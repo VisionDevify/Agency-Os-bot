@@ -191,6 +191,10 @@ def render_backup_history_page(session: Session, user: User | None = None) -> Sc
             when = format_user_datetime(user, run.started_at) if run.started_at else "Unknown"
             lines.append(f"• {when} — {run.status.title()}")
             lines.append(f"  Encrypted: {'yes' if run.encrypted else 'no'} | Checksum: {'yes' if run.checksum else 'no'}")
+            if run.status in {"failed", "timed_out", "not_configured", "manual_required"}:
+                summary = run.error_summary or run.result_summary
+                if summary:
+                    lines.append(f"  Reason: {summary[:180]}")
         lines.extend(["", "No backup contents or secrets are shown here."])
     return Screen("\n".join(lines), _recovery_menu(back_to="recovery_center"))
 

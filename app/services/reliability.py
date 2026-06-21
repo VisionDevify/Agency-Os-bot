@@ -373,11 +373,22 @@ def reliability_summary(session: Session) -> dict[str, object]:
     )
     active_callback_failures = callback_failure_review(session, limit=10).active_items
     active_job_rows = active_jobs(session)
+    failed_job_rows = list(
+        session.scalars(
+            select(ReliabilityJob)
+            .where(
+                ReliabilityJob.status.in_(("failed", "timed_out")),
+                ReliabilityJob.updated_at >= recent_cutoff,
+            )
+            .order_by(desc(ReliabilityJob.updated_at), desc(ReliabilityJob.id))
+            .limit(8)
+        ).all()
+    )
     timed_out_jobs = int(session.scalar(select(func.count(ReliabilityJob.id)).where(ReliabilityJob.status == "timed_out")) or 0)
     recovery_job = latest_recovery_job_summary(session)
     reliability_percent = 100 if total_callbacks == 0 else round((successful_callbacks / total_callbacks) * 100)
     status = "healthy"
-    if active_callback_failures or active_issue_count or timed_out_jobs or recovery_job.get("timed_out_marked"):
+    if active_callback_failures or active_issue_count or failed_job_rows or timed_out_jobs or recovery_job.get("timed_out_marked"):
         status = "needs_review"
     if any(record.latency_label in {"bad", "dead"} for record in slow_records):
         status = "needs_review"
@@ -389,10 +400,11 @@ def reliability_summary(session: Session) -> dict[str, object]:
         "average_response_ms": avg_ms,
         "average_response_label": latency_label(avg_ms if total_callbacks else 0),
         "slowest_area": slowest,
-        "active_issue_count": active_issue_count + len(active_callback_failures),
+        "active_issue_count": active_issue_count + len(active_callback_failures) + len(failed_job_rows),
         "historical_failure_count": int(session.scalar(select(func.count(CallbackErrorLog.id))) or 0),
         "slow_records": slow_records,
         "active_jobs": active_job_rows,
+        "failed_jobs": failed_job_rows,
         "latest_jobs": latest_jobs(session, limit=8),
         "recovery_job": recovery_job,
         "timed_out_jobs": timed_out_jobs,

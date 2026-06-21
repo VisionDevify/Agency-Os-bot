@@ -40,10 +40,14 @@ def render_reliability_center_page(session: Session, user: User | None = None, *
     avg_ms = int(summary["average_response_ms"])
     avg_seconds = f"{avg_ms / 1000:.1f}s"
     active_jobs = summary["active_jobs"]
+    failed_jobs = summary.get("failed_jobs") or []
     job_line = "No long-running jobs are active."
     if active_jobs:
         job = active_jobs[0]
         job_line = f"{job.job_type.replace('_', ' ').title()}: {job.status.replace('_', ' ').title()}"
+    elif failed_jobs:
+        job = failed_jobs[0]
+        job_line = f"Recent {job.job_type.replace('_', ' ').title()}: {job.status.replace('_', ' ').title()}"
 
     if not details:
         lines = [
