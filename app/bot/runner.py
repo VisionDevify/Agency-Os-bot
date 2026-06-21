@@ -32,6 +32,7 @@ from app.bot.screens import (
     render_proxy_import_success_page,
     render_problem_report_saved_page,
     render_botstatus_page,
+    render_backup_storage_page,
     render_backup_job_started_page,
     render_callback_error_page,
     render_callback_failure_review_page,
@@ -124,6 +125,11 @@ from app.services.callback_protection import (
     classify_telegram_error,
 )
 from app.services.recovery import run_backup, run_restore_test, start_backup_job, start_restore_job
+from app.services.backup_storage import (
+    backup_storage_targets,
+    configure_s3_storage_from_environment,
+    test_storage_target_connection,
+)
 from app.services.reliability import (
     SHORTCUT_BY_COMMAND,
     SHORTCUT_COMMANDS,
@@ -1615,6 +1621,21 @@ async def shortcut_command(message: Message) -> None:
             screen = render_restore_job_started_page(test, reused=not started_restore)
             run_identifier = test.run_identifier
             actor_id = user.id
+        elif command_name == "activate_s3_storage":
+            configure_s3_storage_from_environment(session, actor=user)
+            screen = render_backup_storage_page(session, user, target_type="s3_compatible")
+            run_identifier = None
+            actor_id = None
+        elif command_name == "test_s3_storage":
+            target = next(
+                (item for item in backup_storage_targets(session) if item.target_type == "s3_compatible"),
+                None,
+            )
+            if target is not None:
+                test_storage_target_connection(session, target, actor=user)
+            screen = render_backup_storage_page(session, user, target_type="s3_compatible")
+            run_identifier = None
+            actor_id = None
         else:
             try:
                 screen = render_command_shortcut(
