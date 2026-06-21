@@ -1,6 +1,6 @@
 """reliability instrumentation and command shortcuts
 
-Revision ID: 0051_reliability_command_shortcuts
+Revision ID: 0051_reliability_shortcuts
 Revises: 0050_agency_awareness
 Create Date: 2026-06-21 00:00:00.000000
 """
@@ -11,7 +11,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision = "0051_reliability_command_shortcuts"
+revision = "0051_reliability_shortcuts"
 down_revision = "0050_agency_awareness"
 branch_labels = None
 depends_on = None
