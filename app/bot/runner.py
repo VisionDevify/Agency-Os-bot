@@ -151,6 +151,10 @@ CURRENT_BOT_INSTANCE_ID = bot_instance_id()
 CALLBACK_LOCKS = CallbackLockManager(settings.redis_url)
 CALLBACK_IDEMPOTENCY = RedisIdempotencyStore(settings.redis_url)
 NAVIGATION_IDEMPOTENCY_TTL_SECONDS = 2
+TELEGRAM_PENDING_WATCHDOG_INTERVAL_SECONDS = float(os.getenv("TELEGRAM_PENDING_WATCHDOG_INTERVAL_SECONDS", "20"))
+TELEGRAM_PENDING_WATCHDOG_LIMIT = int(os.getenv("TELEGRAM_PENDING_WATCHDOG_LIMIT", "3"))
+TELEGRAM_PENDING_WATCHDOG_API_TIMEOUT_SECONDS = float(os.getenv("TELEGRAM_PENDING_WATCHDOG_API_TIMEOUT_SECONDS", "10"))
+LAST_TELEGRAM_UPDATE_MONOTONIC = time.monotonic()
 
 PENDING_ACCOUNT_CREATES: dict[int, dict[str, int | str]] = {}
 PENDING_AUTH_CODES: dict[int, int] = {}
@@ -391,6 +395,9 @@ def _bot_heartbeat_metadata(source: str, **extra: str) -> dict[str, str]:
 
 
 def _record_bot_heartbeat(session, *, status: str = "healthy", source: str, **extra: str) -> None:
+    global LAST_TELEGRAM_UPDATE_MONOTONIC
+    if source.startswith("telegram_"):
+        LAST_TELEGRAM_UPDATE_MONOTONIC = time.monotonic()
     metadata = _bot_heartbeat_metadata(source, **extra)
     record_heartbeat(session, service_name="bot", status=status, metadata=metadata)
     record_bot_instance_heartbeat(
@@ -399,6 +406,78 @@ def _record_bot_heartbeat(session, *, status: str = "healthy", source: str, **ex
         status=status,
         metadata=metadata,
     )
+
+
+async def _watch_telegram_pending_updates(
+    bot: Bot,
+    *,
+    interval_seconds: float = TELEGRAM_PENDING_WATCHDOG_INTERVAL_SECONDS,
+    consecutive_limit: int = TELEGRAM_PENDING_WATCHDOG_LIMIT,
+    api_timeout_seconds: float = TELEGRAM_PENDING_WATCHDOG_API_TIMEOUT_SECONDS,
+    exit_process: bool = True,
+    max_checks: int | None = None,
+) -> None:
+    """Exit the worker if Telegram queues updates while no handler consumes them.
+
+    Railway can keep a long-polling worker marked online even when the poll loop is
+    wedged. Telegram's safe webhook-info endpoint exposes pending update count
+    without consuming updates, so this watchdog can detect that state and let the
+    platform restart the single primary worker.
+    """
+    pending_streak = 0
+    last_update_marker = LAST_TELEGRAM_UPDATE_MONOTONIC
+    checks = 0
+    while True:
+        await asyncio.sleep(interval_seconds)
+        checks += 1
+        try:
+            info = await asyncio.wait_for(bot.get_webhook_info(), timeout=api_timeout_seconds)
+            pending_count = int(getattr(info, "pending_update_count", 0) or 0)
+        except Exception:
+            logger.warning("Unable to check Telegram pending update count", exc_info=True)
+            if max_checks is not None and checks >= max_checks:
+                return
+            continue
+
+        current_update_marker = LAST_TELEGRAM_UPDATE_MONOTONIC
+        if current_update_marker > last_update_marker:
+            pending_streak = 0
+            last_update_marker = current_update_marker
+
+        if pending_count <= 0:
+            pending_streak = 0
+            if max_checks is not None and checks >= max_checks:
+                return
+            continue
+
+        pending_streak += 1
+        logger.warning(
+            "Telegram pending updates remain queued while worker is polling",
+            extra={"telegram_pending_updates": pending_count, "pending_watchdog_streak": pending_streak},
+        )
+        if pending_streak < consecutive_limit:
+            if max_checks is not None and checks >= max_checks:
+                return
+            continue
+
+        logger.error(
+            "Telegram polling appears wedged; restarting worker to recover update consumption",
+            extra={"telegram_pending_updates": pending_count, "pending_watchdog_streak": pending_streak},
+        )
+        if SessionLocal is not None:
+            with contextlib.suppress(Exception):
+                with SessionLocal() as session:
+                    _record_bot_heartbeat(
+                        session,
+                        status="critical",
+                        source="pending_watchdog",
+                        telegram_pending_updates=str(pending_count),
+                        pending_watchdog_streak=str(pending_streak),
+                    )
+                    session.commit()
+        if exit_process:
+            os._exit(1)
+        return
 
 
 def _username_from_message_user(user) -> str | None:
@@ -2288,6 +2367,7 @@ async def main() -> None:
         await _idle_without_polling(reason, status="critical")
         return
     refresh_task: asyncio.Task | None = None
+    pending_watchdog_task: asyncio.Task | None = None
     conflict_handler = _PollingConflictLogHandler()
     logging.getLogger("aiogram").addHandler(conflict_handler)
 
@@ -2330,7 +2410,12 @@ async def main() -> None:
                 )
                 session.commit()
         refresh_task = asyncio.create_task(refresh_guard())
-        await dp.start_polling(bot)
+        pending_watchdog_task = asyncio.create_task(_watch_telegram_pending_updates(bot))
+        await dp.start_polling(
+            bot,
+            polling_timeout=20,
+            allowed_updates=dp.resolve_used_update_types(),
+        )
     except TelegramConflictError:
         reason = "Another process is using the same Telegram bot token."
         if SessionLocal is not None:
@@ -2352,6 +2437,10 @@ async def main() -> None:
             refresh_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await refresh_task
+        if pending_watchdog_task is not None:
+            pending_watchdog_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await pending_watchdog_task
         guard.release()
 
 

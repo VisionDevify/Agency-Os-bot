@@ -1,11 +1,14 @@
+import asyncio
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
+import app.bot.runner as bot_runner
 from app.bot.screens.settings import (
     render_botstatus_page,
     render_production_observability_page,
     render_ui_self_test_page,
 )
-from app.bot.runner import _record_bot_heartbeat
+from app.bot.runner import _record_bot_heartbeat, _watch_telegram_pending_updates
 from app.core.config import settings
 from app.services.bot_instances import (
     bot_instance_diagnostics,
@@ -48,6 +51,23 @@ class _FakeRedis:
         if "del" in script:
             self.values.pop(key, None)
         return 1
+
+
+class _FakeTelegramBot:
+    def __init__(self, pending_counts: list[int], *, bump_update_marker_on_call: int | None = None) -> None:
+        self.pending_counts = list(pending_counts)
+        self.calls = 0
+        self.bump_update_marker_on_call = bump_update_marker_on_call
+
+    async def get_webhook_info(self):
+        self.calls += 1
+        if self.bump_update_marker_on_call == self.calls:
+            bot_runner.LAST_TELEGRAM_UPDATE_MONOTONIC = bot_runner.LAST_TELEGRAM_UPDATE_MONOTONIC + 1
+        if self.pending_counts:
+            pending = self.pending_counts.pop(0)
+        else:
+            pending = 0
+        return SimpleNamespace(pending_update_count=pending)
 
 
 def _owner(session):
@@ -166,3 +186,38 @@ def test_polling_loop_does_not_clear_conflict_but_real_update_does(monkeypatch) 
 
         _record_bot_heartbeat(session, status="healthy", source="telegram_start")
         assert bot_instance_diagnostics(session, current_instance_id="worker-secret-instance")["polling_conflict_active"] is False
+
+
+def test_pending_update_watchdog_exits_when_polling_is_wedged() -> None:
+    bot = _FakeTelegramBot([2, 2])
+
+    asyncio.run(
+        _watch_telegram_pending_updates(
+            bot,  # type: ignore[arg-type]
+            interval_seconds=0,
+            consecutive_limit=2,
+            api_timeout_seconds=1,
+            exit_process=False,
+            max_checks=3,
+        )
+    )
+
+    assert bot.calls == 2
+
+
+def test_pending_update_watchdog_resets_after_real_update() -> None:
+    bot = _FakeTelegramBot([2, 2, 0], bump_update_marker_on_call=2)
+
+    async def run_watchdog() -> None:
+        await _watch_telegram_pending_updates(
+            bot,  # type: ignore[arg-type]
+            interval_seconds=0,
+            consecutive_limit=2,
+            api_timeout_seconds=1,
+            exit_process=False,
+            max_checks=3,
+        )
+
+    asyncio.run(run_watchdog())
+
+    assert bot.calls == 3
