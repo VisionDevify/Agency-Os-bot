@@ -121,6 +121,7 @@ def _active_target(session, owner, provider: FakeStorageProvider) -> BackupStora
 
 
 def test_storage_http_error_summary_includes_safe_provider_code() -> None:
+    leaked_key = "005f28a06acb8a40000000001"
     error = urllib.error.HTTPError(
         "https://s3.us-east-005.backblazeb2.com/fortuna-backups/test",
         403,
@@ -128,7 +129,7 @@ def test_storage_http_error_summary_includes_safe_provider_code() -> None:
         hdrs=None,
         fp=io.BytesIO(
             b"<?xml version='1.0' encoding='UTF-8'?><Error><Code>AccessDenied</Code>"
-            b"<Message>Application key does not allow writeFiles.</Message></Error>"
+            + f"<Message>The key '{leaked_key}' does not allow writeFiles.</Message></Error>".encode()
         ),
     )
 
@@ -137,6 +138,8 @@ def test_storage_http_error_summary_includes_safe_provider_code() -> None:
     assert "HTTP 403" in summary
     assert "AccessDenied" in summary
     assert "writeFiles" in summary
+    assert leaked_key not in summary
+    assert "[redacted]" in summary
     assert "fortuna-backups/test" not in summary
 
 

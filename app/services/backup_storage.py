@@ -4,6 +4,7 @@ import datetime as dt
 import hashlib
 import hmac
 import json
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -65,6 +66,10 @@ def _safe_summary(value: str | None, *, fallback: str = "The storage provider co
     for marker in ("secret", "password", "token", "key=", "credential", "authorization"):
         redacted = redacted.replace(marker, "[redacted]")
         redacted = redacted.replace(marker.upper(), "[redacted]")
+    redacted = re.sub(r"(?i)(the\s+key\s+)'[^']+'", r"\1'[redacted]'", redacted)
+    redacted = re.sub(r"(?i)(access[_ -]?key(?:id)?\s*[:=]\s*)[A-Za-z0-9+/=_-]{8,}", r"\1[redacted]", redacted)
+    redacted = re.sub(r"(?i)(application[_ -]?key\s*[:=]\s*)[A-Za-z0-9+/=_-]{8,}", r"\1[redacted]", redacted)
+    redacted = re.sub(r"\b[A-Za-z0-9_-]{20,}\b", "[redacted]", redacted)
     return redacted[:300]
 
 
