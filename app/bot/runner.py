@@ -224,6 +224,7 @@ PENDING_PROXY_LOCATION_EDITS: dict[int, int] = {}
 PENDING_PROBLEM_REPORTS: dict[int, dict[str, int | str | None]] = {}
 SELFTEST_BACKGROUND_TIMEOUT_SECONDS = float(os.getenv("SELFTEST_BACKGROUND_TIMEOUT_SECONDS", "10"))
 SIMPLE_RENDER_TIMEOUT_SECONDS = float(os.getenv("BOT_SIMPLE_RENDER_TIMEOUT_SECONDS", "3"))
+NAVIGATION_VERIFY_TIMEOUT_SECONDS = float(os.getenv("BOT_NAVIGATION_VERIFY_TIMEOUT_SECONDS", "45"))
 TELEGRAM_API_TIMEOUT_SECONDS = float(os.getenv("BOT_TELEGRAM_API_TIMEOUT_SECONDS", "8"))
 S3_STORAGE_TEST_TIMEOUT_SECONDS = float(os.getenv("S3_STORAGE_TEST_TIMEOUT_SECONDS", "30"))
 RECOVERY_BACKGROUND_JOB_TIMEOUT_SECONDS = float(os.getenv("RECOVERY_BACKGROUND_JOB_TIMEOUT_SECONDS", "900"))
@@ -754,7 +755,9 @@ def _page_uses_fast_path(page: str) -> bool:
 
 
 def _render_timeout_for_page(page: str) -> float:
-    if page in {"reliability:verify", "production_observability", "callback_failure_review"}:
+    if page == "reliability:verify":
+        return max(SIMPLE_RENDER_TIMEOUT_SECONDS, NAVIGATION_VERIFY_TIMEOUT_SECONDS)
+    if page in {"production_observability", "callback_failure_review"}:
         return max(SIMPLE_RENDER_TIMEOUT_SECONDS, 10.0)
     if page.startswith(("ai_brain", "search")):
         return max(SIMPLE_RENDER_TIMEOUT_SECONDS, 6.0)

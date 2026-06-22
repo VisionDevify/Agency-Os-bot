@@ -309,6 +309,32 @@ def test_render_command_timeout_raises_without_dirtying_main_session(monkeypatch
         assert session.is_active is True
 
 
+def test_verify_navigation_uses_dedicated_render_timeout(monkeypatch) -> None:
+    import time
+
+    with session_scope() as session:
+        owner = _owner(session)
+
+        def slow_but_valid_render(**kwargs):
+            time.sleep(0.01)
+            return SimpleNamespace(text="Navigation Verification\n\nPassed Routes: 1", reply_markup=None)
+
+        monkeypatch.setattr(runner_module, "SIMPLE_RENDER_TIMEOUT_SECONDS", 0.001)
+        monkeypatch.setattr(runner_module, "NAVIGATION_VERIFY_TIMEOUT_SECONDS", 0.05)
+        monkeypatch.setattr(runner_module, "_render_command_in_isolated_session", slow_but_valid_render)
+
+        screen = asyncio.run(
+            runner_module._render_command_with_timeout(
+                "verify_navigation",
+                principal=_principal(owner),
+                user=owner,
+                session=session,
+            )
+        )
+
+        assert "Navigation Verification" in screen.text
+
+
 def test_fast_path_command_center_avoids_isolated_thread_render(monkeypatch) -> None:
     with session_scope() as session:
         owner = _owner(session)
