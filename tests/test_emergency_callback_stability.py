@@ -32,10 +32,11 @@ def test_callback_error_fallback_screen_has_safe_recovery_buttons() -> None:
     screen = render_callback_error_page("proxies", error_id=12)
     callbacks = _callbacks(screen.reply_markup)
 
-    assert "Fortuna encountered a problem loading this screen." in screen.text
+    assert "Something went wrong opening that screen." in screen.text
+    assert "Fortuna logged it safely." in screen.text
     assert "nav:menu" in callbacks
     assert "nav:proxies" in callbacks
-    assert "nav:callback_error:report:12" in callbacks
+    assert "nav:reliability" in callbacks
 
 
 def test_callback_failure_logging_creates_diagnostics_records() -> None:
@@ -123,9 +124,11 @@ def test_callback_failure_review_renders_empty_state() -> None:
 
         screen = render_callback_failure_review_page(session, owner)
 
-        assert "Callback Failure Review" in screen.text
-        assert "No callback failures are currently logged" in screen.text
+        assert "Button Safety" in screen.text
+        assert "Status:\nClear" in screen.text
+        assert "No buttons are currently crashing" in screen.text
         assert "nav:button_health:run" in _callbacks(screen.reply_markup)
+        assert "nav:callback_failure_review:details" in _callbacks(screen.reply_markup)
 
 
 def test_callback_failure_review_classifies_logged_failures() -> None:
@@ -141,11 +144,19 @@ def test_callback_failure_review_classifies_logged_failures() -> None:
         )
 
         screen = render_callback_failure_review_page(session, owner)
+        details = render_callback_failure_review_page(session, owner, mode="details")
+        problems = render_callback_failure_review_page(session, owner, mode="problems")
 
-        assert "proxy:1:rotate" in screen.text
-        assert "Exception: RuntimeError" in screen.text
-        assert "Root cause: Proxy screen or proxy action failed." in screen.text
-        assert "proxy renderer failed" not in screen.text
+        assert "Button Safety" in screen.text
+        assert "proxy:1:rotate" not in screen.text
+        assert "Exception: RuntimeError" not in screen.text
+        assert "Problem Buttons" in problems.text
+        assert "Proxy 1 Rotate" in problems.text
+        assert "proxy renderer failed" not in problems.text
+        assert "proxy:1:rotate" in details.text
+        assert "Exception: RuntimeError" in details.text
+        assert "Root cause: Proxy screen or proxy action failed." in details.text
+        assert "proxy renderer failed" not in details.text
 
 
 def test_button_health_report_includes_recent_failure_counts() -> None:
@@ -185,9 +196,16 @@ def test_callback_failure_review_route_renders() -> None:
         principal = PermissionPrincipal(telegram_id=owner.telegram_id, is_owner=True, role=RoleName.OWNER)
 
         screen = screen_for_page("callback_failure_review", principal, session=session, user=owner)
+        problems = screen_for_page("callback_failure_review:problems", principal, session=session, user=owner)
+        history = screen_for_page("callback_failure_review:history", principal, session=session, user=owner)
+        details = screen_for_page("callback_failure_review:details", principal, session=session, user=owner)
 
-        assert "Callback Failure Review" in screen.text
-        assert "Callback errors:" in screen.text
+        assert "Button Safety" in screen.text
+        assert "Callback errors:" not in screen.text
+        assert "Problem Buttons" in problems.text
+        assert "Fixed History" in history.text
+        assert "Callback Failure Technical Details" in details.text
+        assert "Callback errors:" in details.text
 
 
 def _owner_principal(session):

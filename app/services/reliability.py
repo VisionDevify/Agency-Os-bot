@@ -76,6 +76,20 @@ class VerificationHarnessResult:
     average_latency_label: str
 
 
+@dataclass(frozen=True)
+class RouteHealthEntry:
+    route_name: str
+    display_label: str
+    parent_route: str
+    owner_only: bool
+    expected_render_function: str
+    last_success_at: datetime | None
+    last_failure_at: datetime | None
+    health_status: str
+    average_latency_ms: int
+    latest_safe_error: str | None = None
+
+
 SHORTCUT_COMMANDS: tuple[ShortcutCommand, ...] = (
     ShortcutCommand("home", "menu", owner_only=False, description="Open Home."),
     ShortcutCommand("command_center", "command_center", owner_only=False, description="Open Fortuna Command Center."),
@@ -508,6 +522,85 @@ def reliability_summary(session: Session) -> dict[str, object]:
         "team_rollout_status": team_rollout_status,
         "team_rollout_blockers": rollout_blockers,
     }
+
+
+def _friendly_route_label(value: str | None) -> str:
+    raw = (value or "button").replace("nav:", "").replace("_", " ").replace(":", " ")
+    words = [word for word in raw.split() if word]
+    if not words:
+        return "Button"
+    replacements = {
+        "ai": "AI",
+        "coo": "COO",
+        "s3": "S3",
+        "ui": "UI",
+    }
+    return " ".join(replacements.get(word.lower(), word.capitalize()) for word in words)
+
+
+def route_health_registry(session: Session) -> list[RouteHealthEntry]:
+    from app.bot.navigation_stack import parent_page_for
+
+    review = callback_failure_review(session, limit=50)
+    active_by_page = {item.page: item for item in review.active_items}
+    entries: list[RouteHealthEntry] = []
+    for shortcut in SHORTCUT_COMMANDS:
+        route_name = f"command:{shortcut.command}"
+        last_success = session.scalar(
+            select(CallbackLatencyRecord)
+            .where(
+                CallbackLatencyRecord.callback_route == route_name,
+                CallbackLatencyRecord.result == "succeeded",
+            )
+            .order_by(desc(CallbackLatencyRecord.received_at), desc(CallbackLatencyRecord.id))
+            .limit(1)
+        )
+        last_failure = session.scalar(
+            select(CallbackLatencyRecord)
+            .where(
+                CallbackLatencyRecord.callback_route == route_name,
+                CallbackLatencyRecord.result.in_(("failed_safe", "timed_out")),
+            )
+            .order_by(desc(CallbackLatencyRecord.received_at), desc(CallbackLatencyRecord.id))
+            .limit(1)
+        )
+        average_latency = session.scalar(
+            select(func.avg(CallbackLatencyRecord.total_latency_ms)).where(
+                CallbackLatencyRecord.callback_route == route_name,
+                CallbackLatencyRecord.total_latency_ms.is_not(None),
+            )
+        )
+        active_failure = active_by_page.get(shortcut.page)
+        status = "healthy"
+        latest_error = None
+        if active_failure is not None:
+            status = "failing"
+            latest_error = active_failure.next_action
+        elif last_failure is not None and (
+            last_success is None
+            or (
+                last_failure.received_at is not None
+                and last_success.received_at is not None
+                and last_failure.received_at > last_success.received_at
+            )
+        ):
+            status = "needs_review"
+            latest_error = last_failure.safe_error_summary
+        entries.append(
+            RouteHealthEntry(
+                route_name=route_name,
+                display_label=_friendly_route_label(shortcut.page),
+                parent_route=parent_page_for(shortcut.page),
+                owner_only=shortcut.owner_only,
+                expected_render_function=shortcut.page,
+                last_success_at=last_success.received_at if last_success is not None else None,
+                last_failure_at=last_failure.received_at if last_failure is not None else None,
+                health_status=status,
+                average_latency_ms=round(float(average_latency or 0)),
+                latest_safe_error=latest_error,
+            )
+        )
+    return entries
 
 
 def working_screen_for(command: ShortcutCommand) -> Screen | None:

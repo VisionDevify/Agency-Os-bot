@@ -1383,7 +1383,7 @@ def screen_for_page(
         or normalized == "first_workspace"
         or normalized.startswith("ui_self_test")
         or normalized.startswith("button_health")
-        or normalized == "callback_failure_review"
+        or normalized.startswith("callback_failure_review")
         or normalized == "debug_last_error"
         or normalized.startswith("callback_error:report")
         or normalized.startswith("settings:report_problem")

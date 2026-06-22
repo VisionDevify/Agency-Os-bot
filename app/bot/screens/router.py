@@ -297,6 +297,12 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_button_health_report_page(session, user, details=True)
     if page == "callback_failure_review" and session is not None:
         return render_callback_failure_review_page(session, user)
+    if page == "callback_failure_review:problems" and session is not None:
+        return render_callback_failure_review_page(session, user, mode="problems")
+    if page == "callback_failure_review:history" and session is not None:
+        return render_callback_failure_review_page(session, user, mode="history")
+    if page == "callback_failure_review:details" and session is not None:
+        return render_callback_failure_review_page(session, user, mode="details")
     if page == "debug_last_error" and session is not None:
         return render_debug_last_error_page(session, user)
     if page.startswith("callback_error:report"):

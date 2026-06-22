@@ -224,10 +224,15 @@ def test_callback_failure_review_screen_separates_historical_from_active() -> No
         )
 
         screen = render_callback_failure_review_page(session, owner)
+        history = render_callback_failure_review_page(session, owner, mode="history")
+        details = render_callback_failure_review_page(session, owner, mode="details")
 
-        assert "No new callback failures since latest deployment" in screen.text
-        assert "Historical Fixed Issues:" in screen.text
-        assert "Active Failures:" in screen.text
+        assert "No buttons are currently crashing" in screen.text
+        assert "Historical Fixed Issues:" not in screen.text
+        assert "Fixed History" in history.text
+        assert "COO Briefing" in history.text
+        assert "Historical Fixed Issues:" in details.text
+        assert "Active Failures:" in details.text
 
 
 def test_button_health_details_reports_validating_callback_errors_without_active_alert() -> None:

@@ -65,6 +65,8 @@ def parent_page_for(page: str | None) -> str:
         return "settings"
     if current in {"button_health", "button_health:run", "button_health:details", "callback_failure_review", "debug_last_error", "production_status"}:
         return "settings"
+    if current.startswith("callback_failure_review:"):
+        return "callback_failure_review"
     if current in {"models:list", "models:dashboard", "models:search"}:
         return "models"
     if current == "first_workspace":

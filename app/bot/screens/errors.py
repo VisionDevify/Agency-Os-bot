@@ -13,19 +13,19 @@ from app.services.team_operations import format_user_datetime
 
 
 def render_callback_error_page(page: str, *, error_id: int | None = None) -> Screen:
-    report_page = f"callback_error:report:{error_id}" if error_id else "callback_error:report"
     return Screen(
         text=(
-            "Fortuna encountered a problem loading this screen.\n\n"
-            "The issue was logged so it can be fixed. The bot is still running."
+            "Something went wrong opening that screen.\n\n"
+            "Fortuna logged it safely.\n\n"
+            "Try Home or Refresh."
         ),
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
                 [
                     InlineKeyboardButton(text="Home", callback_data=callback_for("menu")),
-                    InlineKeyboardButton(text="Retry", callback_data=callback_for(page or "menu")),
+                    InlineKeyboardButton(text="Try Again", callback_data=callback_for(page or "menu")),
                 ],
-                [InlineKeyboardButton(text="Report Problem", callback_data=callback_for(report_page))],
+                [InlineKeyboardButton(text="Reliability Center", callback_data=callback_for("reliability"))],
             ]
         ),
     )
@@ -294,10 +294,114 @@ def render_button_health_report_page(
     )
 
 
-def render_callback_failure_review_page(session: Session, user: User | None = None) -> Screen:
+def _friendly_page_label(value: str | None) -> str:
+    raw = (value or "button").replace("nav:", "").replace("_", " ").replace(":", " ")
+    replacements = {"ai": "AI", "coo": "COO", "s3": "S3", "ui": "UI"}
+    words = [word for word in raw.split() if word]
+    return " ".join(replacements.get(word.lower(), word.capitalize()) for word in words) if words else "Button"
+
+
+def _callback_failure_markup(*, back_to: str = "settings") -> InlineKeyboardMarkup:
+    rows = [
+        [
+            InlineKeyboardButton(text="Problem Buttons", callback_data=callback_for("callback_failure_review:problems")),
+            InlineKeyboardButton(text="Fixed History", callback_data=callback_for("callback_failure_review:history")),
+        ],
+        [InlineKeyboardButton(text="Technical Details", callback_data=callback_for("callback_failure_review:details"))],
+        [InlineKeyboardButton(text="Run Button Check", callback_data=callback_for("button_health:run"))],
+    ]
+    rows.extend(page_controls(back_to=back_to))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def render_callback_failure_review_page(
+    session: Session,
+    user: User | None = None,
+    *,
+    mode: str = "summary",
+) -> Screen:
     review = callback_failure_review(session, limit=20)
+    problem_items = review.active_items + review.validating_items
+    if mode == "problems":
+        lines = ["Problem Buttons", ""]
+        if not problem_items:
+            lines.extend(
+                [
+                    "No buttons are currently crashing.",
+                    "",
+                    "What this means:",
+                    "Fresh checks did not find an active button failure.",
+                    "",
+                    "Next Best Move:",
+                    "Keep using Verify Navigation after releases.",
+                ]
+            )
+        else:
+            lines.extend(["These buttons need attention or a fresh recheck before broad team rollout.", ""])
+            for item in problem_items[:8]:
+                when = format_user_datetime(user, item.last_seen_at or item.created_at) if (item.last_seen_at or item.created_at) else "Unknown"
+                lines.extend(
+                    [
+                        f"Button: {_friendly_page_label(item.page)}",
+                        f"Where it lives: {_friendly_page_label(item.page.rsplit(':', 1)[0])}",
+                        "What happens: It did not open cleanly during the latest check.",
+                        f"Last failed: {when}",
+                        f"Next fix: {item.next_action}",
+                        "",
+                    ]
+                )
+        return Screen("\n".join(lines), _callback_failure_markup(back_to="callback_failure_review"))
+
+    if mode == "history":
+        lines = ["Fixed History", ""]
+        if not review.historical_items and not review.resolved_items:
+            lines.extend(["No fixed button failures are stored yet.", "", "Next Best Move:", "Nothing urgent."])
+        else:
+            lines.extend(["These issues were fixed or revalidated and do not count as active problems.", ""])
+            for item in (review.historical_items + review.resolved_items)[:8]:
+                when = format_user_datetime(user, item.revalidated_at or item.created_at) if (item.revalidated_at or item.created_at) else "Unknown"
+                lines.extend(
+                    [
+                        f"- {_friendly_page_label(item.page)}",
+                        f"  Status: {item.lifecycle_status.replace('_', ' ').title()}",
+                        f"  Last checked: {when}",
+                    ]
+                )
+            lines.extend(["", "Technical details stay available for debugging."])
+        return Screen("\n".join(lines), _callback_failure_markup(back_to="callback_failure_review"))
+
+    if mode != "details":
+        problem_count = len(problem_items)
+        if problem_count:
+            status = "Needs Review"
+            meaning = f"{problem_count} button(s) need attention or a fresh recheck. Fortuna is still logging safely and staying online."
+            next_move = "Open Problem Buttons."
+        else:
+            status = "Clear"
+            meaning = "No buttons are currently crashing. Old fixed issues are saved in Fixed History."
+            next_move = "No urgent action needed."
+        lines = [
+            "Button Safety",
+            "",
+            "Status:",
+            status,
+            "",
+            "What this means:",
+            meaning,
+            "",
+            "Active Problems:",
+            str(problem_count),
+            "",
+            "Recent Fixes:",
+            f"{len(review.historical_items) + len(review.resolved_items)} saved for history.",
+            "",
+            "Next Best Move:",
+            next_move,
+        ]
+        return Screen("\n".join(lines), _callback_failure_markup(back_to="settings"))
+
     lines = [
-        "Callback Failure Review",
+        "Callback Failure Technical Details",
         "",
         "Fortuna checked callback errors, friction items, callback recommendations, audit logs, and event logs.",
         "",
@@ -379,13 +483,7 @@ def render_callback_failure_review_page(session: Session, user: User | None = No
             )
     return Screen(
         text="\n".join(lines),
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="Run Button Health", callback_data=callback_for("button_health:run"))],
-                [InlineKeyboardButton(text="Last Error", callback_data=callback_for("debug_last_error"))],
-                *page_controls(back_to="settings"),
-            ]
-        ),
+        reply_markup=_callback_failure_markup(back_to="callback_failure_review"),
     )
 
 

@@ -27,6 +27,7 @@ from app.services.reliability import (
     record_callback_latency,
     reliability_summary,
     render_command_shortcut,
+    route_health_registry,
     run_command_verification_harness,
     start_reliability_job,
     update_reliability_job,
@@ -318,6 +319,8 @@ def test_reliability_center_excludes_historical_when_healthy() -> None:
         assert "Reliability Center" in screen.text
         assert "Status:" in screen.text
         assert "Active Issues:" in screen.text
+        assert "Button Reliability:" not in screen.text
+        assert "Problem Buttons" in str(screen.reply_markup)
 
 
 def test_recent_failed_job_counts_as_reliability_issue() -> None:
@@ -420,9 +423,23 @@ def test_slow_callback_appears_in_reliability_and_observability() -> None:
         screen = render_page("reliability:slow", session=session, user=owner)
         summary = production_observability_summary(session)
 
-        assert "ai_brain:evidence" in screen.text
+        assert "AI Brain Evidence" in screen.text
+        assert "ai_brain:evidence" not in screen.text
         assert summary["reliability_status"] == "needs_review"
         assert summary["reliability_slowest_area"] == "ai_brain:evidence"
+
+
+def test_route_health_registry_contains_required_fields() -> None:
+    with session_scope() as session:
+        entries = route_health_registry(session)
+        home = next(item for item in entries if item.route_name == "command:home")
+
+        assert home.display_label
+        assert home.parent_route
+        assert isinstance(home.owner_only, bool)
+        assert home.expected_render_function == "menu"
+        assert home.health_status in {"healthy", "needs_review", "failing", "disabled_safe"}
+        assert isinstance(home.average_latency_ms, int)
 
 
 def test_shortcut_registry_contains_required_commands() -> None:
