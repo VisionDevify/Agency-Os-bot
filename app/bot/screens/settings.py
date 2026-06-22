@@ -12,6 +12,7 @@ from app.services.recovery import latest_recovery_job_summary, recovery_risk_ass
 from app.services.audit import sanitize_details
 from app.services.system_truth import reconcile_stale_system_warnings, system_truth
 from app.services.chat_cleanup import chat_cleanup_metrics, get_or_create_chat_cleanup_preference
+from app.services.freeze_watchdog import freeze_watchdog
 from app.services.help_brain import (
     latest_ui_self_test_run,
     notification_pilot_status,
@@ -876,6 +877,15 @@ def render_production_observability_page(
         f"Active Issues: {summary['reliability_active_issues']}",
         f"Active Jobs: {summary['reliability_active_jobs']}",
         "",
+        "Freeze Watchdog:",
+        f"Last Update: {_observability_time(summary.get('freeze_last_update_received_at'), user)}",
+        f"Last Callback Ack: {_observability_time(summary.get('freeze_last_callback_acknowledged_at'), user)}",
+        f"Last Render: {_observability_time(summary.get('freeze_last_successful_render_at'), user)}",
+        f"Active Route: {summary.get('freeze_current_active_route') or 'None'}",
+        f"Background Tasks: {summary.get('freeze_active_background_tasks', 0)}",
+        f"Pending Tasks: {summary.get('freeze_pending_task_count') if summary.get('freeze_pending_task_count') is not None else 'Unavailable'}",
+        f"Last Exception: {summary.get('freeze_last_exception_type') or 'None'}",
+        "",
         "Chat Cleanup:",
         f"Status: {summary['chat_cleanup_label']}",
         f"Evidence: {summary['chat_cleanup_evidence']}",
@@ -1171,6 +1181,7 @@ def render_botstatus_page(
             ),
         )
 
+    watchdog = freeze_watchdog.summary()
     lines = [
         "Fortuna Bot Status Technical Details",
         "",
@@ -1203,6 +1214,16 @@ def render_botstatus_page(
         f"Latest Backup Status: {recovery_job['latest_backup_status']}",
         f"Latest Restore Status: {recovery_job['latest_restore_status']}",
         f"Recovery Timed Out Marked: {recovery_job['timed_out_marked']}",
+        "",
+        "Freeze Watchdog:",
+        f"- Last update received: {_observability_time(watchdog.get('last_update_received_at'), user)}",
+        f"- Last callback acknowledged: {_observability_time(watchdog.get('last_callback_acknowledged_at'), user)}",
+        f"- Last successful render: {_observability_time(watchdog.get('last_successful_render_at'), user)}",
+        f"- Current active route: {watchdog.get('current_active_route') or 'None'}",
+        f"- Active background tasks: {watchdog.get('active_background_tasks', 0)}",
+        f"- Pending asyncio tasks: {watchdog.get('pending_task_count') if watchdog.get('pending_task_count') is not None else 'Unavailable'}",
+        f"- Last exception: {watchdog.get('last_exception_type') or 'None'}",
+        f"- Event loop lag: {watchdog.get('last_event_loop_lag_ms') if watchdog.get('last_event_loop_lag_ms') is not None else 'Unavailable'}",
         "",
         "Heartbeat Classification:",
         f"- Active polling owners: {', '.join(diagnostics['active_polling_owners']) if diagnostics['active_polling_owners'] else 'None'}",
@@ -1619,6 +1640,7 @@ def render_ui_self_test_page(
             lines.append("")
             lines.append("Warnings:")
             lines.extend(f"- {item}" for item in latest.warnings_json[:5])
+    watchdog = freeze_watchdog.summary()
     lines.extend(
         [
             "",
@@ -1645,6 +1667,14 @@ def render_ui_self_test_page(
             f"Remaining: {cleanup.remaining_count}",
             f"Extra Active Menus: {cleanup.multiple_active_count}",
             f"Next: {cleanup.next_action}",
+            "",
+            "Freeze Watchdog:",
+            f"Last update received: {_observability_time(watchdog.get('last_update_received_at'), actor)}",
+            f"Last callback acknowledged: {_observability_time(watchdog.get('last_callback_acknowledged_at'), actor)}",
+            f"Last successful render: {_observability_time(watchdog.get('last_successful_render_at'), actor)}",
+            f"Current route: {watchdog.get('current_active_route') or 'None'}",
+            f"Active background tasks: {watchdog.get('active_background_tasks', 0)}",
+            f"Last exception: {watchdog.get('last_exception_type') or 'None'}",
         ]
     )
     lines.extend(["", "Recent Help Questions:"])

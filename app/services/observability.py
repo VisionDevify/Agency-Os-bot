@@ -26,6 +26,7 @@ from app.services.decision_engine import decision_memory_summary, generate_decis
 from app.services.decision_quality import safe_decision_quality_report
 from app.services.decision_trends import safe_decision_trend_report, safe_predictive_coo_report
 from app.services.evidence_capture import safe_evidence_capture_report
+from app.services.freeze_watchdog import freeze_watchdog
 from app.services.help_brain import help_questions_today, notification_pilot_status, proxy_pilot_status
 from app.services.heartbeats import list_heartbeats, system_status_summary
 from app.services.bot_instances import bot_instance_diagnostics
@@ -343,6 +344,7 @@ def production_observability_summary(session: Session) -> dict[str, object]:
     if agency_awareness_meaningful and agency_awareness["status"] != "healthy":
         observability_issues.append(f"Agency Awareness: {agency_awareness['next_action']}")
 
+    watchdog = freeze_watchdog.summary()
     return {
         "app_display_name": build_metadata["app_name"],
         "app_name": build_metadata["app_name"],
@@ -600,4 +602,11 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         "reliability_slowest_area": reliability["slowest_area"],
         "reliability_active_issues": reliability["active_issue_count"],
         "reliability_active_jobs": len(reliability["active_jobs"]),
+        "freeze_last_update_received_at": watchdog.get("last_update_received_at"),
+        "freeze_last_callback_acknowledged_at": watchdog.get("last_callback_acknowledged_at"),
+        "freeze_last_successful_render_at": watchdog.get("last_successful_render_at"),
+        "freeze_current_active_route": watchdog.get("current_active_route") or "None",
+        "freeze_active_background_tasks": watchdog.get("active_background_tasks", 0),
+        "freeze_pending_task_count": watchdog.get("pending_task_count"),
+        "freeze_last_exception_type": watchdog.get("last_exception_type") or "None",
     }

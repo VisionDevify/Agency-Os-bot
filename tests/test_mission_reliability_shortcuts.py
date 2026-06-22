@@ -14,6 +14,7 @@ from app.bot import runner as runner_module
 from app.bot.screens.recovery import render_backup_history_page
 from app.bot.screens.reliability import render_reliability_center_page, render_reliability_verify_page
 from app.models.recovery import BackupRun
+from app.models.recovery import BackupStorageTarget
 from app.models.reliability import CallbackLatencyRecord, ReliabilityJob
 from app.services.auth import setup_owner_if_needed
 from app.services.observability import production_observability_summary
@@ -33,6 +34,7 @@ from app.services.reliability import (
     update_reliability_job,
     working_screen_for,
 )
+from app.services.freeze_watchdog import freeze_watchdog
 from tests.utils import session_scope
 
 
@@ -69,6 +71,17 @@ class _FakeTelegramMessage:
     async def answer(self, text: str, reply_markup=None):
         self.answers.append(text)
         return _FakeSentMessage(1000 + len(self.answers))
+
+
+class _SlowCallback:
+    data = "nav:slow"
+
+    def __init__(self) -> None:
+        self.answered = False
+
+    async def answer(self, text: str | None = None, show_alert: bool = False):
+        await asyncio.sleep(0.05)
+        self.answered = True
 
 
 def test_latency_labels_and_records_are_persisted() -> None:
@@ -242,6 +255,99 @@ def test_selftest_background_timeout_sends_visible_fallback(monkeypatch) -> None
 
     assert bot.messages
     assert "taking longer than expected" in bot.messages[0]
+
+
+def test_safe_callback_answer_is_timeout_bounded(monkeypatch) -> None:
+    monkeypatch.setattr(runner_module, "TELEGRAM_API_TIMEOUT_SECONDS", 0.001)
+    callback = _SlowCallback()
+
+    asyncio.run(runner_module._safe_callback_answer(callback, "Working"))
+
+    assert callback.answered is False
+
+
+def test_render_command_timeout_raises_without_dirtying_main_session(monkeypatch) -> None:
+    import time
+
+    with session_scope() as session:
+        owner = _owner(session)
+
+        def slow_render(**kwargs):
+            time.sleep(0.05)
+            return SimpleNamespace(text="late", reply_markup=None)
+
+        monkeypatch.setattr(runner_module, "SIMPLE_RENDER_TIMEOUT_SECONDS", 0.001)
+        monkeypatch.setattr(runner_module, "_render_command_in_isolated_session", slow_render)
+
+        try:
+            asyncio.run(
+                runner_module._render_command_with_timeout(
+                    "home",
+                    principal=_principal(owner),
+                    user=owner,
+                    session=session,
+                )
+            )
+        except TimeoutError:
+            pass
+        else:
+            raise AssertionError("command render should time out")
+
+        assert session.is_active is True
+
+
+def test_tracked_background_task_records_exception() -> None:
+    async def broken():
+        raise RuntimeError("boom")
+
+    async def scenario():
+        await runner_module._tracked_background_task(broken(), task_name="test_broken")
+
+    asyncio.run(scenario())
+
+    snapshot = freeze_watchdog.summary()
+    assert snapshot["last_exception_type"] == "RuntimeError"
+    assert snapshot["last_exception_route"] == "test_broken"
+
+
+def test_test_s3_storage_command_schedules_background_job_without_inline_provider_call(monkeypatch) -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    TestSessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
+    with TestSessionLocal() as session:
+        owner = setup_owner_if_needed(session, telegram_user_id=6701, owner_telegram_id=6701, display_name="Owner")
+        session.add(
+            BackupStorageTarget(
+                name="S3-Compatible Backup Storage",
+                target_type="s3_compatible",
+                enabled=True,
+                encrypted=True,
+                connection_status="pending",
+            )
+        )
+        session.commit()
+
+    message = _FakeTelegramMessage()
+    message.text = "/test_s3_storage"
+    scheduled: list[str] = []
+
+    def fail_if_inline(*args, **kwargs):
+        raise AssertionError("storage provider test must not run inline")
+
+    def fake_background(coro, *, task_name):
+        scheduled.append(task_name)
+        coro.close()
+        return None
+
+    monkeypatch.setattr(runner_module, "SessionLocal", TestSessionLocal)
+    monkeypatch.setattr(runner_module.settings, "owner_telegram_id", 6701, raising=False)
+    monkeypatch.setattr(runner_module, "test_storage_target_connection", fail_if_inline)
+    monkeypatch.setattr(runner_module, "_tracked_background_task", fake_background)
+
+    asyncio.run(runner_module.shortcut_command(message))
+
+    assert scheduled == ["backup_storage_test"]
+    assert any("S3-Compatible" in answer or "Backup Storage" in answer for answer in message.answers)
 
 
 def test_verify_navigation_harness_reports_passed_routes(monkeypatch) -> None:

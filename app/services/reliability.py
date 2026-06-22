@@ -15,6 +15,7 @@ from app.models.reliability import CallbackLatencyRecord, ReliabilityJob, Respon
 from app.models.user import User
 from app.services.audit import sanitize_details
 from app.services.callbacks import callback_failure_review
+from app.services.freeze_watchdog import freeze_watchdog
 from app.services.recovery import latest_recovery_job_summary, recovery_risk_assessment
 from app.services.permissions import PermissionPrincipal, RoleName
 
@@ -521,6 +522,7 @@ def reliability_summary(session: Session) -> dict[str, object]:
         "webhook_status": "Healthy",
         "team_rollout_status": team_rollout_status,
         "team_rollout_blockers": rollout_blockers,
+        "freeze_watchdog": freeze_watchdog.summary(),
     }
 
 

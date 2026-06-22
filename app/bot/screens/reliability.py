@@ -129,6 +129,16 @@ def render_reliability_center_page(session: Session, user: User | None = None, *
         for entry in route_health_registry(session)
         if entry.health_status != "healthy"
     ][:10] or ["- All tracked command routes are healthy or awaiting fresh evidence."]
+    watchdog = dict(summary.get("freeze_watchdog") or {})
+    watchdog_lines = [
+        f"- Last update: {format_user_datetime(user, watchdog.get('last_update_received_at')) if watchdog.get('last_update_received_at') else 'Not seen yet'}",
+        f"- Last callback ack: {format_user_datetime(user, watchdog.get('last_callback_acknowledged_at')) if watchdog.get('last_callback_acknowledged_at') else 'Not seen yet'}",
+        f"- Last successful render: {format_user_datetime(user, watchdog.get('last_successful_render_at')) if watchdog.get('last_successful_render_at') else 'Not seen yet'}",
+        f"- Active route: {watchdog.get('current_active_route') or 'None'}",
+        f"- Background tasks: {watchdog.get('active_background_tasks', 0)}",
+        f"- Pending asyncio tasks: {watchdog.get('pending_task_count') if watchdog.get('pending_task_count') is not None else 'Unavailable'}",
+        f"- Latest exception: {watchdog.get('last_exception_type') or 'None'}",
+    ]
     lines = [
         "Reliability Details",
         "",
@@ -152,6 +162,9 @@ def render_reliability_center_page(session: Session, user: User | None = None, *
         "",
         "Recent Jobs:",
         *job_lines,
+        "",
+        "Freeze Watchdog:",
+        *watchdog_lines,
         "",
         "Historical records stay available for learning, but only active issues count against reliability.",
     ]

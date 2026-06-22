@@ -41,13 +41,14 @@ from app.bot.screens import (
     render_restore_job_started_page,
     render_ui_self_test_page,
 )
+from app.bot.screens.errors import render_button_health_report_page
 from app.core.config import settings
 from app.core.logging import configure_logging
 from app.db.session import SessionLocal
 from app.models.account import AccountAuthSession
 from app.models.button_issue import ButtonIssue
 from app.models.opportunity import CREATOR_WATCH_PRIORITIES, OPPORTUNITY_PRIORITIES, POST_WATCH_TYPES, CreatorWatch, PostWatch
-from app.models.recovery import BackupRun, RestoreTestRun
+from app.models.recovery import BackupRun, BackupStorageTarget, RestoreTestRun
 from app.models.reporting import NotificationDeliveryAttempt
 from app.models.user import User
 from app.services.auth import (
@@ -117,6 +118,7 @@ from app.services.notifications import (
     mark_delivery_skipped,
 )
 from app.services.callbacks import log_callback_failure
+from app.services.button_health import run_button_issue_scan
 from app.services.callback_protection import (
     CallbackLockManager,
     RedisIdempotencyStore,
@@ -141,6 +143,7 @@ from app.services.reliability import (
     working_screen_for,
     working_screen_for_page,
 )
+from app.services.freeze_watchdog import freeze_watchdog
 from app.services.chat_cleanup import (
     STALE_MENU_RESPONSE,
     TEMPORARY_ERROR,
@@ -220,36 +223,54 @@ PENDING_PROXY_WIZARDS: dict[int, dict[str, str]] = {}
 PENDING_PROXY_LOCATION_EDITS: dict[int, int] = {}
 PENDING_PROBLEM_REPORTS: dict[int, dict[str, int | str | None]] = {}
 SELFTEST_BACKGROUND_TIMEOUT_SECONDS = float(os.getenv("SELFTEST_BACKGROUND_TIMEOUT_SECONDS", "10"))
+SIMPLE_RENDER_TIMEOUT_SECONDS = float(os.getenv("BOT_SIMPLE_RENDER_TIMEOUT_SECONDS", "3"))
+TELEGRAM_API_TIMEOUT_SECONDS = float(os.getenv("BOT_TELEGRAM_API_TIMEOUT_SECONDS", "8"))
+S3_STORAGE_TEST_TIMEOUT_SECONDS = float(os.getenv("S3_STORAGE_TEST_TIMEOUT_SECONDS", "30"))
+RECOVERY_BACKGROUND_JOB_TIMEOUT_SECONDS = float(os.getenv("RECOVERY_BACKGROUND_JOB_TIMEOUT_SECONDS", "900"))
 
 
-def _mark_backup_job_failed(run_identifier: str, error_summary: str) -> None:
+def _tracked_background_task(coro, *, task_name: str) -> asyncio.Task:
+    async def runner():
+        token = freeze_watchdog.record_task_started(task_name)
+        try:
+            return await coro
+        except Exception as exc:
+            freeze_watchdog.record_exception(route=task_name, exc=exc)
+            logger.exception("Background task failed safely: %s", task_name)
+        finally:
+            freeze_watchdog.record_task_finished(token)
+
+    return asyncio.create_task(runner())
+
+
+def _mark_backup_job_failed(run_identifier: str, error_summary: str, *, status: str = "failed") -> None:
     if SessionLocal is None:
         return
     with SessionLocal() as session:
         run = session.scalar(select(BackupRun).where(BackupRun.run_identifier == run_identifier))
         if run is not None and run.status in {"pending", "running"}:
-            run.status = "failed"
+            run.status = status
             run.finished_at = datetime.now(UTC)
             run.error_summary = error_summary
             run.result_summary = "Backup did not finish with verified artifact evidence."
             update_reliability_job(
                 session,
                 f"backup:{run_identifier}",
-                status="failed",
-                current_step="Backup failed safely",
+                status=status,
+                current_step="Backup timed out" if status == "timed_out" else "Backup failed safely",
                 safe_error_summary=error_summary,
                 result_summary="Backup did not finish with verified artifact evidence.",
             )
             session.commit()
 
 
-def _mark_restore_job_failed(run_identifier: str, error_summary: str) -> None:
+def _mark_restore_job_failed(run_identifier: str, error_summary: str, *, status: str = "failed") -> None:
     if SessionLocal is None:
         return
     with SessionLocal() as session:
         run = session.scalar(select(RestoreTestRun).where(RestoreTestRun.run_identifier == run_identifier))
         if run is not None and run.status in {"pending", "running"}:
-            run.status = "failed"
+            run.status = status
             run.finished_at = datetime.now(UTC)
             run.error_summary = error_summary
             run.result_summary = "Restore validation did not finish with verified evidence."
@@ -259,8 +280,8 @@ def _mark_restore_job_failed(run_identifier: str, error_summary: str) -> None:
             update_reliability_job(
                 session,
                 f"restore:{run_identifier}",
-                status="failed",
-                current_step="Restore validation failed safely",
+                status=status,
+                current_step="Restore validation timed out" if status == "timed_out" else "Restore validation failed safely",
                 safe_error_summary=error_summary,
                 result_summary="Restore validation did not finish with verified evidence.",
             )
@@ -345,7 +366,18 @@ def _execute_restore_job_sync(run_identifier: str, actor_id: int | None) -> None
 
 async def _run_backup_job_background(run_identifier: str, actor_id: int | None, backup_type: str = "manual") -> None:
     try:
-        await asyncio.to_thread(_execute_backup_job_sync, run_identifier, actor_id, backup_type)
+        await asyncio.wait_for(
+            asyncio.to_thread(_execute_backup_job_sync, run_identifier, actor_id, backup_type),
+            timeout=RECOVERY_BACKGROUND_JOB_TIMEOUT_SECONDS,
+        )
+    except TimeoutError:
+        logger.exception("Recovery backup background job timed out safely")
+        await asyncio.to_thread(
+            _mark_backup_job_failed,
+            run_identifier,
+            "Backup timed out before verification completed.",
+            status="timed_out",
+        )
     except Exception as exc:
         logger.exception("Recovery backup background job failed safely")
         await asyncio.to_thread(
@@ -357,7 +389,18 @@ async def _run_backup_job_background(run_identifier: str, actor_id: int | None, 
 
 async def _run_restore_job_background(run_identifier: str, actor_id: int | None) -> None:
     try:
-        await asyncio.to_thread(_execute_restore_job_sync, run_identifier, actor_id)
+        await asyncio.wait_for(
+            asyncio.to_thread(_execute_restore_job_sync, run_identifier, actor_id),
+            timeout=RECOVERY_BACKGROUND_JOB_TIMEOUT_SECONDS,
+        )
+    except TimeoutError:
+        logger.exception("Recovery restore background job timed out safely")
+        await asyncio.to_thread(
+            _mark_restore_job_failed,
+            run_identifier,
+            "Restore validation timed out before verification completed.",
+            status="timed_out",
+        )
     except Exception as exc:
         logger.exception("Recovery restore background job failed safely")
         await asyncio.to_thread(
@@ -365,6 +408,153 @@ async def _run_restore_job_background(run_identifier: str, actor_id: int | None)
             run_identifier,
             f"Restore validation failed safely: {type(exc).__name__}.",
         )
+
+
+def _storage_test_job_id(target_id: int) -> str:
+    return f"backup_storage_test:{target_id}"
+
+
+def _execute_s3_storage_test_sync(target_id: int, actor_id: int | None, job_id: str) -> None:
+    if SessionLocal is None:
+        return
+    with SessionLocal() as session:
+        try:
+            update_reliability_job(
+                session,
+                job_id,
+                status="checking",
+                current_step="Testing backup storage",
+                progress_percent=25,
+            )
+            target = session.get(BackupStorageTarget, target_id)
+            actor = session.get(User, actor_id) if actor_id is not None else None
+            if target is None:
+                update_reliability_job(
+                    session,
+                    job_id,
+                    status="failed",
+                    current_step="Storage target missing",
+                    safe_error_summary="Backup storage target was not found.",
+                    result_summary="Backup storage test could not find its target.",
+                )
+                session.commit()
+                return
+            test_storage_target_connection(session, target, actor=actor)
+            status = "completed" if target.connection_status == "active" else "failed"
+            update_reliability_job(
+                session,
+                job_id,
+                status=status,
+                current_step="Storage test complete" if status == "completed" else "Storage test failed",
+                progress_percent=100,
+                safe_error_summary=None if status == "completed" else target.last_test_summary,
+                result_summary=target.last_test_summary or target.connection_status,
+            )
+            session.commit()
+        except Exception as exc:
+            session.rollback()
+            update_reliability_job(
+                session,
+                job_id,
+                status="failed",
+                current_step="Storage test failed safely",
+                safe_error_summary=f"Storage provider test failed: {type(exc).__name__}.",
+                result_summary="Backup storage test failed safely.",
+            )
+            session.commit()
+            raise
+
+
+async def _run_s3_storage_test_background(target_id: int, actor_id: int | None, job_id: str) -> None:
+    try:
+        await asyncio.wait_for(
+            asyncio.to_thread(_execute_s3_storage_test_sync, target_id, actor_id, job_id),
+            timeout=S3_STORAGE_TEST_TIMEOUT_SECONDS,
+        )
+    except TimeoutError:
+        if SessionLocal is not None:
+            with contextlib.suppress(Exception):
+                with SessionLocal() as session:
+                    update_reliability_job(
+                        session,
+                        job_id,
+                        status="timed_out",
+                        current_step="Storage test timed out",
+                        safe_error_summary="Backup storage test exceeded the safe timeout.",
+                        result_summary="Provider did not respond before the timeout.",
+                    )
+                    session.commit()
+        raise
+
+
+def _execute_button_health_scan_sync(actor_id: int | None, job_id: str) -> None:
+    if SessionLocal is None:
+        return
+    with SessionLocal() as session:
+        try:
+            update_reliability_job(
+                session,
+                job_id,
+                status="checking",
+                current_step="Scanning important buttons",
+                progress_percent=20,
+            )
+            actor = session.get(User, actor_id) if actor_id is not None else None
+            if actor is None:
+                update_reliability_job(
+                    session,
+                    job_id,
+                    status="failed",
+                    current_step="Button scan missing owner context",
+                    safe_error_summary="Button scan could not find owner context.",
+                    result_summary="Button scan failed safely.",
+                )
+                session.commit()
+                return
+            run_button_issue_scan(session, actor=actor)
+            update_reliability_job(
+                session,
+                job_id,
+                status="completed",
+                current_step="Button scan complete",
+                progress_percent=100,
+                result_summary="Button health scan completed.",
+            )
+            session.commit()
+        except Exception as exc:
+            session.rollback()
+            update_reliability_job(
+                session,
+                job_id,
+                status="failed",
+                current_step="Button scan failed safely",
+                safe_error_summary=f"Button scan failed: {type(exc).__name__}.",
+                result_summary="Button scan failed safely.",
+            )
+            session.commit()
+            raise
+
+
+async def _run_button_health_scan_background(actor_id: int | None, job_id: str) -> None:
+    try:
+        await asyncio.wait_for(
+            asyncio.to_thread(_execute_button_health_scan_sync, actor_id, job_id),
+            timeout=max(10.0, SIMPLE_RENDER_TIMEOUT_SECONDS * 3),
+        )
+    except TimeoutError:
+        if SessionLocal is not None:
+            with contextlib.suppress(Exception):
+                with SessionLocal() as session:
+                    update_reliability_job(
+                        session,
+                        job_id,
+                        status="timed_out",
+                        current_step="Button scan timed out",
+                        safe_error_summary="Button scan exceeded the safe timeout.",
+                        result_summary="Button scan did not finish before the timeout.",
+                    )
+                    session.commit()
+        raise
 
 
 def _render_selftest_sync(user_id: int) -> tuple[str, object | None]:
@@ -500,6 +690,183 @@ async def _telegram_webhook_delivery_active(bot: Bot, *, timeout_seconds: float 
 def _principal_from_user(user: User) -> PermissionPrincipal:
     role = RoleName.OWNER if user.is_owner else RoleName.VIEWER
     return PermissionPrincipal(telegram_id=user.telegram_id, is_owner=user.is_owner, role=role)
+
+
+_ACTION_ROUTE_PARTS = {
+    "activate",
+    "add",
+    "approve",
+    "archive",
+    "assign",
+    "block",
+    "clean",
+    "complete",
+    "create",
+    "delete",
+    "disable",
+    "enable",
+    "feedback",
+    "fix",
+    "ignore",
+    "learn",
+    "mark",
+    "not_needed",
+    "pause",
+    "record",
+    "reject",
+    "remove",
+    "repair",
+    "reset",
+    "resume",
+    "rotate",
+    "run",
+    "scan",
+    "skip",
+    "start",
+    "submit",
+    "test",
+    "toggle",
+    "update",
+}
+
+
+def _page_runs_action(page: str) -> bool:
+    parts = {part.strip().casefold() for part in (page or "").split(":") if part.strip()}
+    if parts & _ACTION_ROUTE_PARTS:
+        return True
+    return any(part.endswith("_run") or part.endswith("_test") for part in parts)
+
+
+def _render_timeout_for_page(page: str) -> float:
+    if page in {"reliability:verify", "production_observability", "callback_failure_review"}:
+        return max(SIMPLE_RENDER_TIMEOUT_SECONDS, 10.0)
+    if page.startswith(("ai_brain", "search")):
+        return max(SIMPLE_RENDER_TIMEOUT_SECONDS, 6.0)
+    return SIMPLE_RENDER_TIMEOUT_SECONDS
+
+
+def _render_page_in_isolated_session(
+    *,
+    page: str,
+    user_id: int,
+    chat_id: int | None = None,
+    chat_title: str | None = None,
+):
+    if SessionLocal is None:
+        raise RuntimeError("Database is not configured")
+    with SessionLocal() as isolated_session:
+        user = isolated_session.get(User, user_id)
+        if user is None:
+            raise RuntimeError("User session expired")
+        principal = _principal_from_user(user)
+        screen = screen_for_page(
+            page,
+            principal,
+            session=isolated_session,
+            user=user,
+            chat_id=chat_id,
+            chat_title=chat_title,
+        )
+        with contextlib.suppress(Exception):
+            isolated_session.rollback()
+        return screen
+
+
+async def _render_page_with_timeout(
+    page: str,
+    *,
+    session,
+    principal: PermissionPrincipal,
+    user: User,
+    chat_id: int | None = None,
+    chat_title: str | None = None,
+):
+    freeze_watchdog.record_render_started(page)
+    if _page_runs_action(page):
+        screen = screen_for_page(
+            page,
+            principal,
+            session=session,
+            user=user,
+            chat_id=chat_id,
+            chat_title=chat_title,
+        )
+    else:
+        screen = await asyncio.wait_for(
+            asyncio.to_thread(
+                _render_page_in_isolated_session,
+                page=page,
+                user_id=user.id,
+                chat_id=chat_id,
+                chat_title=chat_title,
+            ),
+            timeout=_render_timeout_for_page(page),
+        )
+    freeze_watchdog.record_render_succeeded(page)
+    return screen
+
+
+def _render_command_in_isolated_session(
+    *,
+    command_name: str,
+    user_id: int,
+    chat_id: int | None = None,
+    chat_title: str | None = None,
+):
+    if SessionLocal is None:
+        raise RuntimeError("Database is not configured")
+    with SessionLocal() as isolated_session:
+        user = isolated_session.get(User, user_id)
+        if user is None:
+            raise RuntimeError("User session expired")
+        principal = _principal_from_user(user)
+        screen = render_command_shortcut(
+            isolated_session,
+            command=command_name,
+            principal=principal,
+            user=user,
+            chat_id=chat_id,
+            chat_title=chat_title,
+        )
+        with contextlib.suppress(Exception):
+            isolated_session.rollback()
+        return screen
+
+
+async def _render_command_with_timeout(
+    command_name: str,
+    *,
+    principal: PermissionPrincipal,
+    user: User,
+    session,
+    chat_id: int | None = None,
+    chat_title: str | None = None,
+):
+    shortcut = SHORTCUT_BY_COMMAND[command_name]
+    route = f"command:{command_name}"
+    freeze_watchdog.record_render_started(route)
+    if _page_runs_action(shortcut.page):
+        screen = render_command_shortcut(
+            session,
+            command=command_name,
+            principal=principal,
+            user=user,
+            chat_id=chat_id,
+            chat_title=chat_title,
+        )
+    else:
+        screen = await asyncio.wait_for(
+            asyncio.to_thread(
+                _render_command_in_isolated_session,
+                command_name=command_name,
+                user_id=user.id,
+                chat_id=chat_id,
+                chat_title=chat_title,
+            ),
+            timeout=_render_timeout_for_page(shortcut.page),
+        )
+    freeze_watchdog.record_render_succeeded(route)
+    return screen
 
 
 def _bot_heartbeat_metadata(source: str, **extra: str) -> dict[str, str]:
@@ -937,7 +1304,10 @@ async def _send_tracked_navigation_message(
     page: str,
     navigation_version: int | None = None,
 ) -> None:
-    sent = await message.answer(screen.text, reply_markup=screen.reply_markup)
+    sent = await asyncio.wait_for(
+        message.answer(screen.text, reply_markup=screen.reply_markup),
+        timeout=TELEGRAM_API_TIMEOUT_SECONDS,
+    )
     track_bot_message(
         session,
         chat_id=sent.chat.id,
@@ -960,7 +1330,10 @@ async def _send_tracked_temporary_message(
     screen: str | None = None,
     message_label: str = TEMPORARY_STATUS,
 ) -> Message:
-    sent = await message.answer(text, reply_markup=reply_markup)
+    sent = await asyncio.wait_for(
+        message.answer(text, reply_markup=reply_markup),
+        timeout=TELEGRAM_API_TIMEOUT_SECONDS,
+    )
     track_bot_message(
         session,
         chat_id=sent.chat.id,
@@ -988,7 +1361,12 @@ async def _safe_callback_answer(
     show_alert: bool = False,
 ) -> None:
     with contextlib.suppress(Exception):
-        await callback.answer(text, show_alert=show_alert)
+        await asyncio.wait_for(
+            callback.answer(text, show_alert=show_alert),
+            timeout=min(2.0, TELEGRAM_API_TIMEOUT_SECONDS),
+        )
+        route = callback.data.removeprefix("nav:") if callback.data else None
+        freeze_watchdog.record_callback_acknowledged(route=route)
 
 
 def _record_callback_latency_safe(
@@ -1087,7 +1465,10 @@ async def _edit_or_send_callback_screen(
         await _safe_callback_answer(callback, "One moment - Fortuna is already updating that.")
         return SafeRenderResult(success=False, message_id=message_id, outcome="message_edit_locked")
     try:
-        await callback.message.edit_text(screen.text, reply_markup=screen.reply_markup)
+        await asyncio.wait_for(
+            callback.message.edit_text(screen.text, reply_markup=screen.reply_markup),
+            timeout=TELEGRAM_API_TIMEOUT_SECONDS,
+        )
         if session is not None:
             track_bot_message(
                 session,
@@ -1106,7 +1487,10 @@ async def _edit_or_send_callback_screen(
             return SafeRenderResult(success=True, message_id=message_id, outcome="message_not_modified")
         logger.warning("Unable to edit callback message; sending fallback screen", exc_info=True)
         try:
-            sent = await callback.message.answer(screen.text, reply_markup=screen.reply_markup)
+            sent = await asyncio.wait_for(
+                callback.message.answer(screen.text, reply_markup=screen.reply_markup),
+                timeout=TELEGRAM_API_TIMEOUT_SECONDS,
+            )
             if session is not None:
                 track_bot_message(
                     session,
@@ -1152,6 +1536,7 @@ async def _handle_callback_failure(
     page: str,
     exc: BaseException,
 ) -> None:
+    freeze_watchdog.record_exception(route=page, exc=exc)
     logger.error("Fortuna callback failed for page %s", page, exc_info=(type(exc), exc, exc.__traceback__))
     error_id: int | None = None
     actor = user
@@ -1212,6 +1597,7 @@ def _apply_onboarding_callback(session, user: User, page: str) -> str | None:
 
 @dp.message(CommandStart())
 async def start(message: Message) -> None:
+    freeze_watchdog.record_update_received(route="command:start")
     if message.from_user is None or SessionLocal is None:
         await message.answer("Access pending owner approval.")
         return
@@ -1284,6 +1670,7 @@ async def start(message: Message) -> None:
 
 @dp.message(Command("clean"))
 async def clean_chat(message: Message) -> None:
+    freeze_watchdog.record_update_received(route="command:clean")
     if message.from_user is None or SessionLocal is None:
         await message.answer("Chat cleanup is unavailable.")
         return
@@ -1323,6 +1710,7 @@ async def clean_chat(message: Message) -> None:
 
 @dp.message(Command("selftest"))
 async def selftest(message: Message) -> None:
+    freeze_watchdog.record_update_received(route="command:selftest")
     received_at = datetime.now(UTC)
     if message.from_user is None or SessionLocal is None:
         await message.answer("Self-test is owner-only.")
@@ -1359,7 +1747,7 @@ async def selftest(message: Message) -> None:
         if bot is None:
             await message.answer("Self-test started. Open /botstatus and /reliability while it finishes.")
         else:
-            asyncio.create_task(_run_selftest_background(bot, message.chat.id, user.id))
+            _tracked_background_task(_run_selftest_background(bot, message.chat.id, user.id), task_name="selftest")
         _record_callback_latency_safe(
             session,
             page="selftest",
@@ -1416,6 +1804,7 @@ async def integrity(message: Message) -> None:
 
 @dp.message(Command("botstatus"))
 async def botstatus(message: Message) -> None:
+    freeze_watchdog.record_update_received(route="command:botstatus")
     if message.from_user is None or SessionLocal is None:
         await message.answer("Bot status is owner-only.")
         return
@@ -1499,6 +1888,7 @@ async def debug_last_error(message: Message) -> None:
 
 @dp.message(Command("callback_failures"))
 async def callback_failures(message: Message) -> None:
+    freeze_watchdog.record_update_received(route="command:callback_failures")
     if message.from_user is None or SessionLocal is None:
         await message.answer("Callback failure review is owner-only.")
         return
@@ -1557,6 +1947,7 @@ async def shortcut_command(message: Message) -> None:
         return
 
     command_name = message.text.split()[0].split("@", 1)[0].lstrip("/").lower()
+    freeze_watchdog.record_update_received(route=f"command:{command_name}")
     shortcut = SHORTCUT_BY_COMMAND.get(command_name)
     if shortcut is None:
         return
@@ -1564,7 +1955,10 @@ async def shortcut_command(message: Message) -> None:
     pre_ack_sent = False
     if shortcut.working_label:
         with contextlib.suppress(Exception):
-            await message.answer(f"{shortcut.working_label}...\n\nFortuna heard you.")
+            await asyncio.wait_for(
+                message.answer(f"{shortcut.working_label}...\n\nFortuna heard you."),
+                timeout=TELEGRAM_API_TIMEOUT_SECONDS,
+            )
             pre_ack_sent = True
 
     with SessionLocal() as session:
@@ -1650,27 +2044,42 @@ async def shortcut_command(message: Message) -> None:
                 (item for item in backup_storage_targets(session) if item.target_type == "s3_compatible"),
                 None,
             )
+            job_id = None
             if target is not None:
-                test_storage_target_connection(session, target, actor=user)
+                job_id = _storage_test_job_id(target.id)
+                start_reliability_job(
+                    session,
+                    job_id=job_id,
+                    job_type="backup_storage_test",
+                    status="checking",
+                    current_step="Testing backup storage",
+                    related_chat_id=message.chat.id,
+                    progress_percent=10,
+                )
             screen = render_backup_storage_page(session, user, target_type="s3_compatible")
             run_identifier = None
             actor_id = None
+            target_id = target.id if target is not None else None
         else:
             try:
-                screen = render_command_shortcut(
-                    session,
-                    command=command_name,
+                screen = await _render_command_with_timeout(
+                    command_name,
                     principal=principal,
                     user=user,
+                    session=session,
                     chat_id=message.chat.id,
                     chat_title=getattr(message.chat, "title", None),
                 )
             except Exception:
                 logger.error("Command shortcut render failed for /%s", command_name, exc_info=True)
+                freeze_watchdog.record_exception(route=f"command:{command_name}", exc="render_failed")
                 session.rollback()
-                await message.answer(
-                    "Fortuna hit a reliability issue while opening that command.\n\n"
-                    "The issue was logged safely. Try /home, then /reliability."
+                await asyncio.wait_for(
+                    message.answer(
+                        "Fortuna hit a reliability issue while opening that command.\n\n"
+                        "The issue was logged safely. Try /home, then /reliability."
+                    ),
+                    timeout=TELEGRAM_API_TIMEOUT_SECONDS,
                 )
                 return
             run_identifier = None
@@ -1690,16 +2099,24 @@ async def shortcut_command(message: Message) -> None:
         except Exception:
             logger.error("Command shortcut send failed for /%s", command_name, exc_info=True)
             session.rollback()
-            await message.answer(
-                "Fortuna heard the command, but the screen could not be sent safely.\n\n"
-                "Try /home, then /reliability."
+            await asyncio.wait_for(
+                message.answer(
+                    "Fortuna heard the command, but the screen could not be sent safely.\n\n"
+                    "Try /home, then /reliability."
+                ),
+                timeout=TELEGRAM_API_TIMEOUT_SECONDS,
             )
             return
 
         if command_name == "run_backup" and started_backup and run_identifier is not None:
-            asyncio.create_task(_run_backup_job_background(run_identifier, actor_id))
+            _tracked_background_task(_run_backup_job_background(run_identifier, actor_id), task_name="backup")
         if command_name == "restore_test" and started_restore and run_identifier is not None:
-            asyncio.create_task(_run_restore_job_background(run_identifier, actor_id))
+            _tracked_background_task(_run_restore_job_background(run_identifier, actor_id), task_name="restore")
+        if command_name == "test_s3_storage" and target_id is not None and job_id is not None:
+            _tracked_background_task(
+                _run_s3_storage_test_background(target_id, user.id, job_id),
+                task_name="backup_storage_test",
+            )
 
 
 @dp.message(F.text)
@@ -2416,6 +2833,7 @@ async def navigate(callback: CallbackQuery) -> None:
         return
 
     page = callback.data.removeprefix("nav:") if callback.data else "menu"
+    freeze_watchdog.record_update_received(route=page)
     if SessionLocal is None:
         await _safe_callback_answer(callback, "Database is not configured.", show_alert=True)
         return
@@ -2614,6 +3032,55 @@ async def _navigate_locked(callback: CallbackQuery, page: str) -> None:
                 await _safe_callback_answer(callback, "One moment.")
                 session.commit()
                 return
+            if page == "ui_self_test:run":
+                latency_render_started_at = datetime.now(UTC)
+                screen = render_ui_self_test_page(session, user, run_now=False)
+                latency_render_finished_at = datetime.now(UTC)
+                _tracked_background_task(
+                    _run_selftest_background(callback.bot, chat_id, user.id),
+                    task_name="selftest",
+                )
+                await _edit_or_send_callback_screen(
+                    callback,
+                    screen,
+                    session=session,
+                    user=user,
+                    page=page,
+                )
+                latency_edit_completed_at = datetime.now(UTC)
+                await _safe_callback_answer(callback, "Self-test started.")
+                session.commit()
+                return
+            if page == "button_health:run":
+                latency_render_started_at = datetime.now(UTC)
+                job_id = "button_health_scan:latest"
+                start_reliability_job(
+                    session,
+                    job_id=job_id,
+                    job_type="button_health_scan",
+                    status="checking",
+                    current_step="Scanning important buttons",
+                    related_chat_id=chat_id,
+                    related_message_id=callback.message.message_id if callback.message else None,
+                    progress_percent=10,
+                )
+                screen = render_button_health_report_page(session, user, run_now=False)
+                latency_render_finished_at = datetime.now(UTC)
+                _tracked_background_task(
+                    _run_button_health_scan_background(user.id, job_id),
+                    task_name="button_health_scan",
+                )
+                await _edit_or_send_callback_screen(
+                    callback,
+                    screen,
+                    session=session,
+                    user=user,
+                    page=page,
+                )
+                latency_edit_completed_at = datetime.now(UTC)
+                await _safe_callback_answer(callback, "Button scan started.")
+                session.commit()
+                return
             if page == "recovery:backup:run":
                 latency_render_started_at = datetime.now(UTC)
                 run, started = start_backup_job(session, actor=user)
@@ -2633,7 +3100,7 @@ async def _navigate_locked(callback: CallbackQuery, page: str) -> None:
                 actor_id = user.id
                 session.commit()
                 if started:
-                    asyncio.create_task(_run_backup_job_background(run_identifier, actor_id))
+                    _tracked_background_task(_run_backup_job_background(run_identifier, actor_id), task_name="backup")
                 await _edit_or_send_callback_screen(
                     callback,
                     screen,
@@ -2664,7 +3131,7 @@ async def _navigate_locked(callback: CallbackQuery, page: str) -> None:
                 actor_id = user.id
                 session.commit()
                 if started:
-                    asyncio.create_task(_run_restore_job_background(run_identifier, actor_id))
+                    _tracked_background_task(_run_restore_job_background(run_identifier, actor_id), task_name="restore")
                 await _edit_or_send_callback_screen(
                     callback,
                     screen,
@@ -2679,6 +3146,44 @@ async def _navigate_locked(callback: CallbackQuery, page: str) -> None:
                 )
                 session.commit()
                 return
+            if page.startswith("recovery:storage:test:"):
+                latency_render_started_at = datetime.now(UTC)
+                parts = page.split(":")
+                target_id = int(parts[3]) if len(parts) >= 4 and parts[3].isdigit() else None
+                target = session.get(BackupStorageTarget, target_id) if target_id is not None else None
+                if target is not None:
+                    job_id = _storage_test_job_id(target.id)
+                    start_reliability_job(
+                        session,
+                        job_id=job_id,
+                        job_type="backup_storage_test",
+                        status="checking",
+                        current_step="Testing backup storage",
+                        related_chat_id=chat_id,
+                        related_message_id=callback.message.message_id if callback.message else None,
+                        progress_percent=10,
+                    )
+                    screen = render_backup_storage_page(session, user, target_type=target.target_type)
+                    _tracked_background_task(
+                        _run_s3_storage_test_background(target.id, user.id, job_id),
+                        task_name="backup_storage_test",
+                    )
+                    answer_text = "Backup storage test started."
+                else:
+                    screen = render_backup_storage_page(session, user, target_type="s3_compatible")
+                    answer_text = "Backup storage target was not found."
+                latency_render_finished_at = datetime.now(UTC)
+                await _edit_or_send_callback_screen(
+                    callback,
+                    screen,
+                    session=session,
+                    user=user,
+                    page=page,
+                )
+                latency_edit_completed_at = datetime.now(UTC)
+                await _safe_callback_answer(callback, answer_text)
+                session.commit()
+                return
             chat_title = getattr(callback.message.chat, "title", None)
             working = working_screen_for_page(page)
             if working is not None:
@@ -2690,9 +3195,9 @@ async def _navigate_locked(callback: CallbackQuery, page: str) -> None:
                     page=page,
                 )
             latency_render_started_at = datetime.now(UTC)
-            screen = screen_for_page(
+            screen = await _render_page_with_timeout(
                 page,
-                principal,
+                principal=principal,
                 session=session,
                 user=user,
                 chat_id=chat_id,
@@ -2742,6 +3247,10 @@ async def _navigate_locked(callback: CallbackQuery, page: str) -> None:
         except PermissionError:
             session.commit()
             await _safe_callback_answer(callback, "You do not have permission to open this page.", show_alert=True)
+        except TimeoutError as exc:
+            latency_result = "timed_out"
+            latency_error = "route timed out"
+            await _handle_callback_failure(callback, session, user=user, page=page, exc=exc)
         except Exception as exc:
             latency_result = "failed_safe"
             latency_error = type(exc).__name__

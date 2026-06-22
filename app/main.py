@@ -15,6 +15,7 @@ from app.db.session import SessionLocal
 from app.services.heartbeats import record_heartbeat
 from app.services.persistence import health_payload, storage_status
 from app.services.system_truth import current_alembic_revision, reconcile_stale_system_warnings
+from app.services.freeze_watchdog import freeze_watchdog
 
 app = FastAPI(title=settings.app_display_name)
 app.include_router(router)
@@ -42,6 +43,13 @@ async def _feed_telegram_webhook_update(payload: dict[str, object]) -> None:
     # Import lazily so the API can boot even if Telegram-specific startup has an issue.
     from app.bot import runner as bot_runner
 
+    route = "telegram:update"
+    if "callback_query" in payload:
+        data = ((payload.get("callback_query") or {}).get("data") or "") if isinstance(payload.get("callback_query"), dict) else ""
+        route = f"callback:{str(data).removeprefix('nav:') or 'unknown'}"
+    elif "message" in payload:
+        route = "message"
+    freeze_watchdog.record_update_received(route=route)
     bot = _get_telegram_webhook_bot()
     update = Update.model_validate(payload, context={"bot": bot})
     delivery_token = bot_runner.TELEGRAM_DELIVERY_MODE.set("webhook")
@@ -49,6 +57,7 @@ async def _feed_telegram_webhook_update(payload: dict[str, object]) -> None:
         try:
             await bot_runner.dp.feed_update(bot, update)
         except Exception:
+            freeze_watchdog.record_exception(route=route, exc="webhook_update_failed")
             logger.exception(
                 "Telegram webhook update failed safely",
                 extra={
