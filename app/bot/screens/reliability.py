@@ -30,7 +30,7 @@ def _reliability_menu(*, details: bool = False) -> InlineKeyboardMarkup:
     ]
     if not details:
         rows.append([InlineKeyboardButton(text="🔎 Details", callback_data=callback_for("reliability:details"))])
-    rows.extend(page_controls(back_to="owner_advanced"))
+    rows.extend(page_controls(back_to="reliability" if details else "owner_advanced"))
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

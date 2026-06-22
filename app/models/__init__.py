@@ -5,6 +5,7 @@ from app.models.audit import AuditLog
 from app.models.callback_error import CallbackErrorLog
 from app.models.button_issue import ButtonIssue
 from app.models.chat import BotChatMessage, ChatCleanupPreference, ChatCleanupRun
+from app.models.command_center import ScoreSnapshot
 from app.models.automation import (
     AutomationApproval,
     AutomationRule,
@@ -98,6 +99,7 @@ __all__ = [
     "BotChatMessage",
     "ChatCleanupPreference",
     "ChatCleanupRun",
+    "ScoreSnapshot",
     "Automation",
     "AutomationApproval",
     "AutomationRule",

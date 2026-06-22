@@ -1398,6 +1398,8 @@ def screen_for_page(
         or normalized.startswith("knowledge:")
         or normalized.startswith("search")
         or normalized.startswith("ai_brain")
+        or normalized.startswith("command_center")
+        or normalized.startswith("reliability")
         or normalized.startswith("prediction:")
         or normalized.startswith("reality:")
         or normalized == "executive_mode"

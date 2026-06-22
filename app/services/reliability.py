@@ -68,7 +68,13 @@ class VerificationHarnessResult:
 
 SHORTCUT_COMMANDS: tuple[ShortcutCommand, ...] = (
     ShortcutCommand("home", "menu", owner_only=False, description="Open Home."),
-    ShortcutCommand("more", "owner_advanced", description="Open More."),
+    ShortcutCommand("command_center", "command_center", owner_only=False, description="Open Fortuna Command Center."),
+    ShortcutCommand("more", "command_center:admin", description="Open Admin."),
+    ShortcutCommand("scores", "command_center:scores", description="Open readiness scores."),
+    ShortcutCommand("intelligence", "command_center:intelligence", description="Open Intelligence."),
+    ShortcutCommand("operations", "command_center:operations", description="Open Operations."),
+    ShortcutCommand("systems", "command_center:systems", description="Open Systems."),
+    ShortcutCommand("admin", "command_center:admin", description="Open Admin."),
     ShortcutCommand("coo", "coo:briefing", description="Open COO Briefing.", working_label="Checking priorities"),
     ShortcutCommand("today", "today_priorities", owner_only=False, description="Open What Matters Today."),
     ShortcutCommand("agency", "agency_awareness", description="Open Agency Awareness."),
@@ -108,14 +114,21 @@ SHORTCUT_COMMANDS: tuple[ShortcutCommand, ...] = (
     ShortcutCommand("platforms", "platforms", description="Open Platform Connections."),
     ShortcutCommand("decision_memory", "decision:memory", description="Open Decision Memory."),
     ShortcutCommand("reality", "reality:check", description="Open Reality Check."),
-    ShortcutCommand("intelligence", "intelligence:quality", description="Open Intelligence Quality."),
+    ShortcutCommand("intelligence_quality", "intelligence:quality", description="Open Recommendation Quality."),
     ShortcutCommand("observability", "production_observability", description="Open Production Observability.", working_label="Checking health signals"),
+    ShortcutCommand("help", "help", owner_only=False, description="Open Help."),
     ShortcutCommand("verify_navigation", "reliability:verify", description="Run command-based navigation verification.", working_label="Verifying navigation"),
 )
 
 SHORTCUT_BY_COMMAND = {item.command: item for item in SHORTCUT_COMMANDS}
 HARNESS_COMMANDS = (
     "home",
+    "command_center",
+    "scores",
+    "intelligence",
+    "operations",
+    "systems",
+    "admin",
     "coo",
     "today",
     "agency",

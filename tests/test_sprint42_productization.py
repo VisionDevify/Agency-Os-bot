@@ -86,15 +86,15 @@ def test_home_and_setup_follow_three_layer_product_model() -> None:
         setup = render_setup_progress_page(session, owner)
         assistant = render_assistant_next_page(session, owner)
 
-        assert "Status" in home.text
-        assert "Next Best Move" in home.text
-        assert "Estimated Time" in home.text
+        assert "Fortuna Command Center" in home.text
+        assert "Agency OS Readiness" in home.text
+        assert "Fastest Gain" in home.text
         assert "Setup Steps:" in setup.text
         assert "Next Best Move:" in setup.text
         assert "Why:" in setup.text
         assert "Fortuna recommends:" in assistant.text
         assert "Estimated time:" in assistant.text
-        assert visible_button_count(_labels(home)) <= 6
+        assert visible_button_count(_labels(home)) <= 7
         assert visible_button_count(_labels(setup)) <= 6
         _assert_product_copy(home.text)
         _assert_product_copy(setup.text)

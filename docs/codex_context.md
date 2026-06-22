@@ -389,6 +389,24 @@ Agency Awareness:
 - Observability should show Agency Awareness only when meaningful: missing inputs, stale snapshots, external outages, generation failures, or fallback usage.
 - Future Agency Awareness path: Drift Detection, Opportunity Loss, Question Engine, and Digital Twin.
 
+Command Center UX:
+
+- Fortuna's primary experience is the Command Center, not a developer dashboard.
+- Primary navigation is five areas: Home / Command Center, Intelligence, Operations, Systems, and Admin.
+- Home should be short and outcome-focused: Agency OS Readiness, Intelligence, Team Readiness, Revenue Intelligence, What Matters Today, Fastest Gain, Attention Needed, and active job only when meaningful.
+- Technical screens remain available, but they belong behind Systems, Admin, or Details.
+- User-facing labels should be human-first: "What Fortuna Can See" for Agency Awareness, "Backups & Safety" for Recovery, "System Watch" for Observability, "Reliability Center" for Button Health, "What Fortuna Remembers" for Decision Memory, and "How Accurate Is Fortuna?" for Reality Calibration.
+- `LiveScoreEngine` produces deterministic scores only. AI may explain score meaning, but AI must not calculate percentages, movement, or confidence.
+- Score weights must be documented and auditable. Current score families are Agency OS Readiness, Intelligence, Team Readiness, Revenue Intelligence, Recovery Safety, Reliability, and Agency Visibility.
+- Missing data must lower confidence. If evidence is not available, the score should say so instead of inventing precision.
+- `ScoreSnapshot` stores meaningful score movement only; do not create a database row for every render.
+- `UnlockEngine`, `WeakSpotDetector`, and `FastestGainRecommender` should tie recommendations to deterministic score model gaps and avoid revenue guarantees.
+- Revenue Intelligence should stay low and plain until fan, whale, source quality, creator, content, and chatter evidence exists.
+- Search may enrich opportunity context, but external search cannot prove internal agency readiness.
+- Every primary screen should answer: what this is, why it matters, and what to do next. Details screens can show breakdowns, evidence, logs, and technical metadata.
+- New command shortcuts should remain live-testable: `/home`, `/command_center`, `/today`, `/scores`, `/intelligence`, `/operations`, `/systems`, `/admin`, `/reliability`, `/recovery`, `/agency`, and `/help`.
+- Old commands and routes should continue to work unless explicitly deprecated.
+
 ## Compliance Rules
 
 Fortuna may observe, summarize, recommend, and route human-reviewed work.

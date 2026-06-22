@@ -43,13 +43,15 @@ def test_owner_home_is_simple_and_advanced_menu_exists() -> None:
         screen = render_main_menu(session, owner)
         labels = _button_text(screen)
 
-        assert "Status" in screen.text
-        assert "Today\u2019s Focus:" in screen.text
-        assert "Continue" in labels
-        assert "Today\u2019s Priorities" in labels
-        assert "Proxy Vault" in labels
-        assert "More" in labels
-        assert "Automation" not in labels
+        assert "Fortuna Command Center" in screen.text
+        assert "Agency OS Readiness" in screen.text
+        assert "Fastest Gain" in screen.text
+        assert "👑 Today" in labels
+        assert "🧠 Intelligence" in labels
+        assert "🎯 Operations" in labels
+        assert "🛡 Systems" in labels
+        assert "⚙️ Admin" in labels
+        assert "📈 Scores" in labels
 
         start = render_start_here_page(session, owner)
         assert "Top Setup Steps" in start.text

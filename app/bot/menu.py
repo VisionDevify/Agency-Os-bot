@@ -41,15 +41,18 @@ def role_home_menu(items: list[tuple[str, str]] | tuple[tuple[str, str], ...]) -
 def owner_simple_home_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [InlineKeyboardButton(text="Continue", callback_data=callback_for("start_here"))],
-            [InlineKeyboardButton(text="Today\u2019s Priorities", callback_data=callback_for("today_priorities"))],
+            [InlineKeyboardButton(text="👑 Today", callback_data=callback_for("today_priorities"))],
             [
-                InlineKeyboardButton(text="Proxy Vault", callback_data=callback_for("proxies")),
-                InlineKeyboardButton(text="Opportunities", callback_data=callback_for("opportunities")),
+                InlineKeyboardButton(text="🧠 Intelligence", callback_data=callback_for("command_center:intelligence")),
+                InlineKeyboardButton(text="🎯 Operations", callback_data=callback_for("command_center:operations")),
             ],
             [
-                InlineKeyboardButton(text="Help", callback_data=callback_for("help")),
-                InlineKeyboardButton(text="More", callback_data=callback_for("owner_advanced")),
+                InlineKeyboardButton(text="🛡 Systems", callback_data=callback_for("command_center:systems")),
+                InlineKeyboardButton(text="⚙️ Admin", callback_data=callback_for("command_center:admin")),
+            ],
+            [
+                InlineKeyboardButton(text="📈 Scores", callback_data=callback_for("command_center:scores")),
+                InlineKeyboardButton(text="🔄 Refresh", callback_data=callback_for("command_center")),
             ],
         ]
     )

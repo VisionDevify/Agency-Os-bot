@@ -22,6 +22,7 @@ from .search import *
 from .ai import *
 from .agency_awareness import *
 from .reliability import *
+from .command_center import *
 from .help import *
 from .errors import *
 from .router import render_page

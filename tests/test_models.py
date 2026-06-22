@@ -6,6 +6,7 @@ def test_model_tables_are_registered() -> None:
         AIAuditLog,
         AuditLog,
         CallbackErrorLog,
+        ScoreSnapshot,
         CallbackLatencyRecord,
         Automation,
         AutomationApproval,
@@ -86,6 +87,7 @@ def test_model_tables_are_registered() -> None:
         "audit_logs",
         "callback_error_logs",
         "callback_latency_records",
+        "score_snapshots",
         "automations",
         "automation_approvals",
         "automation_rules",
@@ -169,6 +171,7 @@ def test_model_tables_are_registered() -> None:
     assert PredictiveCOOPrediction.__tablename__ == "predictive_coo_predictions"
     assert FrictionItem.__tablename__ == "friction_items"
     assert CallbackErrorLog.__tablename__ == "callback_error_logs"
+    assert ScoreSnapshot.__tablename__ == "score_snapshots"
     assert CallbackLatencyRecord.__tablename__ == "callback_latency_records"
     assert DailyBriefing.__tablename__ == "daily_briefings"
     assert AccountabilitySnapshot.__tablename__ == "accountability_snapshots"

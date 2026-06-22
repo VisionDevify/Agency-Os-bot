@@ -48,16 +48,15 @@ def test_owner_home_feels_like_a_product_dashboard() -> None:
         screen = render_main_menu(session, owner)
         labels = _button_text(screen)
 
-        assert "\U0001f319 Fortuna OS" in screen.text
-        assert "Status" in screen.text
-        assert "Everything is running" in screen.text
-        assert "Today\u2019s Focus:" in screen.text
-        assert "Next Best Move" in screen.text
-        assert "Continue" in labels
-        assert "Today\u2019s Priorities" in labels
-        assert "Proxy Vault" in labels
-        assert "More" in labels
-        assert "Intelligence" not in labels
+        assert "Fortuna Command Center" in screen.text
+        assert "Agency OS Readiness" in screen.text
+        assert "Fastest Gain" in screen.text
+        assert "Attention Needed" in screen.text
+        assert "👑 Today" in labels
+        assert "🧠 Intelligence" in labels
+        assert "🎯 Operations" in labels
+        assert "🛡 Systems" in labels
+        assert "⚙️ Admin" in labels
         assert "Automation" not in labels
         _assert_no_raw_backend_text(screen.text)
 
@@ -195,8 +194,8 @@ def test_simple_and_advanced_modes_are_separated() -> None:
         simple_labels = _button_text(simple)
         advanced_labels = _button_text(advanced)
 
-        assert "More" in simple_labels
-        assert "Intelligence" not in simple_labels
+        assert "Admin" in simple_labels
+        assert "Intelligence" in simple_labels
         assert "Automation" not in simple_labels
         assert "Intelligence" in advanced_labels
         assert "Automation" in advanced_labels

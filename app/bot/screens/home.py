@@ -135,6 +135,10 @@ def render_main_menu(session: Session | None = None, user: User | None = None) -
     if session is None or user is None:
         return Screen(text="Fortuna OS\nSelect an area.", reply_markup=main_menu())
     if primary_role(user) in {"Owner", "Admin"}:
+        from app.bot.screens.command_center import render_command_center_home
+
+        reconcile_stale_system_warnings(session, actor=user)
+        return render_command_center_home(session, user)
         reconcile_stale_system_warnings(session, actor=user)
         report = build_activation_report(session)
         truth = system_truth(session)

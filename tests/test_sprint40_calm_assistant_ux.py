@@ -59,14 +59,14 @@ def test_owner_home_is_calm_and_has_one_clear_next_action() -> None:
         owner = _owner(session)
         screen = render_main_menu(session, owner)
 
-        assert "Fortuna OS" in screen.text
-        assert "Status" in screen.text
-        assert "Today\u2019s Focus" in screen.text
-        assert "Next Best Move" in screen.text
-        assert "Continue" in _button_labels(screen)
+        assert "Fortuna Command Center" in screen.text
+        assert "Agency OS Readiness" in screen.text
+        assert "Fastest Gain" in screen.text
+        assert "Attention Needed" in screen.text
+        assert any("Today" in label for label in _button_labels(screen))
         assert "Agency Health Score" not in screen.text
         _assert_calm_simple_screen(screen.text)
-        assert len(_primary_labels(screen)) <= 6
+        assert len(_primary_labels(screen)) <= 7
 
 
 def test_primary_simple_screens_hide_raw_internal_terms() -> None:
