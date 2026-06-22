@@ -2016,6 +2016,11 @@ async def coo_shortcut_command(message: Message) -> None:
     )
 
 
+@dp.message(Command("admin", "more"))
+async def admin_shortcut_alias_command(message: Message) -> None:
+    await shortcut_command(message)
+
+
 @dp.message(Command(*[shortcut.command for shortcut in SHORTCUT_COMMANDS if shortcut.command != "coo"]))
 async def shortcut_command(message: Message) -> None:
     if message.from_user is None or SessionLocal is None or not message.text:
