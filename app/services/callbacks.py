@@ -444,6 +444,43 @@ def _parse_iso_datetime(value: object | None) -> datetime | None:
     return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed
 
 
+def _latest_route_successes(session: Session) -> dict[str, datetime]:
+    """Return latest successful route evidence keyed by callback page.
+
+    Callback failures are historical records, so the review screen needs a durable
+    way to recognize when a route has passed after the failure was logged. Command
+    shortcuts and callback latency records are safe evidence for that.
+    """
+
+    from app.models.reliability import CallbackLatencyRecord
+    from app.services.reliability import SHORTCUT_COMMANDS
+
+    page_by_route: dict[str, set[str]] = {}
+    for shortcut in SHORTCUT_COMMANDS:
+        page_by_route.setdefault(f"command:{shortcut.command}", set()).add(shortcut.page)
+        page_by_route.setdefault(shortcut.page, set()).add(shortcut.page)
+        page_by_route.setdefault(f"nav:{shortcut.page}", set()).add(shortcut.page)
+
+    rows = session.execute(
+        select(
+            CallbackLatencyRecord.callback_route,
+            func.max(CallbackLatencyRecord.received_at),
+        )
+        .where(CallbackLatencyRecord.result == "succeeded")
+        .group_by(CallbackLatencyRecord.callback_route)
+    ).all()
+    latest: dict[str, datetime] = {}
+    for route, success_at in rows:
+        if not route or not isinstance(success_at, datetime):
+            continue
+        pages = page_by_route.get(str(route), {str(route).removeprefix("nav:")})
+        for page in pages:
+            current = latest.get(page)
+            if current is None or success_at > current:
+                latest[page] = success_at
+    return latest
+
+
 def callback_failure_review(
     session: Session,
     *,
@@ -476,6 +513,16 @@ def callback_failure_review(
         default=None,
     )
     effective_revalidated_at = revalidated_at or resolved_revalidated_at
+    latest_success_by_page = _latest_route_successes(session)
+    for error in errors:
+        page = error.page or error.callback_data or "unknown"
+        success_at = latest_success_by_page.get(page)
+        if success_at is None:
+            continue
+        if error.created_at is None or _datetime_after(success_at, error.created_at):
+            working_set.add(page)
+            if effective_revalidated_at is None or _datetime_after(success_at, effective_revalidated_at):
+                effective_revalidated_at = success_at
     engine = IssueRevalidationEngine(current_commit=current_commit, revalidated_at=effective_revalidated_at)
     items: list[CallbackFailureReviewItem] = []
     lifecycle_views: list[IssueLifecycleView] = []

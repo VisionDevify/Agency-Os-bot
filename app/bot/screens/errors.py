@@ -321,16 +321,29 @@ def render_callback_failure_review_page(
     mode: str = "summary",
 ) -> Screen:
     review = callback_failure_review(session, limit=20)
-    problem_items = review.active_items + review.validating_items
+    active_problem_items = review.active_items
+    validating_items = review.validating_items
     if mode == "problems":
         lines = ["Problem Buttons", ""]
-        if not problem_items:
+        if not active_problem_items:
             lines.extend(
                 [
                     "No buttons are currently crashing.",
                     "",
                     "What this means:",
                     "Fresh checks did not find an active button failure.",
+                ]
+            )
+            if validating_items:
+                lines.extend(
+                    [
+                        "",
+                        "Still Rechecking:",
+                        f"{len(validating_items)} older issue(s) are waiting for targeted evidence, but they are not counted as active crashes.",
+                    ]
+                )
+            lines.extend(
+                [
                     "",
                     "Next Best Move:",
                     "Keep using Verify Navigation after releases.",
@@ -338,7 +351,7 @@ def render_callback_failure_review_page(
             )
         else:
             lines.extend(["These buttons need attention or a fresh recheck before broad team rollout.", ""])
-            for item in problem_items[:8]:
+            for item in active_problem_items[:8]:
                 when = format_user_datetime(user, item.last_seen_at or item.created_at) if (item.last_seen_at or item.created_at) else "Unknown"
                 lines.extend(
                     [
@@ -371,11 +384,16 @@ def render_callback_failure_review_page(
         return Screen("\n".join(lines), _callback_failure_markup(back_to="callback_failure_review"))
 
     if mode != "details":
-        problem_count = len(problem_items)
-        if problem_count:
+        active_problem_count = len(active_problem_items)
+        validating_count = len(validating_items)
+        if active_problem_count:
             status = "Needs Review"
-            meaning = f"{problem_count} button(s) need attention or a fresh recheck. Fortuna is still logging safely and staying online."
+            meaning = f"{active_problem_count} button(s) need attention. Fortuna is still logging safely and staying online."
             next_move = "Open Problem Buttons."
+        elif validating_count:
+            status = "Clear"
+            meaning = "No buttons are currently crashing. Older records waiting for proof stay out of the active count."
+            next_move = "Run Verify Navigation after releases."
         else:
             status = "Clear"
             meaning = "No buttons are currently crashing. Old fixed issues are saved in Fixed History."
@@ -390,7 +408,10 @@ def render_callback_failure_review_page(
             meaning,
             "",
             "Active Problems:",
-            str(problem_count),
+            str(active_problem_count),
+            "",
+            "Older Items Rechecking:",
+            str(validating_count),
             "",
             "Recent Fixes:",
             f"{len(review.historical_items) + len(review.resolved_items)} saved for history.",

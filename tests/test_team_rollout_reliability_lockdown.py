@@ -7,7 +7,13 @@ from app.models.callback_error import CallbackErrorLog
 from app.models.recommendation import Recommendation
 from app.services.auth import setup_owner_if_needed
 from app.services.callbacks import callback_failure_review
-from app.services.reliability import reliability_summary, run_command_verification_harness, working_screen_for_page
+from app.services.reliability import (
+    CallbackTiming,
+    record_callback_latency,
+    reliability_summary,
+    run_command_verification_harness,
+    working_screen_for_page,
+)
 from tests.utils import session_scope
 
 
@@ -59,6 +65,38 @@ def test_verify_navigation_revalidates_historical_ai_callback_debt(monkeypatch) 
         assert {item.page for item in review.historical_items}.issuperset(
             {"coo:briefing", "ai_brain:coo", "ai_brain:evidence", "ai_brain:opportunity"}
         )
+
+
+def test_successful_command_latency_revalidates_old_callback_failure_without_recommendation(monkeypatch) -> None:
+    _non_critical_recovery(monkeypatch)
+    with session_scope() as session:
+        error = _callback_error("command_center:scores")
+        session.add(error)
+        session.flush()
+        success_at = error.created_at + timedelta(minutes=10)
+        record_callback_latency(
+            session,
+            CallbackTiming(
+                callback_route="command:scores",
+                received_at=success_at,
+                acknowledged_at=success_at,
+                render_started_at=success_at,
+                render_finished_at=success_at,
+                edit_or_send_completed_at=success_at,
+            ),
+            result="succeeded",
+            metadata={"test": True},
+        )
+        session.flush()
+
+        review = callback_failure_review(session, limit=20)
+        summary = reliability_summary(session)
+
+        assert not review.active_items
+        assert not review.validating_items
+        assert {item.page for item in review.historical_items} == {"command_center:scores"}
+        assert summary["active_issue_count"] == 0
+        assert summary["status"] == "healthy"
 
 
 def _non_critical_recovery(monkeypatch) -> None:

@@ -652,11 +652,12 @@ def _retire_revalidated_button_issues(session: Session, *, pages: Iterable[str],
     page_set = {page for page in pages if page}
     if not page_set:
         return 0
+    callback_set = {f"nav:{page}" for page in page_set}
     rows = list(
         session.scalars(
             select(ButtonIssue).where(
                 ButtonIssue.status == "open",
-                ButtonIssue.screen.in_(page_set),
+                (ButtonIssue.screen.in_(page_set) | ButtonIssue.callback_data.in_(callback_set)),
                 ButtonIssue.issue_type.in_(("missing_handler", "renderer_error")),
             )
         ).all()
