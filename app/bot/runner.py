@@ -219,6 +219,7 @@ PENDING_MODEL_EDITS: dict[int, dict[str, int | str | None]] = {}
 PENDING_PROXY_WIZARDS: dict[int, dict[str, str]] = {}
 PENDING_PROXY_LOCATION_EDITS: dict[int, int] = {}
 PENDING_PROBLEM_REPORTS: dict[int, dict[str, int | str | None]] = {}
+SELFTEST_BACKGROUND_TIMEOUT_SECONDS = float(os.getenv("SELFTEST_BACKGROUND_TIMEOUT_SECONDS", "10"))
 
 
 def _mark_backup_job_failed(run_identifier: str, error_summary: str) -> None:
@@ -373,14 +374,29 @@ def _render_selftest_sync(user_id: int) -> tuple[str, object | None]:
         user = session.get(User, user_id)
         if user is None or not user.is_owner:
             return ("UI Self-Test is owner-only.", None)
-        screen = render_ui_self_test_page(session, user, run_now=True)
+        screen = render_ui_self_test_page(session, user, run_now=True, run_button_scan=False)
         session.commit()
         return screen.text, screen.reply_markup
 
 
 async def _run_selftest_background(bot: Bot, chat_id: int, user_id: int) -> None:
     try:
-        text, reply_markup = await asyncio.to_thread(_render_selftest_sync, user_id)
+        text, reply_markup = await asyncio.wait_for(
+            asyncio.to_thread(_render_selftest_sync, user_id),
+            timeout=SELFTEST_BACKGROUND_TIMEOUT_SECONDS,
+        )
+    except TimeoutError:
+        logger.warning("Self-test background render timed out safely")
+        text = (
+            "Fortuna heard /selftest, but the deeper self-test is taking longer than expected.\n\n"
+            "Status:\n"
+            "Needs Review\n\n"
+            "What Fortuna knows:\n"
+            "The command path is responsive. Open /botstatus, /recovery, and /reliability for the latest verified status.\n\n"
+            "Next Best Move:\n"
+            "Use /reliability to inspect slow routes while the full scan finishes."
+        )
+        reply_markup = None
     except Exception:
         logger.exception("Self-test background render failed safely")
         text = (

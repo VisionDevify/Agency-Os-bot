@@ -20,6 +20,7 @@ from app.services.permissions import PermissionPrincipal, RoleName
 
 ACTIVE_JOB_STATUSES = {"queued", "running", "checking", "uploading", "verifying", "summarizing"}
 TERMINAL_JOB_STATUSES = {"completed", "failed", "timed_out", "cancelled"}
+SUCCESSFUL_JOB_STATUSES = {"completed"}
 JOB_TIMEOUT_MINUTES = int(os.getenv("RELIABILITY_JOB_TIMEOUT_MINUTES", "15"))
 CACHE_DEFAULT_MINUTES = int(os.getenv("RELIABILITY_CACHE_DEFAULT_MINUTES", "5"))
 
@@ -295,6 +296,38 @@ def active_jobs(session: Session) -> list[ReliabilityJob]:
     )
 
 
+def _job_superseded_by_newer_success(session: Session, job: ReliabilityJob) -> bool:
+    if job.updated_at is None:
+        return False
+    newer_success_count = int(
+        session.scalar(
+            select(func.count(ReliabilityJob.id)).where(
+                ReliabilityJob.job_type == job.job_type,
+                ReliabilityJob.status.in_(tuple(SUCCESSFUL_JOB_STATUSES)),
+                ReliabilityJob.updated_at > job.updated_at,
+            )
+        )
+        or 0
+    )
+    return newer_success_count > 0
+
+
+def _active_failed_jobs(session: Session, *, recent_cutoff: datetime, limit: int = 8) -> list[ReliabilityJob]:
+    failed_rows = list(
+        session.scalars(
+            select(ReliabilityJob)
+            .where(
+                ReliabilityJob.status.in_(("failed", "timed_out")),
+                ReliabilityJob.updated_at >= recent_cutoff,
+            )
+            .order_by(desc(ReliabilityJob.updated_at), desc(ReliabilityJob.id))
+            .limit(limit * 4)
+        ).all()
+    )
+    active_failed = [job for job in failed_rows if not _job_superseded_by_newer_success(session, job)]
+    return active_failed[:limit]
+
+
 def cache_key_for(name: str, *parts: object) -> str:
     digest = hashlib.sha256("|".join(str(part) for part in parts).encode("utf-8")).hexdigest()[:24]
     return f"{name}:{digest}"
@@ -387,18 +420,8 @@ def reliability_summary(session: Session) -> dict[str, object]:
     )
     active_callback_failures = callback_failure_review(session, limit=10).active_items
     active_job_rows = active_jobs(session)
-    failed_job_rows = list(
-        session.scalars(
-            select(ReliabilityJob)
-            .where(
-                ReliabilityJob.status.in_(("failed", "timed_out")),
-                ReliabilityJob.updated_at >= recent_cutoff,
-            )
-            .order_by(desc(ReliabilityJob.updated_at), desc(ReliabilityJob.id))
-            .limit(8)
-        ).all()
-    )
-    timed_out_jobs = int(session.scalar(select(func.count(ReliabilityJob.id)).where(ReliabilityJob.status == "timed_out")) or 0)
+    failed_job_rows = _active_failed_jobs(session, recent_cutoff=recent_cutoff)
+    timed_out_jobs = sum(1 for job in failed_job_rows if job.status == "timed_out")
     recovery_job = latest_recovery_job_summary(session)
     reliability_percent = 100 if total_callbacks == 0 else round((successful_callbacks / total_callbacks) * 100)
     status = "healthy"

@@ -1463,12 +1463,14 @@ def render_ui_self_test_page(
     actor: User | None = None,
     *,
     run_now: bool = False,
+    run_button_scan: bool = True,
     details: bool = False,
 ) -> Screen:
     truth_before_run = system_truth(session) if run_now else None
     if run_now and actor is not None:
         run_ui_self_test(session, actor=actor)
-        run_button_issue_scan(session, actor=actor)
+        if run_button_scan:
+            run_button_issue_scan(session, actor=actor)
     latest = latest_ui_self_test_run(session)
     button_health = button_health_summary(session)
     recovery = recovery_risk_assessment(session)

@@ -192,6 +192,56 @@ def test_selftest_command_acknowledges_without_inline_render(monkeypatch) -> Non
     assert "Self-test started" in message.answers[-1]
 
 
+def test_selftest_background_render_skips_full_button_scan(monkeypatch) -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    TestSessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
+    with TestSessionLocal() as session:
+        owner = setup_owner_if_needed(session, telegram_user_id=6701, owner_telegram_id=6701, display_name="Owner")
+        owner_id = owner.id
+        session.commit()
+
+    calls: dict[str, bool] = {}
+
+    def fake_render(session, user, *, run_now=False, run_button_scan=True, details=False):
+        calls["run_now"] = bool(run_now)
+        calls["run_button_scan"] = bool(run_button_scan)
+        return SimpleNamespace(text="Self-test summary", reply_markup=None)
+
+    monkeypatch.setattr(runner_module, "SessionLocal", TestSessionLocal)
+    monkeypatch.setattr(runner_module, "render_ui_self_test_page", fake_render)
+
+    text, reply_markup = runner_module._render_selftest_sync(owner_id)
+
+    assert text == "Self-test summary"
+    assert reply_markup is None
+    assert calls == {"run_now": True, "run_button_scan": False}
+
+
+def test_selftest_background_timeout_sends_visible_fallback(monkeypatch) -> None:
+    import time
+
+    class FakeBot:
+        def __init__(self) -> None:
+            self.messages: list[str] = []
+
+        async def send_message(self, chat_id, text, reply_markup=None):
+            self.messages.append(text)
+
+    def slow_render(user_id: int):
+        time.sleep(0.05)
+        return ("late self-test", None)
+
+    bot = FakeBot()
+    monkeypatch.setattr(runner_module, "SELFTEST_BACKGROUND_TIMEOUT_SECONDS", 0.001)
+    monkeypatch.setattr(runner_module, "_render_selftest_sync", slow_render)
+
+    asyncio.run(runner_module._run_selftest_background(bot, 10, 6701))
+
+    assert bot.messages
+    assert "taking longer than expected" in bot.messages[0]
+
+
 def test_verify_navigation_harness_reports_passed_routes(monkeypatch) -> None:
     monkeypatch.setenv("AI_ENABLED", "false")
     monkeypatch.setenv("SEARCH_ENABLED", "false")
@@ -278,6 +328,42 @@ def test_recent_failed_job_counts_as_reliability_issue() -> None:
         assert summary["status"] == "needs_review"
         assert summary["active_issue_count"] >= 1
         assert "Recent Backup: Failed" in screen.text
+
+
+def test_newer_completed_job_retires_failed_job_from_active_reliability() -> None:
+    with session_scope() as session:
+        owner = _owner(session)
+        now = datetime.now(UTC)
+        start_reliability_job(session, job_id="backup:failed", job_type="backup", status="running")
+        update_reliability_job(
+            session,
+            "backup:failed",
+            status="failed",
+            current_step="Backup failed safely",
+            safe_error_summary="Storage provider returned HTTP 403.",
+        )
+        failed = session.query(ReliabilityJob).filter_by(job_id="backup:failed").one()
+        failed.updated_at = now - timedelta(minutes=5)
+
+        start_reliability_job(session, job_id="backup:completed", job_type="backup", status="running")
+        update_reliability_job(
+            session,
+            "backup:completed",
+            status="completed",
+            current_step="Backup verified",
+            result_summary="Backup completed after key rotation.",
+        )
+        completed = session.query(ReliabilityJob).filter_by(job_id="backup:completed").one()
+        completed.updated_at = now
+        session.flush()
+
+        summary = reliability_summary(session)
+        screen = render_reliability_center_page(session, owner)
+
+        assert summary["status"] == "healthy"
+        assert summary["active_issue_count"] == 0
+        assert summary["failed_jobs"] == []
+        assert "Recent Backup: Failed" not in screen.text
 
 
 def test_backup_history_shows_safe_failure_reason() -> None:
