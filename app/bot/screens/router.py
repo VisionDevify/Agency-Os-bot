@@ -31,6 +31,8 @@ from app.services.opportunities import mark_creator_post_alert_reviewed, mark_ow
 def render_page(page: str, session: Session | None = None, user: User | None = None) -> Screen:
     if page in {"menu", "command_center"} and session is not None:
         return render_command_center_home(session, user)
+    if page == "command_center:refresh" and session is not None:
+        return render_command_center_refresh_page(session, user)
     if page == "command_center:intelligence" and session is not None:
         return render_intelligence_hub_page(session, user)
     if page == "command_center:operations" and session is not None:

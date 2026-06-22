@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Iterable
@@ -180,10 +181,17 @@ class CommandCenterReport:
     attention_items: tuple[str, ...]
     active_job_summary: str | None
     role_mode: str
+    cache_status: str = "fresh"
 
 
 def _now() -> datetime:
     return datetime.now(UTC)
+
+
+_REPORT_CACHE_LOCK = threading.Lock()
+_REPORT_CACHE_TTL_SECONDS = 90
+_REPORT_CACHE: CommandCenterReport | None = None
+_REPORT_CACHE_EXPIRES_AT: datetime | None = None
 
 
 def _clamp(value: int | float, *, low: int = 0, high: int = 100) -> int:
@@ -778,3 +786,57 @@ def build_command_center_report(session: Session, *, persist: bool = False) -> C
         active_job_summary=_active_job_summary(session),
         role_mode="owner",
     )
+
+
+def cached_command_center_report(
+    session: Session,
+    *,
+    force_refresh: bool = False,
+    persist: bool = False,
+    ttl_seconds: int = _REPORT_CACHE_TTL_SECONDS,
+) -> CommandCenterReport:
+    """Return a short-lived deterministic score report for fast UI navigation.
+
+    Scores are still calculated by the same deterministic engine. The cache only
+    keeps repeated Home/menu taps from re-running every query before the user sees
+    a response.
+    """
+    global _REPORT_CACHE, _REPORT_CACHE_EXPIRES_AT
+    now = _now()
+    with _REPORT_CACHE_LOCK:
+        cached = _REPORT_CACHE
+        expires_at = _REPORT_CACHE_EXPIRES_AT
+        if not force_refresh and cached is not None and expires_at is not None and expires_at > now:
+            return CommandCenterReport(
+                generated_at=cached.generated_at,
+                scores=cached.scores,
+                unlocks=cached.unlocks,
+                weak_spots=cached.weak_spots,
+                fastest_gain=cached.fastest_gain,
+                attention_items=cached.attention_items,
+                active_job_summary=cached.active_job_summary,
+                role_mode=cached.role_mode,
+                cache_status="cached",
+            )
+
+    report = build_command_center_report(session, persist=persist)
+    with _REPORT_CACHE_LOCK:
+        _REPORT_CACHE = report
+        _REPORT_CACHE_EXPIRES_AT = now + timedelta(seconds=ttl_seconds)
+    return report
+
+
+def refresh_command_center_score_snapshots() -> None:
+    """Best-effort score snapshot persistence outside the callback response path."""
+    from app.db.session import SessionLocal
+
+    if SessionLocal is None:
+        return
+    try:
+        with SessionLocal() as session:
+            report = cached_command_center_report(session, force_refresh=True, persist=False)
+            record_score_snapshots(session, report.scores.values())
+            session.commit()
+    except Exception:
+        # Snapshot history is useful, but it must never slow or break navigation.
+        return

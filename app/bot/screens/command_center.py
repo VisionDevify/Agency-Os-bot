@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy.orm import Session
 
 from app.bot.menu import callback_for, page_controls
 from app.bot.screens.formatting import Screen
 from app.models.user import User
-from app.services.live_scores import ROLE_HOME_FOUNDATION, SCORE_ORDER, LiveScore, build_command_center_report
+from app.services.live_scores import ROLE_HOME_FOUNDATION, SCORE_ORDER, LiveScore, cached_command_center_report
 
 
 PRIMARY_SCORE_KEYS = ("agency_os", "intelligence", "team_readiness", "revenue_intelligence")
@@ -31,6 +33,14 @@ def _confidence_label(value: str) -> str:
     return {"high": "High", "medium": "Medium", "low": "Low"}.get(value, value.title())
 
 
+def _relative_refresh_label(generated_at: datetime) -> str:
+    age_seconds = max(0, int((datetime.now(UTC) - generated_at).total_seconds()))
+    if age_seconds < 60:
+        return "just now"
+    minutes = age_seconds // 60
+    return f"{minutes}m ago"
+
+
 def _command_center_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
@@ -45,7 +55,7 @@ def _command_center_menu() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(text="📈 Scores", callback_data=callback_for("command_center:scores")),
-                InlineKeyboardButton(text="🔄 Refresh", callback_data=callback_for("command_center")),
+                InlineKeyboardButton(text="🔄 Refresh", callback_data=callback_for("command_center:refresh")),
             ],
         ]
     )
@@ -75,8 +85,8 @@ def _scores_menu() -> InlineKeyboardMarkup:
     return _hub_menu(rows, back_to="command_center")
 
 
-def render_command_center_home(session: Session, user: User | None = None) -> Screen:
-    report = build_command_center_report(session, persist=True)
+def _home_screen_from_report(session: Session, *, force_refresh: bool = False) -> Screen:
+    report = cached_command_center_report(session, force_refresh=force_refresh, persist=False)
     lines = ["🚀 Fortuna Command Center", "Fortuna OS for the agency.", ""]
     for key in PRIMARY_SCORE_KEYS:
         lines.extend([_score_line(report.scores[key]), ""])
@@ -99,11 +109,20 @@ def render_command_center_home(session: Session, user: User | None = None) -> Sc
         lines.extend(report.attention_items[:3])
     else:
         lines.append("No urgent item is active right now.")
+    lines.extend(["", "Last refreshed", "just now" if force_refresh else _relative_refresh_label(report.generated_at)])
     return Screen("\n".join(lines), _command_center_menu())
 
 
+def render_command_center_home(session: Session, user: User | None = None) -> Screen:
+    return _home_screen_from_report(session, force_refresh=False)
+
+
+def render_command_center_refresh_page(session: Session, user: User | None = None) -> Screen:
+    return _home_screen_from_report(session, force_refresh=True)
+
+
 def render_intelligence_hub_page(session: Session, user: User | None = None) -> Screen:
-    report = build_command_center_report(session)
+    report = cached_command_center_report(session)
     score = report.scores["intelligence"]
     lines = [
         "🧠 Intelligence",
@@ -127,7 +146,7 @@ def render_intelligence_hub_page(session: Session, user: User | None = None) -> 
 
 
 def render_operations_hub_page(session: Session, user: User | None = None) -> Screen:
-    report = build_command_center_report(session)
+    report = cached_command_center_report(session)
     score = report.scores["revenue_intelligence"]
     lines = [
         "🎯 Operations",
@@ -154,7 +173,7 @@ def render_operations_hub_page(session: Session, user: User | None = None) -> Sc
 
 
 def render_systems_hub_page(session: Session, user: User | None = None) -> Screen:
-    report = build_command_center_report(session)
+    report = cached_command_center_report(session)
     reliability = report.scores["reliability"]
     recovery = report.scores["recovery_safety"]
     lines = [
@@ -205,7 +224,7 @@ def render_admin_hub_page(session: Session, user: User | None = None) -> Screen:
 
 
 def render_scores_page(session: Session, user: User | None = None) -> Screen:
-    report = build_command_center_report(session)
+    report = cached_command_center_report(session)
     lines = [
         "📈 Scores",
         "",
@@ -224,7 +243,7 @@ def render_scores_page(session: Session, user: User | None = None) -> Screen:
 
 
 def render_score_detail_page(session: Session, score_name: str, user: User | None = None) -> Screen:
-    report = build_command_center_report(session)
+    report = cached_command_center_report(session)
     score = report.scores.get(score_name) or report.scores["agency_os"]
     lines = [
         f"{SCORE_ICONS.get(score.score_name, '📈')} {score.label}",

@@ -17,6 +17,7 @@ from app.models.recovery import BackupRun
 from app.models.recovery import BackupStorageTarget
 from app.models.reliability import CallbackLatencyRecord, ReliabilityJob
 from app.services.auth import setup_owner_if_needed
+from app.services import live_scores
 from app.services.observability import production_observability_summary
 from app.services.permissions import PermissionPrincipal, RoleName
 from app.services.reliability import (
@@ -81,6 +82,18 @@ class _SlowCallback:
 
     async def answer(self, text: str | None = None, show_alert: bool = False):
         await asyncio.sleep(0.05)
+        self.answered = True
+
+
+class _FastCallback:
+    data = "nav:command_center"
+
+    def __init__(self) -> None:
+        self.answered = False
+        self.message = SimpleNamespace(chat=_FakeChat(), message_id=111)
+        self.from_user = SimpleNamespace(id=6701, first_name="Owner", last_name=None, username="owner")
+
+    async def answer(self, text: str | None = None, show_alert: bool = False):
         self.answered = True
 
 
@@ -282,7 +295,7 @@ def test_render_command_timeout_raises_without_dirtying_main_session(monkeypatch
         try:
             asyncio.run(
                 runner_module._render_command_with_timeout(
-                    "home",
+                    "agency",
                     principal=_principal(owner),
                     user=owner,
                     session=session,
@@ -294,6 +307,88 @@ def test_render_command_timeout_raises_without_dirtying_main_session(monkeypatch
             raise AssertionError("command render should time out")
 
         assert session.is_active is True
+
+
+def test_fast_path_command_center_avoids_isolated_thread_render(monkeypatch) -> None:
+    with session_scope() as session:
+        owner = _owner(session)
+
+        def fail_isolated_render(**kwargs):
+            raise AssertionError("cached command center routes should not use isolated render")
+
+        monkeypatch.setattr(runner_module, "_render_command_in_isolated_session", fail_isolated_render)
+
+        screen = asyncio.run(
+            runner_module._render_command_with_timeout(
+                "home",
+                principal=_principal(owner),
+                user=owner,
+                session=session,
+            )
+        )
+
+        assert "Fortuna Command Center" in screen.text
+
+
+def test_callback_ack_happens_before_lock_acquisition(monkeypatch) -> None:
+    callback = _FastCallback()
+    observed: dict[str, bool] = {}
+
+    class FakeLocks:
+        async def acquire_callback_lock(self, *, chat_id, user_id, ttl_seconds=5):
+            observed["answered_before_lock"] = callback.answered
+            return None
+
+        async def release(self, handle):
+            raise AssertionError("lock was not acquired")
+
+    monkeypatch.setattr(runner_module, "CALLBACK_LOCKS", FakeLocks())
+
+    asyncio.run(runner_module.navigate(callback))
+
+    assert observed["answered_before_lock"] is True
+
+
+def test_callback_latency_logging_schedules_after_response(monkeypatch) -> None:
+    scheduled: list[str] = []
+
+    def fake_background(coro, *, task_name):
+        scheduled.append(task_name)
+        coro.close()
+        return None
+
+    monkeypatch.setattr(runner_module, "_tracked_background_task", fake_background)
+    runner_module._record_callback_latency_after_response(
+        page="command_center",
+        received_at=datetime.now(UTC),
+        result="succeeded",
+    )
+
+    assert scheduled == ["callback_latency"]
+
+
+def test_command_center_report_cache_and_refresh(monkeypatch) -> None:
+    with session_scope() as session:
+        _owner(session)
+        live_scores._REPORT_CACHE = None
+        live_scores._REPORT_CACHE_EXPIRES_AT = None
+        calls = {"count": 0}
+        original = live_scores.build_command_center_report
+
+        def counted_build(session, *, persist=False):
+            calls["count"] += 1
+            return original(session, persist=persist)
+
+        monkeypatch.setattr(live_scores, "build_command_center_report", counted_build)
+
+        first = live_scores.cached_command_center_report(session)
+        second = live_scores.cached_command_center_report(session)
+        refreshed = live_scores.cached_command_center_report(session, force_refresh=True)
+
+        assert calls["count"] == 2
+        assert first.cache_status == "fresh"
+        assert second.cache_status == "cached"
+        assert refreshed.cache_status == "fresh"
 
 
 def test_tracked_background_task_records_exception() -> None:

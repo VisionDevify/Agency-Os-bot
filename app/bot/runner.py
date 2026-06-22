@@ -144,6 +144,7 @@ from app.services.reliability import (
     working_screen_for_page,
 )
 from app.services.freeze_watchdog import freeze_watchdog
+from app.services.live_scores import refresh_command_center_score_snapshots
 from app.services.chat_cleanup import (
     STALE_MENU_RESPONSE,
     TEMPORARY_ERROR,
@@ -728,6 +729,16 @@ _ACTION_ROUTE_PARTS = {
     "toggle",
     "update",
 }
+_FAST_PATH_PAGES = {
+    "menu",
+    "command_center",
+    "command_center:intelligence",
+    "command_center:operations",
+    "command_center:systems",
+    "command_center:admin",
+    "command_center:scores",
+}
+_FAST_PATH_PREFIXES = ("command_center:score:",)
 
 
 def _page_runs_action(page: str) -> bool:
@@ -735,6 +746,12 @@ def _page_runs_action(page: str) -> bool:
     if parts & _ACTION_ROUTE_PARTS:
         return True
     return any(part.endswith("_run") or part.endswith("_test") for part in parts)
+
+
+def _page_uses_fast_path(page: str) -> bool:
+    if page == "command_center:refresh":
+        return False
+    return page in _FAST_PATH_PAGES or page.startswith(_FAST_PATH_PREFIXES)
 
 
 def _render_timeout_for_page(page: str) -> float:
@@ -782,7 +799,7 @@ async def _render_page_with_timeout(
     chat_title: str | None = None,
 ):
     freeze_watchdog.record_render_started(page)
-    if _page_runs_action(page):
+    if _page_runs_action(page) or _page_uses_fast_path(page):
         screen = screen_for_page(
             page,
             principal,
@@ -845,7 +862,7 @@ async def _render_command_with_timeout(
     shortcut = SHORTCUT_BY_COMMAND[command_name]
     route = f"command:{command_name}"
     freeze_watchdog.record_render_started(route)
-    if _page_runs_action(shortcut.page):
+    if _page_runs_action(shortcut.page) or _page_uses_fast_path(shortcut.page):
         screen = render_command_shortcut(
             session,
             command=command_name,
@@ -1401,6 +1418,65 @@ def _record_callback_latency_safe(
         )
     except Exception:
         logger.warning("Unable to record callback latency for %s", page, exc_info=True)
+
+
+def _record_callback_latency_isolated(
+    *,
+    page: str,
+    received_at: datetime,
+    acknowledged_at: datetime | None = None,
+    render_started_at: datetime | None = None,
+    render_finished_at: datetime | None = None,
+    edit_or_send_completed_at: datetime | None = None,
+    result: str = "succeeded",
+    safe_error_summary: str | None = None,
+    metadata: dict | None = None,
+) -> None:
+    if SessionLocal is None:
+        return
+    with SessionLocal() as latency_session:
+        _record_callback_latency_safe(
+            latency_session,
+            page=page,
+            received_at=received_at,
+            acknowledged_at=acknowledged_at,
+            render_started_at=render_started_at,
+            render_finished_at=render_finished_at,
+            edit_or_send_completed_at=edit_or_send_completed_at,
+            result=result,
+            safe_error_summary=safe_error_summary,
+            metadata=metadata,
+        )
+        latency_session.commit()
+
+
+def _record_callback_latency_after_response(
+    *,
+    page: str,
+    received_at: datetime,
+    acknowledged_at: datetime | None = None,
+    render_started_at: datetime | None = None,
+    render_finished_at: datetime | None = None,
+    edit_or_send_completed_at: datetime | None = None,
+    result: str = "succeeded",
+    safe_error_summary: str | None = None,
+    metadata: dict | None = None,
+) -> None:
+    _tracked_background_task(
+        asyncio.to_thread(
+            _record_callback_latency_isolated,
+            page=page,
+            received_at=received_at,
+            acknowledged_at=acknowledged_at,
+            render_started_at=render_started_at,
+            render_finished_at=render_finished_at,
+            edit_or_send_completed_at=edit_or_send_completed_at,
+            result=result,
+            safe_error_summary=safe_error_summary,
+            metadata=metadata,
+        ),
+        task_name="callback_latency",
+    )
 
 
 def _record_callback_button_issue(
@@ -2834,6 +2910,9 @@ async def navigate(callback: CallbackQuery) -> None:
 
     page = callback.data.removeprefix("nav:") if callback.data else "menu"
     freeze_watchdog.record_update_received(route=page)
+    fast_received_at = datetime.now(UTC)
+    await _safe_callback_answer(callback)
+    fast_acknowledged_at = datetime.now(UTC)
     if SessionLocal is None:
         await _safe_callback_answer(callback, "Database is not configured.", show_alert=True)
         return
@@ -2849,14 +2928,20 @@ async def navigate(callback: CallbackQuery) -> None:
         await _safe_callback_answer(callback, "One moment - Fortuna is already opening that.")
         return
     try:
-        await _navigate_locked(callback, page)
+        await _navigate_locked(callback, page, received_at=fast_received_at, acknowledged_at=fast_acknowledged_at)
     finally:
         await CALLBACK_LOCKS.release(callback_lock)
 
 
-async def _navigate_locked(callback: CallbackQuery, page: str) -> None:
-    latency_received_at = datetime.now(UTC)
-    latency_acknowledged_at: datetime | None = None
+async def _navigate_locked(
+    callback: CallbackQuery,
+    page: str,
+    *,
+    received_at: datetime | None = None,
+    acknowledged_at: datetime | None = None,
+) -> None:
+    latency_received_at = received_at or datetime.now(UTC)
+    latency_acknowledged_at: datetime | None = acknowledged_at
     latency_render_started_at: datetime | None = None
     latency_render_finished_at: datetime | None = None
     latency_edit_completed_at: datetime | None = None
@@ -2865,8 +2950,9 @@ async def _navigate_locked(callback: CallbackQuery, page: str) -> None:
     with SessionLocal() as session:
         user: User | None = None
         try:
-            await _safe_callback_answer(callback)
-            latency_acknowledged_at = datetime.now(UTC)
+            if latency_acknowledged_at is None:
+                await _safe_callback_answer(callback)
+                latency_acknowledged_at = datetime.now(UTC)
             _record_bot_heartbeat(session, status="healthy", source="telegram_callback")
             user = get_or_create_telegram_user(
                 session,
@@ -3213,6 +3299,11 @@ async def _navigate_locked(callback: CallbackQuery, page: str) -> None:
                 page=page,
             )
             latency_edit_completed_at = datetime.now(UTC)
+            if page == "command_center:refresh":
+                _tracked_background_task(
+                    asyncio.to_thread(refresh_command_center_score_snapshots),
+                    task_name="score_snapshot_refresh",
+                )
             target_id = _notification_target_id_for_send_test(page)
             if target_id is not None:
                 target = get_notification_target(session, target_id)
@@ -3256,8 +3347,7 @@ async def _navigate_locked(callback: CallbackQuery, page: str) -> None:
             latency_error = type(exc).__name__
             await _handle_callback_failure(callback, session, user=user, page=page, exc=exc)
         finally:
-            _record_callback_latency_safe(
-                session,
+            _record_callback_latency_after_response(
                 page=page,
                 received_at=latency_received_at,
                 acknowledged_at=latency_acknowledged_at,
