@@ -563,6 +563,17 @@ def test_reliability_command_has_visible_working_state() -> None:
     assert "Fortuna heard you" in screen.text
 
 
+def test_today_command_has_working_state_and_extended_timeout(monkeypatch) -> None:
+    shortcut = SHORTCUT_BY_COMMAND["today"]
+    screen = working_screen_for(shortcut)
+
+    monkeypatch.setattr(runner_module, "SIMPLE_RENDER_TIMEOUT_SECONDS", 3.0)
+
+    assert screen is not None
+    assert "Checking today" in screen.text
+    assert runner_module._render_timeout_for_page("today_priorities") >= 15.0
+
+
 def test_verify_navigation_screen_falls_back_when_harness_fails(monkeypatch) -> None:
     import app.bot.screens.reliability as reliability_screen_module
 

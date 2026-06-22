@@ -757,6 +757,8 @@ def _page_uses_fast_path(page: str) -> bool:
 def _render_timeout_for_page(page: str) -> float:
     if page == "reliability:verify":
         return max(SIMPLE_RENDER_TIMEOUT_SECONDS, NAVIGATION_VERIFY_TIMEOUT_SECONDS)
+    if page == "today_priorities":
+        return max(SIMPLE_RENDER_TIMEOUT_SECONDS, 15.0)
     if page in {"production_observability", "callback_failure_review"}:
         return max(SIMPLE_RENDER_TIMEOUT_SECONDS, 10.0)
     if page.startswith(("ai_brain", "search")):
