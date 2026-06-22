@@ -89,6 +89,12 @@ def parent_page_for(page: str | None) -> str:
         return "intelligence:quality:trends"
     if current.startswith("prediction:"):
         return "intelligence:quality:trends"
+    if current in {"drift", "drift:active", "drift:plans", "drift:add", "drift:resolved", "drift:details"}:
+        return "command_center:intelligence" if current == "drift" else "drift"
+    if current.startswith("drift:add:"):
+        return "drift:add"
+    if current.startswith("drift:plan:"):
+        return "drift:plans"
     if current == "reality:check":
         return "intelligence:quality"
     if current.startswith("reality:"):

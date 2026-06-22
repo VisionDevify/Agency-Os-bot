@@ -375,6 +375,27 @@ HELP_KB_SEEDS: tuple[dict[str, str], ...] = (
         "related_route": "agency_awareness",
     },
     {
+        "topic": "agency_drift",
+        "title": "Drift Detection",
+        "role_scope": "owner,admin,manager",
+        "content": "Drift Detection compares active plans with what evidence shows actually happened. Drift is not blame; it is a calm plan-vs-reality check.",
+        "related_route": "drift",
+    },
+    {
+        "topic": "agency_visibility_gap",
+        "title": "Visibility Gap",
+        "role_scope": "owner,admin,manager",
+        "content": "A visibility gap means Fortuna needs more evidence. Missing data is not automatically drift or failure unless there is an active expectation and supporting evidence.",
+        "related_route": "drift",
+    },
+    {
+        "topic": "agency_plan",
+        "title": "Agency Plans",
+        "role_scope": "owner,admin,manager",
+        "content": "Agency plans are expectations the owner allows Fortuna to track, such as posting cadence, creator outreach, recovery checks, or weekly fan notes. Plans can be paused when work is intentionally stopped.",
+        "related_route": "drift:plans",
+    },
+    {
         "topic": "old_menu",
         "title": "Old Menus",
         "role_scope": "owner,admin,manager,chatter,viewer",
@@ -545,6 +566,12 @@ def detect_help_intent(question: str) -> str:
         return "working_state"
     if "command" in text and ("open" in text or "screen" in text or "shortcut" in text):
         return "command_shortcuts"
+    if "drift" in text or "plan vs reality" in text or "doing what we said" in text:
+        return "agency_drift"
+    if "visibility gap" in text or ("missing data" in text and "failure" in text):
+        return "agency_visibility_gap"
+    if "add a plan" in text or "pause a plan" in text or ("plan" in text and "expectation" in text):
+        return "agency_plan"
     if "active failure" in text:
         return "active_failure"
     if "historical issue" in text or "historical failure" in text:
@@ -1134,6 +1161,27 @@ def help_brain_answer(
             "Next button to press: Calibration."
         )
         next_action = "reality:calibration" if _adminish(user) else "help"
+    elif intent == "agency_drift":
+        answer = (
+            "Drift Detection is Fortuna's plan-vs-reality check.\n\n"
+            "Why: it notices when an active expectation and current evidence do not line up. It does not shame teammates or assume missing data means failure.\n\n"
+            "Next button to press: Drift Detection."
+        )
+        next_action = "drift" if _adminish(user) else "help"
+    elif intent == "agency_visibility_gap":
+        answer = (
+            "A visibility gap means Fortuna needs more information before it can judge what happened.\n\n"
+            "Why: missing data is not automatically drift. Drift requires an expectation plus evidence that reality has moved away from it.\n\n"
+            "Next button to press: Active Drift."
+        )
+        next_action = "drift:active" if _adminish(user) else "help"
+    elif intent == "agency_plan":
+        answer = (
+            "An agency plan is an expectation the owner allows Fortuna to track, like posting daily or reviewing reliability each morning.\n\n"
+            "Why: plans tell Fortuna what reality should be compared against. Pause a plan when work is intentionally stopped.\n\n"
+            "Next button to press: Plans."
+        )
+        next_action = "drift:plans" if _adminish(user) else "help"
     elif intent == "agency_awareness":
         answer = (
             "Agency Awareness is Fortuna's live map of what the agency is doing right now.\n\n"

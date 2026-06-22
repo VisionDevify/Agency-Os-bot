@@ -342,6 +342,13 @@ def render_callback_failure_review_page(
                         f"{len(validating_items)} older issue(s) are waiting for targeted evidence, but they are not counted as active crashes.",
                     ]
                 )
+                for item in validating_items[:5]:
+                    lines.extend(
+                        [
+                            f"- {_friendly_page_label(item.page)}",
+                            f"  Next: {item.next_action}",
+                        ]
+                    )
             lines.extend(
                 [
                     "",

@@ -1,5 +1,6 @@
 from app.models.account import Account, AccountAuthSession, AccountVerificationCode
 from app.models.agency_awareness import AgencyAwarenessSnapshot, AgencyManualRecord
+from app.models.agency_drift import AgencyDriftFinding, AgencyExpectation, AgencyPlan
 from app.models.ai import AIAuditLog
 from app.models.audit import AuditLog
 from app.models.callback_error import CallbackErrorLog
@@ -88,7 +89,10 @@ __all__ = [
     "AccountVerificationCode",
     "AccountabilitySnapshot",
     "AgencyAwarenessSnapshot",
+    "AgencyDriftFinding",
+    "AgencyExpectation",
     "AgencyManualRecord",
+    "AgencyPlan",
     "AIAuditLog",
     "ActivationBlockerDecision",
     "AgencyActivationState",

@@ -21,6 +21,7 @@ from .coo import *
 from .search import *
 from .ai import *
 from .agency_awareness import *
+from .drift import *
 from .reliability import *
 from .command_center import *
 from .help import *
@@ -185,6 +186,26 @@ def render_page(page: str, session: Session | None = None, user: User | None = N
         return render_agency_evidence_page(session, user)
     if page == "agency_awareness:details" and session is not None:
         return render_agency_awareness_page(session, user, details=True)
+    if page == "drift" and session is not None:
+        return render_drift_page(session, user)
+    if page == "drift:active" and session is not None:
+        return render_active_drift_page(session, user)
+    if page == "drift:plans" and session is not None:
+        return render_drift_plans_page(session, user)
+    if page == "drift:add" and session is not None:
+        return render_add_plan_page(session, user)
+    if page.startswith("drift:add:") and session is not None:
+        return render_drift_plan_added_page(session, page.split(":")[-1], user)
+    if page == "drift:resolved" and session is not None:
+        return render_resolved_drift_page(session, user)
+    if page == "drift:details" and session is not None:
+        return render_drift_page(session, user, details=True)
+    if page.startswith("drift:plan:") and session is not None:
+        parts = page.split(":")
+        plan_id = int(parts[2]) if len(parts) >= 3 and parts[2].isdigit() else 0
+        if len(parts) >= 4:
+            return render_drift_plan_status_page(session, plan_id, parts[3], user)
+        return render_drift_plan_detail_page(session, plan_id, user)
     if page == "decision:top" and session is not None:
         return render_decision_top_priority_page(session, user)
     if page == "decision:details" and session is not None:

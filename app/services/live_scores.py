@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from typing import Iterable
 
@@ -25,6 +25,7 @@ from app.models.search import ExternalSearchResult
 from app.models.social import SocialPost, SocialSource, SocialSourcePerformance
 from app.models.user import User
 from app.services.agency_awareness import AgencyAwarenessReport, agency_awareness_report
+from app.services.agency_drift import drift_attention_item, drift_score_pressure
 from app.services.ai import ai_configuration_status
 from app.services.button_health import button_health_summary
 from app.services.chat_cleanup import chat_cleanup_metrics
@@ -312,6 +313,45 @@ def _safe_agency(session: Session) -> AgencyAwarenessReport | None:
     except Exception:
         session.rollback()
         return None
+
+
+def _safe_drift_pressure(session: Session) -> dict[str, int]:
+    try:
+        return drift_score_pressure(session)
+    except Exception:
+        session.rollback()
+        return {}
+
+
+def _safe_drift_attention(session: Session) -> str | None:
+    try:
+        return drift_attention_item(session)
+    except Exception:
+        session.rollback()
+        return None
+
+
+def _apply_drift_pressure(score: LiveScore, pressure: int) -> LiveScore:
+    if pressure <= 0:
+        return score
+    bounded = min(10, max(0, pressure))
+    adjusted = _clamp(score.score_percent - bounded)
+    breakdown = score.score_breakdown + (
+        ScoreBreakdownItem(
+            "Plan Drift",
+            bounded,
+            0,
+            f"Active plan-vs-reality drift lowers this score by {bounded} point(s).",
+        ),
+    )
+    return replace(
+        score,
+        score_percent=adjusted,
+        weak_spots=score.weak_spots + ("Active plan drift is pulling this score down.",),
+        evidence_summary=f"{score.evidence_summary} Drift pressure applied from active expectations.",
+        score_breakdown=breakdown,
+        evidence_version=_evidence_version(score.score_name, breakdown),
+    )
 
 
 def _score_recovery_safety(session: Session, recovery: RecoveryAssessment | None) -> LiveScore:
@@ -689,7 +729,7 @@ def _build_weak_spots(scores: dict[str, LiveScore]) -> tuple[WeakSpot, ...]:
     return tuple(items)
 
 
-def _attention_items(scores: dict[str, LiveScore], truth: SystemTruth | None = None) -> tuple[str, ...]:
+def _attention_items(scores: dict[str, LiveScore], truth: SystemTruth | None = None, *, drift_item: str | None = None) -> tuple[str, ...]:
     candidates: list[tuple[int, str]] = []
     if truth is not None and truth.database_backend == "sqlite_fallback":
         candidates.append((20, "Production Degraded: Fortuna is running in emergency storage mode. Data may not persist."))
@@ -703,6 +743,8 @@ def _attention_items(scores: dict[str, LiveScore], truth: SystemTruth | None = N
         candidates.append((6, "Fortuna needs more creator, content, fan, or source visibility."))
     if scores["revenue_intelligence"].score_percent < 30:
         candidates.append((4, "Revenue Intelligence needs its first data sources."))
+    if drift_item:
+        candidates.append((8, drift_item))
     return tuple(item for _priority, item in sorted(candidates, reverse=True)[:3])
 
 
@@ -746,21 +788,26 @@ def build_command_center_report(session: Session, *, persist: bool = False) -> C
     truth = _safe_system_truth(session)
     recovery_assessment = _safe_recovery(session)
     agency = _safe_agency(session)
+    drift_pressure = _safe_drift_pressure(session)
+    drift_item = _safe_drift_attention(session)
 
-    recovery = _score_recovery_safety(session, recovery_assessment)
+    recovery = _apply_drift_pressure(_score_recovery_safety(session, recovery_assessment), drift_pressure.get("recovery_safety", 0))
     reliability = _score_reliability(session)
-    agency_visibility = _score_agency_visibility(session, agency)
+    agency_visibility = _apply_drift_pressure(_score_agency_visibility(session, agency), drift_pressure.get("agency_visibility", 0))
     intelligence = _score_intelligence(session)
-    team = _score_team_readiness(session, reliability)
+    team = _apply_drift_pressure(_score_team_readiness(session, reliability), drift_pressure.get("team_readiness", 0))
     revenue = _score_revenue_intelligence(session)
-    agency_os = _score_agency_os(
-        session,
-        truth=truth,
-        recovery=recovery,
-        reliability=reliability,
-        intelligence=intelligence,
-        agency_visibility=agency_visibility,
-        revenue=revenue,
+    agency_os = _apply_drift_pressure(
+        _score_agency_os(
+            session,
+            truth=truth,
+            recovery=recovery,
+            reliability=reliability,
+            intelligence=intelligence,
+            agency_visibility=agency_visibility,
+            revenue=revenue,
+        ),
+        drift_pressure.get("agency_os", 0),
     )
     scores = {
         "agency_os": agency_os,
@@ -782,7 +829,7 @@ def build_command_center_report(session: Session, *, persist: bool = False) -> C
         unlocks=unlocks,
         weak_spots=_build_weak_spots(scores),
         fastest_gain=fastest_gain,
-        attention_items=_attention_items(scores, truth),
+        attention_items=_attention_items(scores, truth, drift_item=drift_item),
         active_job_summary=_active_job_summary(session),
         role_mode="owner",
     )

@@ -137,6 +137,7 @@ def render_intelligence_hub_page(session: Session, user: User | None = None) -> 
         score.fastest_gain,
     ]
     rows = [
+        [("Drift Detection", "drift")],
         [("👑 COO Briefing", "coo:briefing"), ("🧭 What Fortuna Can See", "agency_awareness")],
         [("🌅 Today", "today_priorities"), ("🧠 AI Brain", "ai_brain")],
         [("📚 What Fortuna Remembers", "decision:memory"), ("🧪 How Accurate Is Fortuna?", "reality:check")],

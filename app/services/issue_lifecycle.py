@@ -118,10 +118,6 @@ class IssueRevalidationEngine:
                 revalidated_at=self.revalidated_at,
                 revalidated_commit=self.current_commit,
             )
-        elif self.revalidated_at is None:
-            status = "active"
-            evidence = "No successful revalidation has been recorded after this failure yet."
-            action = "Run Button Health and inspect the failing route."
         else:
             status = "validating"
             evidence = "No fresh targeted revalidation evidence is available for this route yet."

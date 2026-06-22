@@ -21,6 +21,7 @@ from .coo import *
 from .search import *
 from .ai import *
 from .agency_awareness import *
+from .drift import *
 from .reliability import *
 from .command_center import *
 from .help import *

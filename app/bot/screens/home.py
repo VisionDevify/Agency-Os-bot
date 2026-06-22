@@ -12,6 +12,7 @@ from app.services.decision_engine import generate_coo_briefing
 from app.services.decision_trends import safe_predictive_coo_report
 from app.services.reality_calibration import safe_reality_calibration_report
 from app.services.agency_awareness import agency_awareness_report
+from app.services.agency_drift import agency_drift_report
 
 def _owner_display_name(user: User) -> str:
     return user.display_name or user.username or "there"
@@ -402,6 +403,7 @@ def render_today_priorities_page(session: Session, user: User | None = None) -> 
     recommendations = list_recommendations(session, status="open", limit=5)
     button_health = button_health_summary(session)
     awareness = agency_awareness_report(session, persist=False)
+    drift = agency_drift_report(session, persist=False)
     button_needs_review = button_health.open_issue_count > 0 and button_health.overall_status in {"needs_review", "needs_attention", "critical"}
     next_action = (
         top.next_best_move
@@ -456,6 +458,17 @@ def render_today_priorities_page(session: Session, user: User | None = None) -> 
                 "",
                 "Next:",
                 awareness.next_best_move,
+            ]
+        )
+    if drift.top_drift is not None and (drift.top_drift.status != "needs_review" or drift.top_drift.severity != "low"):
+        lines.extend(
+            [
+                "",
+                "Plan vs Reality:",
+                drift.top_drift.gap.replace("_", " ").title(),
+                "",
+                "Next:",
+                drift.top_drift.next_best_move,
             ]
         )
     if briefing.learning_summary:

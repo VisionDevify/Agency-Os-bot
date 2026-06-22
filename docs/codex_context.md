@@ -389,6 +389,24 @@ Agency Awareness:
 - Observability should show Agency Awareness only when meaningful: missing inputs, stale snapshots, external outages, generation failures, or fallback usage.
 - Future Agency Awareness path: Drift Detection, Opportunity Loss, Question Engine, and Digital Twin.
 
+Agency Drift Detection:
+
+- Drift Detection answers: are we doing what we said we would do?
+- Drift requires an explicit expectation. Missing data without a plan is a visibility gap, not failure.
+- `AgencyPlan` stores the title, domain, owner role, expected cadence, expected signal, date window, status, confidence, and evidence summary.
+- `AgencyExpectation` stores the concrete expected signal attached to a plan and next-check timing.
+- `AgencyDriftFinding` stores expected vs observed, gap, severity, confidence, lifecycle status, next best move, evidence records, and first/last seen timestamps.
+- Starter expectations are limited to internal systems Fortuna already understands: backup freshness, Reliability Center, Self-Test, command verification, and agency visibility improvement.
+- Do not create Instagram, Reddit, OnlyFans, creator, fan, whale, chatter, or content cadence expectations unless the owner creates a manual plan.
+- Manual plans are owner evidence. They can be paused, completed, or cancelled; paused plans must not generate drift.
+- No-shame language is mandatory. Drift should say "visibility gap" or "plan and evidence do not line up", not "someone failed."
+- If expected activity resumes or a plan is paused/completed, active findings resolve and become historical; if the same gap returns later, mark it `reappeared`.
+- Drift can apply bounded score pressure to Agency OS, Recovery Safety, Team Readiness, and Agency Visibility, but it must not double-count the same underlying issue.
+- AI may explain why drift matters and suggest how to adjust expectations. AI may not create drift, invent activity, change plan status, or shame teammates.
+- Search can provide external context, but public search cannot prove internal agency drift. Internal agency evidence is required.
+- Drift screens must stay fast: use cached awareness/score evidence where possible and keep simple screens under the normal navigation response budget.
+- Future Opportunity Loss depends on Drift: first identify whether planned agency activity is actually happening, then evaluate lost upside.
+
 Command Center UX:
 
 - Fortuna's primary experience is the Command Center, not a developer dashboard.

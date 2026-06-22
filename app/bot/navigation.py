@@ -1400,6 +1400,7 @@ def screen_for_page(
         or normalized.startswith("ai_brain")
         or normalized.startswith("command_center")
         or normalized.startswith("agency_awareness")
+        or normalized.startswith("drift")
         or normalized.startswith("reliability")
         or normalized.startswith("prediction:")
         or normalized.startswith("reality:")
