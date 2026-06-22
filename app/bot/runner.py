@@ -764,6 +764,21 @@ def _render_timeout_for_page(page: str) -> float:
     return SIMPLE_RENDER_TIMEOUT_SECONDS
 
 
+def _render_side_effects_should_commit(*, page: str | None = None, command_name: str | None = None) -> bool:
+    return page == "reliability:verify" or command_name == "verify_navigation"
+
+
+def _finish_isolated_render_session(isolated_session, *, page: str | None = None, command_name: str | None = None) -> None:
+    try:
+        if _render_side_effects_should_commit(page=page, command_name=command_name):
+            isolated_session.commit()
+        else:
+            isolated_session.rollback()
+    except Exception:
+        with contextlib.suppress(Exception):
+            isolated_session.rollback()
+
+
 def _render_page_in_isolated_session(
     *,
     page: str,
@@ -786,8 +801,7 @@ def _render_page_in_isolated_session(
             chat_id=chat_id,
             chat_title=chat_title,
         )
-        with contextlib.suppress(Exception):
-            isolated_session.rollback()
+        _finish_isolated_render_session(isolated_session, page=page)
         return screen
 
 
@@ -847,8 +861,7 @@ def _render_command_in_isolated_session(
             chat_id=chat_id,
             chat_title=chat_title,
         )
-        with contextlib.suppress(Exception):
-            isolated_session.rollback()
+        _finish_isolated_render_session(isolated_session, command_name=command_name)
         return screen
 
 

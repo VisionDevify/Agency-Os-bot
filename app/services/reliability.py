@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import os
 from dataclasses import dataclass
@@ -702,6 +703,7 @@ def render_command_shortcut(
 
 def run_command_verification_harness(session: Session, *, actor: User) -> VerificationHarnessResult:
     principal = PermissionPrincipal(telegram_id=actor.telegram_id, is_owner=True, role=RoleName.OWNER)
+    harness_started = now_utc()
     passed: list[VerificationRouteResult] = []
     failed: list[VerificationRouteResult] = []
     slow: list[VerificationRouteResult] = []
@@ -774,6 +776,27 @@ def run_command_verification_harness(session: Session, *, actor: User) -> Verifi
         failing_pages=failed_pages,
         revalidated_at=completed_at,
     )
+    with contextlib.suppress(Exception):
+        record_callback_latency(
+            session,
+            CallbackTiming(
+                callback_route="command:verify_navigation",
+                received_at=harness_started,
+                acknowledged_at=harness_started,
+                render_started_at=harness_started,
+                render_finished_at=completed_at,
+                edit_or_send_completed_at=completed_at,
+            ),
+            result="succeeded" if not failed else "failed_safe",
+            safe_error_summary=None if not failed else f"{len(failed)} route(s) failed verification.",
+            metadata={
+                "verification_harness": True,
+                "summary": True,
+                "passed_routes": len(passed),
+                "failed_routes": len(failed),
+                "stale_menu_issues": review.lifecycle_summary.stale_count,
+            },
+        )
     average = round(sum(item.latency_ms for item in passed + failed) / max(1, len(passed) + len(failed)))
     return VerificationHarnessResult(
         passed=tuple(passed),

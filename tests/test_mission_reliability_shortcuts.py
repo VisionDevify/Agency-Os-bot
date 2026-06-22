@@ -335,6 +335,39 @@ def test_verify_navigation_uses_dedicated_render_timeout(monkeypatch) -> None:
         assert "Navigation Verification" in screen.text
 
 
+def test_verify_navigation_isolated_render_commits_revalidation_evidence(monkeypatch, tmp_path) -> None:
+    engine = create_engine(f"sqlite+pysqlite:///{tmp_path / 'verify-navigation.db'}")
+    Base.metadata.create_all(engine)
+    TestSessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
+    with TestSessionLocal() as session:
+        owner = setup_owner_if_needed(session, telegram_user_id=6701, owner_telegram_id=6701, display_name="Owner")
+        session.commit()
+
+        monkeypatch.setattr(runner_module, "SessionLocal", TestSessionLocal)
+
+        screen = asyncio.run(
+            runner_module._render_command_with_timeout(
+                "verify_navigation",
+                principal=_principal(owner),
+                user=owner,
+                session=session,
+            )
+        )
+
+        assert "Navigation Verification" in screen.text
+
+    with TestSessionLocal() as session:
+        assert (
+            session.query(CallbackLatencyRecord)
+            .filter(
+                CallbackLatencyRecord.callback_route == "command:verify_navigation",
+                CallbackLatencyRecord.result == "succeeded",
+            )
+            .count()
+            >= 1
+        )
+
+
 def test_fast_path_command_center_avoids_isolated_thread_render(monkeypatch) -> None:
     with session_scope() as session:
         owner = _owner(session)
@@ -481,6 +514,15 @@ def test_verify_navigation_harness_reports_passed_routes(monkeypatch) -> None:
 
         assert len(result.passed) >= 10
         assert result.callback_issue_count >= 0
+        assert (
+            session.query(CallbackLatencyRecord)
+            .filter(
+                CallbackLatencyRecord.callback_route == "command:verify_navigation",
+                CallbackLatencyRecord.result == "succeeded",
+            )
+            .count()
+            >= 1
+        )
         assert "Navigation Verification" in screen.text
         assert "Passed Routes" in screen.text
 

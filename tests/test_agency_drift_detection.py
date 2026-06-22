@@ -8,6 +8,7 @@ from app.bot.screens.drift import render_active_drift_page, render_drift_page, r
 from app.models.agency_awareness import AgencyManualRecord
 from app.models.button_issue import ButtonIssue
 from app.models.recovery import BackupRun
+from app.models.reliability import CallbackLatencyRecord
 from app.services.agency_drift import (
     AgencyDriftEngine,
     agency_drift_report,
@@ -101,6 +102,23 @@ def test_reliability_drift_detected_from_active_issue() -> None:
         report = AgencyDriftEngine().generate(session)
 
         assert any(item.domain == "reliability" and item.gap == "reliability_active_issue" for item in report.active_findings)
+
+
+def test_command_verification_drift_resolves_after_success_record() -> None:
+    with session_scope() as session:
+        session.add(
+            CallbackLatencyRecord(
+                callback_route="command:verify_navigation",
+                received_at=datetime.now(UTC),
+                result="succeeded",
+                latency_label="excellent",
+            )
+        )
+        session.flush()
+
+        report = AgencyDriftEngine().generate(session)
+
+        assert not any(item.gap == "command_verification_missing" for item in report.active_findings)
 
 
 def test_manual_drift_resolves_when_evidence_appears() -> None:
