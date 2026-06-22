@@ -1420,6 +1420,9 @@ async def botstatus(message: Message) -> None:
         await message.answer("Bot status is owner-only.")
         return
 
+    with contextlib.suppress(Exception):
+        await message.answer("Checking bot status...\n\nFortuna heard you.")
+
     with SessionLocal() as session:
         telegram_id = message.from_user.id
         _record_bot_heartbeat(session, status="healthy", source="telegram_botstatus")

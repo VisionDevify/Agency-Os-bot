@@ -123,7 +123,7 @@ SHORTCUT_COMMANDS: tuple[ShortcutCommand, ...] = (
     ShortcutCommand("backup_history", "recovery:history", description="Open Backup History."),
     ShortcutCommand("run_backup", "recovery:backup:run", description="Start or show backup job.", working_label="Starting backup"),
     ShortcutCommand("restore_test", "recovery:restore:test", description="Start or show restore validation.", working_label="Starting restore validation"),
-    ShortcutCommand("reliability", "reliability", description="Open Reliability Center."),
+    ShortcutCommand("reliability", "reliability", description="Open Reliability Center.", working_label="Checking reliability"),
     ShortcutCommand("callback_failures", "callback_failure_review", description="Open Callback Failure Review."),
     ShortcutCommand("button_health", "button_health", description="Open Button Health.", working_label="Checking buttons"),
     ShortcutCommand("notifications", "platforms:notifications", description="Open Notification Center."),

@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import asyncio
 import logging
 
 from aiogram import Bot
@@ -19,6 +20,7 @@ app = FastAPI(title=settings.app_display_name)
 app.include_router(router)
 _telegram_webhook_bot: Bot | None = None
 logger = logging.getLogger(__name__)
+HEALTH_CHECK_TIMEOUT_SECONDS = 5
 
 
 def _telegram_webhook_secret(token: str, app_secret: str) -> str:
@@ -75,69 +77,84 @@ async def startup() -> None:
 @app.get("/health")
 async def health() -> dict[str, object]:
     storage = storage_status()
-    db_connected = False
+    try:
+        db_connected, alembic_revision = await asyncio.wait_for(
+            asyncio.to_thread(_health_check_database, storage),
+            timeout=HEALTH_CHECK_TIMEOUT_SECONDS,
+        )
+    except TimeoutError:
+        logger.warning("Health database check timed out")
+        db_connected, alembic_revision = False, "timeout"
+    except Exception:
+        logger.exception("Health database check failed safely")
+        db_connected, alembic_revision = False, "unknown"
+
     redis_status = "unknown"
-    alembic_revision = "unknown"
-    if SessionLocal is not None:
-        try:
-            with SessionLocal() as session:
-                session.execute(text("select 1"))
-                alembic_revision = current_alembic_revision(session).lower()
-                db_connected = True
-                try:
-                    db_heartbeat_status = "degraded" if storage.backend == "sqlite_fallback" and storage.is_production else "healthy"
-                    record_heartbeat(
-                        session,
-                        service_name="api",
-                        status="healthy",
-                        metadata={"source": "health", "db_backend": storage.backend},
-                    )
-                    record_heartbeat(
-                        session,
-                        service_name="db",
-                        status=db_heartbeat_status,
-                        metadata={
-                            "source": "health",
-                            "backend": storage.backend,
-                            "driver": storage.scheme,
-                            "durable": str(storage.durable),
-                            "warning": storage.warning or "",
-                        },
-                    )
-                    session.commit()
-                except Exception:
-                    session.rollback()
-        except Exception:
-            db_connected = False
     if settings.redis_url:
         try:
-            from redis import Redis
-
-            client = Redis.from_url(settings.redis_url)
-            client.ping()
-            redis_status = "healthy"
-            if SessionLocal is not None:
-                try:
-                    with SessionLocal() as session:
-                        record_heartbeat(session, service_name="redis", status="healthy", metadata={"source": "health"})
-                        session.commit()
-                except Exception:
-                    pass
-        except Exception:
+            redis_status = await asyncio.wait_for(
+                asyncio.to_thread(_health_check_redis),
+                timeout=HEALTH_CHECK_TIMEOUT_SECONDS,
+            )
+        except TimeoutError:
+            logger.warning("Health Redis check timed out")
             redis_status = "unhealthy"
-            if SessionLocal is not None:
-                try:
-                    with SessionLocal() as session:
-                        record_heartbeat(session, service_name="redis", status="unhealthy", metadata={"source": "health"})
-                        session.commit()
-                except Exception:
-                    pass
+        except Exception:
+            logger.exception("Health Redis check failed safely")
+            redis_status = "unhealthy"
     return health_payload(
         storage=storage,
         db_connected=db_connected,
         redis_status=redis_status,
         alembic_revision=alembic_revision,
     )
+
+
+def _health_check_database(storage) -> tuple[bool, str]:
+    if SessionLocal is None:
+        return False, "unconfigured"
+    with SessionLocal() as session:
+        session.execute(text("select 1"))
+        alembic_revision = current_alembic_revision(session).lower()
+        try:
+            db_heartbeat_status = "degraded" if storage.backend == "sqlite_fallback" and storage.is_production else "healthy"
+            record_heartbeat(
+                session,
+                service_name="api",
+                status="healthy",
+                metadata={"source": "health", "db_backend": storage.backend},
+            )
+            record_heartbeat(
+                session,
+                service_name="db",
+                status=db_heartbeat_status,
+                metadata={
+                    "source": "health",
+                    "backend": storage.backend,
+                    "driver": storage.scheme,
+                    "durable": str(storage.durable),
+                    "warning": storage.warning or "",
+                },
+            )
+            session.commit()
+        except Exception:
+            session.rollback()
+        return True, alembic_revision
+
+
+def _health_check_redis() -> str:
+    from redis import Redis
+
+    client = Redis.from_url(settings.redis_url, socket_connect_timeout=2, socket_timeout=2)
+    client.ping()
+    if SessionLocal is not None:
+        try:
+            with SessionLocal() as session:
+                record_heartbeat(session, service_name="redis", status="healthy", metadata={"source": "health"})
+                session.commit()
+        except Exception:
+            pass
+    return "healthy"
 
 
 @app.post("/telegram/webhook")

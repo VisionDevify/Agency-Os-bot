@@ -30,6 +30,7 @@ from app.services.reliability import (
     run_command_verification_harness,
     start_reliability_job,
     update_reliability_job,
+    working_screen_for,
 )
 from tests.utils import session_scope
 
@@ -281,6 +282,15 @@ def test_verify_navigation_harness_uses_working_state_for_heavy_routes(monkeypat
 
         assert not result.failed
         assert {item.command for item in result.passed}.issuperset({"coo", "observability"})
+
+
+def test_reliability_command_has_visible_working_state() -> None:
+    shortcut = SHORTCUT_BY_COMMAND["reliability"]
+    screen = working_screen_for(shortcut)
+
+    assert screen is not None
+    assert "Checking reliability" in screen.text
+    assert "Fortuna heard you" in screen.text
 
 
 def test_verify_navigation_screen_falls_back_when_harness_fails(monkeypatch) -> None:
