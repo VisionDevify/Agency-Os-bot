@@ -62,7 +62,7 @@ class CleanupMetrics:
 
     @property
     def old_menu_risk(self) -> bool:
-        return self.status != "healthy"
+        return self.status in {"needs_review", "needs_attention", "critical"}
 
     @property
     def label(self) -> str:
@@ -561,12 +561,12 @@ def chat_cleanup_metrics(session: Session) -> CleanupMetrics:
         evidence = f"{failed_count} recent cleanup deletion failure(s) were recorded. Active screens still render, but old menus may remain visible."
         next_action = "Open Chat Cleanup settings."
     elif remaining_count:
-        status = "needs_review"
+        status = "healthy"
         evidence = (
             f"{remaining_count} old temporary menu message(s) remain tracked for cleanup. "
-            "They are inactive and ignored if clicked."
+            "They are inactive, ignored if clicked, and shown in Details only."
         )
-        next_action = "Run /clean or /start again."
+        next_action = "No action needed. Telegram may prevent deletion of older messages."
     else:
         status = "healthy"
         evidence = "One active Telegram screen is tracked. Old menus are ignored."

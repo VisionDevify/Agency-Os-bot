@@ -15,7 +15,7 @@ from app.models.reliability import CallbackLatencyRecord, ReliabilityJob, Respon
 from app.models.user import User
 from app.services.audit import sanitize_details
 from app.services.callbacks import callback_failure_review
-from app.services.recovery import latest_recovery_job_summary
+from app.services.recovery import latest_recovery_job_summary, recovery_risk_assessment
 from app.services.permissions import PermissionPrincipal, RoleName
 
 ACTIVE_JOB_STATUSES = {"queued", "running", "checking", "uploading", "verifying", "summarizing"}
@@ -23,6 +23,14 @@ TERMINAL_JOB_STATUSES = {"completed", "failed", "timed_out", "cancelled"}
 SUCCESSFUL_JOB_STATUSES = {"completed"}
 JOB_TIMEOUT_MINUTES = int(os.getenv("RELIABILITY_JOB_TIMEOUT_MINUTES", "15"))
 CACHE_DEFAULT_MINUTES = int(os.getenv("RELIABILITY_CACHE_DEFAULT_MINUTES", "5"))
+BLOCKING_BUTTON_ISSUE_TYPES = {
+    "missing_handler",
+    "renderer_error",
+    "bad_back_target",
+    "missing_back",
+    "missing_home",
+    "dead_end",
+}
 
 
 @dataclass(frozen=True)
@@ -64,6 +72,8 @@ class VerificationHarnessResult:
     slow: tuple[VerificationRouteResult, ...]
     callback_issue_count: int
     stale_menu_issue_count: int
+    average_latency_ms: int
+    average_latency_label: str
 
 
 SHORTCUT_COMMANDS: tuple[ShortcutCommand, ...] = (
@@ -86,6 +96,12 @@ SHORTCUT_COMMANDS: tuple[ShortcutCommand, ...] = (
     ShortcutCommand("ai_critic", "ai_brain:critic", description="Open AI critic status."),
     ShortcutCommand("ai_evidence", "ai_brain:evidence", description="Open AI evidence summary.", working_label="Reviewing evidence"),
     ShortcutCommand("ai_coo", "ai_brain:coo", description="Open AI COO explanation.", working_label="Reviewing briefing evidence"),
+    ShortcutCommand(
+        "ai_opportunity",
+        "ai_brain:opportunity",
+        description="Open AI opportunity explanation.",
+        working_label="Reviewing opportunity evidence",
+    ),
     ShortcutCommand("search", "search", description="Open Search Intelligence."),
     ShortcutCommand("search_settings", "search:settings", description="Open Search settings."),
     ShortcutCommand("search_history", "search:history", description="Open Search history."),
@@ -109,7 +125,7 @@ SHORTCUT_COMMANDS: tuple[ShortcutCommand, ...] = (
     ShortcutCommand("restore_test", "recovery:restore:test", description="Start or show restore validation.", working_label="Starting restore validation"),
     ShortcutCommand("reliability", "reliability", description="Open Reliability Center."),
     ShortcutCommand("callback_failures", "callback_failure_review", description="Open Callback Failure Review."),
-    ShortcutCommand("button_health", "button_health", description="Open Button Health."),
+    ShortcutCommand("button_health", "button_health", description="Open Button Health.", working_label="Checking buttons"),
     ShortcutCommand("notifications", "platforms:notifications", description="Open Notification Center."),
     ShortcutCommand("platforms", "platforms", description="Open Platform Connections."),
     ShortcutCommand("decision_memory", "decision:memory", description="Open Decision Memory."),
@@ -125,18 +141,29 @@ HARNESS_COMMANDS = (
     "home",
     "command_center",
     "scores",
+    "today",
     "intelligence",
     "operations",
     "systems",
     "admin",
     "coo",
-    "today",
     "agency",
+    "agency_active",
+    "agency_missing",
+    "agency_connected",
     "ai",
+    "ai_settings",
+    "ai_critic",
+    "ai_evidence",
+    "ai_coo",
+    "ai_opportunity",
     "search",
+    "search_settings",
+    "search_history",
     "recovery",
     "reliability",
     "callback_failures",
+    "button_health",
     "observability",
 )
 
@@ -428,20 +455,35 @@ def reliability_summary(session: Session) -> dict[str, object]:
             .limit(5)
         ).all()
     )
-    active_issue_count = int(
-        session.scalar(select(func.count(ButtonIssue.id)).where(ButtonIssue.status == "open")) or 0
-    )
+    open_button_issues = list(session.scalars(select(ButtonIssue).where(ButtonIssue.status == "open")).all())
+    blocking_button_issues = [
+        issue for issue in open_button_issues if (issue.issue_type or "") in BLOCKING_BUTTON_ISSUE_TYPES
+    ]
     active_callback_failures = callback_failure_review(session, limit=10).active_items
     active_job_rows = active_jobs(session)
     failed_job_rows = _active_failed_jobs(session, recent_cutoff=recent_cutoff)
     timed_out_jobs = sum(1 for job in failed_job_rows if job.status == "timed_out")
     recovery_job = latest_recovery_job_summary(session)
+    recovery = recovery_risk_assessment(session)
     reliability_percent = 100 if total_callbacks == 0 else round((successful_callbacks / total_callbacks) * 100)
+    active_issue_count = len(blocking_button_issues) + len(active_callback_failures) + len(failed_job_rows)
     status = "healthy"
-    if active_callback_failures or active_issue_count or failed_job_rows or timed_out_jobs or recovery_job.get("timed_out_marked"):
+    if active_issue_count or timed_out_jobs or recovery_job.get("timed_out_marked"):
         status = "needs_review"
     if any(record.latency_label in {"bad", "dead"} for record in slow_records):
         status = "needs_review"
+    rollout_blockers: list[str] = []
+    if active_issue_count:
+        rollout_blockers.append("active reliability issue")
+    if recovery.risk_level == "Critical":
+        rollout_blockers.append("critical recovery risk")
+    if recovery_job.get("timed_out_marked"):
+        rollout_blockers.append("stuck recovery job")
+    if any(record.latency_label in {"bad", "dead"} for record in slow_records):
+        rollout_blockers.append("bad or dead slow route")
+    if failed_job_rows:
+        rollout_blockers.append("recent failed job")
+    team_rollout_status = "ready" if not rollout_blockers else ("not_ready" if recovery.risk_level == "Critical" else "needs_review")
     slowest = slow_records[0].callback_route if slow_records else "None"
     avg_ms = round(float(average_latency or 0))
     return {
@@ -450,7 +492,10 @@ def reliability_summary(session: Session) -> dict[str, object]:
         "average_response_ms": avg_ms,
         "average_response_label": latency_label(avg_ms if total_callbacks else 0),
         "slowest_area": slowest,
-        "active_issue_count": active_issue_count + len(active_callback_failures) + len(failed_job_rows),
+        "active_issue_count": active_issue_count,
+        "open_button_issue_count": len(open_button_issues),
+        "blocking_button_issue_count": len(blocking_button_issues),
+        "non_blocking_warning_count": max(0, len(open_button_issues) - len(blocking_button_issues)),
         "historical_failure_count": int(session.scalar(select(func.count(CallbackErrorLog.id))) or 0),
         "slow_records": slow_records,
         "active_jobs": active_job_rows,
@@ -460,6 +505,8 @@ def reliability_summary(session: Session) -> dict[str, object]:
         "timed_out_jobs": timed_out_jobs,
         "latest_check": now_utc(),
         "webhook_status": "Healthy",
+        "team_rollout_status": team_rollout_status,
+        "team_rollout_blockers": rollout_blockers,
     }
 
 
@@ -490,6 +537,7 @@ def working_screen_for_page(page: str) -> Screen | None:
             "production_observability": "Checking health signals",
             "callback_failure_review": "Checking callback history",
             "button_health": "Checking buttons",
+            "button_health:run": "Checking buttons",
             "reliability:verify": "Verifying navigation",
             "reliability": "Checking reliability",
         }
@@ -498,6 +546,27 @@ def working_screen_for_page(page: str) -> Screen | None:
             return None
         shortcut = ShortcutCommand("working", page, working_label=label)
     return working_screen_for(shortcut)
+
+
+def _retire_revalidated_button_issues(session: Session, *, pages: Iterable[str], revalidated_at: datetime) -> int:
+    page_set = {page for page in pages if page}
+    if not page_set:
+        return 0
+    rows = list(
+        session.scalars(
+            select(ButtonIssue).where(
+                ButtonIssue.status == "open",
+                ButtonIssue.screen.in_(page_set),
+                ButtonIssue.issue_type.in_(("missing_handler", "renderer_error")),
+            )
+        ).all()
+    )
+    for issue in rows:
+        issue.status = "resolved"
+        issue.resolved_at = revalidated_at
+    if rows:
+        session.flush()
+    return len(rows)
 
 
 def render_command_shortcut(
@@ -545,28 +614,72 @@ def run_command_verification_harness(session: Session, *, actor: User) -> Verifi
                 screen = render_command_shortcut(session, command=shortcut.command, principal=principal, user=actor)
             if not screen.text.strip():
                 raise ValueError("screen returned empty text")
-            latency = _ms(started, now_utc()) or 0
+            finished = now_utc()
+            latency = _ms(started, finished) or 0
             result = VerificationRouteResult(shortcut.command, shortcut.page, "passed", latency)
             passed.append(result)
             if latency >= 1500:
                 slow.append(result)
+            record_callback_latency(
+                session,
+                CallbackTiming(
+                    callback_route=f"command:{shortcut.command}",
+                    received_at=started,
+                    acknowledged_at=started,
+                    render_started_at=started,
+                    render_finished_at=finished,
+                    edit_or_send_completed_at=finished,
+                ),
+                result="succeeded",
+                metadata={"verification_harness": True, "page": shortcut.page},
+            )
         except Exception as exc:
+            finished = now_utc()
             failed.append(
                 VerificationRouteResult(
                     shortcut.command,
                     shortcut.page,
                     "failed",
-                    _ms(started, now_utc()) or 0,
+                    _ms(started, finished) or 0,
                     type(exc).__name__,
                 )
             )
-    active_callback_failures = callback_failure_review(session, limit=20).active_items
+            try:
+                record_callback_latency(
+                    session,
+                    CallbackTiming(
+                        callback_route=f"command:{shortcut.command}",
+                        received_at=started,
+                        acknowledged_at=started,
+                        render_started_at=started,
+                        render_finished_at=finished,
+                        edit_or_send_completed_at=finished,
+                    ),
+                    result="failed_safe",
+                    safe_error_summary=type(exc).__name__,
+                    metadata={"verification_harness": True, "page": shortcut.page},
+                )
+            except Exception:
+                pass
+    completed_at = now_utc()
+    passed_pages = [item.page for item in passed]
+    failed_pages = [item.page for item in failed]
+    _retire_revalidated_button_issues(session, pages=passed_pages, revalidated_at=completed_at)
+    review = callback_failure_review(
+        session,
+        working_pages=passed_pages,
+        failing_pages=failed_pages,
+        revalidated_at=completed_at,
+    )
+    average = round(sum(item.latency_ms for item in passed + failed) / max(1, len(passed) + len(failed)))
     return VerificationHarnessResult(
         passed=tuple(passed),
         failed=tuple(failed),
         slow=tuple(slow),
-        callback_issue_count=len(active_callback_failures),
+        callback_issue_count=len(review.active_items),
         stale_menu_issue_count=0,
+        average_latency_ms=average,
+        average_latency_label=latency_label(average),
     )
 
 

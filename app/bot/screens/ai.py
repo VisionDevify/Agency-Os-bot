@@ -55,7 +55,7 @@ def _render_grounded_result(title: str, result, *, fallback_hint: str | None = N
     if output.safety_flags:
         lines.extend(["", "Safety Flags:"])
         lines.extend(f"- {item.replace('_', ' ').title()}" for item in output.safety_flags[:5])
-    return Screen("\n".join(lines), ai_brain_menu(configured=result.provider_status.configured))
+    return Screen("\n".join(lines), ai_brain_menu(configured=result.provider_status.configured, back_to="ai_brain"))
 
 
 def render_ai_brain_page(session: Session, user: User | None = None, *, details: bool = False) -> Screen:
@@ -118,7 +118,7 @@ def render_ai_brain_page(session: Session, user: User | None = None, *, details:
             lines.append(f"- {name}: {'present' if env_vars.get(name) else 'missing'}")
         if status.get("latest_failure"):
             lines.extend(["", "Latest safe failure:", str(status["latest_failure"])[:180]])
-    return Screen("\n".join(lines), ai_brain_menu(configured=bool(status["configured"])))
+    return Screen("\n".join(lines), ai_brain_menu(configured=bool(status["configured"]), back_to="ai_brain" if details else "owner_advanced"))
 
 
 def render_ai_settings_page(session: Session, user: User | None = None) -> Screen:
@@ -251,7 +251,7 @@ def render_ai_opportunity_explanation_page(session: Session, user: User | None =
             "✨ Next Best Move",
             "Create or review an opportunity first.",
         ]
-        return Screen("\n".join(lines), ai_brain_menu(configured=bool(ai_configuration_status(session)["configured"])))
+        return Screen("\n".join(lines), ai_brain_menu(configured=bool(ai_configuration_status(session)["configured"]), back_to="ai_brain"))
     result = FortunaAIBrain().reason(
         session,
         use_case="opportunity_explanation",

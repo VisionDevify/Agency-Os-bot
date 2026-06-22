@@ -63,7 +63,7 @@ def parent_page_for(page: str | None) -> str:
         return "help"
     if current in {"ui_self_test", "ui_self_test:run", "ui_self_test:details"}:
         return "settings"
-    if current in {"callback_failure_review", "debug_last_error", "production_status"}:
+    if current in {"button_health", "button_health:run", "button_health:details", "callback_failure_review", "debug_last_error", "production_status"}:
         return "settings"
     if current in {"models:list", "models:dashboard", "models:search"}:
         return "models"

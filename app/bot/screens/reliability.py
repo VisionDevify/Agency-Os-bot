@@ -50,11 +50,15 @@ def render_reliability_center_page(session: Session, user: User | None = None, *
         job_line = f"Recent {job.job_type.replace('_', ' ').title()}: {job.status.replace('_', ' ').title()}"
 
     if not details:
+        rollout_status = str(summary.get("team_rollout_status", "needs_review")).replace("_", " ").title()
         lines = [
             _status_title(str(summary["status"])),
             "",
             "Status:",
             status,
+            "",
+            "Team Rollout Status:",
+            rollout_status,
             "",
             "Button Reliability:",
             f"{summary['button_reliability']}%",
@@ -67,6 +71,17 @@ def render_reliability_center_page(session: Session, user: User | None = None, *
             "",
             "Active Issues:",
             str(summary["active_issue_count"]),
+        ]
+        if summary.get("non_blocking_warning_count"):
+            lines.extend(
+                [
+                    "",
+                    "Non-Blocking Notes:",
+                    "Historical or UX details are available in Details.",
+                ]
+            )
+        lines.extend(
+            [
             "",
             "Long-Running Jobs:",
             job_line,
@@ -76,7 +91,8 @@ def render_reliability_center_page(session: Session, user: User | None = None, *
             "",
             "Next Best Move:",
             "Nothing urgent." if summary["status"] == "healthy" else "Open Slow Buttons or Active Failures.",
-        ]
+            ]
+        )
         return Screen("\n".join(lines), _reliability_menu())
 
     slow_lines = [
@@ -92,6 +108,10 @@ def render_reliability_center_page(session: Session, user: User | None = None, *
         f"Average Response: {avg_seconds}",
         f"Webhook: {summary['webhook_status']}",
         f"Active Issues: {summary['active_issue_count']}",
+        f"Open Button Issues: {summary.get('open_button_issue_count', 0)}",
+        f"Blocking Button Issues: {summary.get('blocking_button_issue_count', 0)}",
+        f"Non-Blocking Notes: {summary.get('non_blocking_warning_count', 0)}",
+        f"Team Rollout Status: {str(summary.get('team_rollout_status', 'needs_review')).replace('_', ' ').title()}",
         f"Historical Failures: {summary['historical_failure_count']}",
         f"Timed Out Jobs: {summary['timed_out_jobs']}",
         "",
@@ -187,6 +207,7 @@ def render_reliability_verify_page(session: Session, user: User | None = None) -
         f"Slow Routes: {len(result.slow)}",
         f"Callback Issue Count: {result.callback_issue_count}",
         f"Stale Menu Issues: {result.stale_menu_issue_count}",
+        f"Average Latency: {result.average_latency_label} ({result.average_latency_ms}ms)",
         "",
         "Failures:",
         *(failed or ["- None"]),

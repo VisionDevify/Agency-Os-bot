@@ -907,7 +907,7 @@ def search_settings_menu() -> InlineKeyboardMarkup:
     )
 
 
-def ai_brain_menu(*, configured: bool = False) -> InlineKeyboardMarkup:
+def ai_brain_menu(*, configured: bool = False, back_to: str = "owner_advanced") -> InlineKeyboardMarkup:
     rows = [
         [InlineKeyboardButton(text="👑 AI COO Briefing", callback_data=callback_for("ai_brain:coo"))],
         [InlineKeyboardButton(text="🔎 AI Evidence Summary", callback_data=callback_for("ai_brain:evidence"))],
@@ -921,7 +921,7 @@ def ai_brain_menu(*, configured: bool = False) -> InlineKeyboardMarkup:
     ]
     if not configured:
         rows.insert(1, [InlineKeyboardButton(text="⚙️ Setup OpenAI", callback_data=callback_for("ai_brain:settings"))])
-    rows.extend(page_controls(back_to="owner_advanced"))
+    rows.extend(page_controls(back_to=back_to))
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 

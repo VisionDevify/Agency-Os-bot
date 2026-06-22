@@ -62,7 +62,7 @@ def test_team_ux_ready_when_active_screen_is_clean() -> None:
         assert "Active screen" in readiness.evidence
 
 
-def test_old_menu_risk_creates_team_ux_needs_review_and_observability_signal() -> None:
+def test_inactive_old_menu_records_are_details_only_after_active_screen_enforcement() -> None:
     with session_scope() as session:
         owner = setup_owner_if_needed(session, telegram_user_id=1, owner_telegram_id=1)
         track_bot_message(session, chat_id=10, user=owner, message_id=100, screen="menu")
@@ -72,10 +72,11 @@ def test_old_menu_risk_creates_team_ux_needs_review_and_observability_signal() -
         readiness = team_ux_readiness(session)
         summary = production_observability_summary(session)
 
-        assert cleanup.status == "needs_review"
-        assert readiness.status == "needs_review"
-        assert summary["team_ux_meaningful"] is True
-        assert any("Team UX:" in issue for issue in summary["observability_current_issues"])
+        assert cleanup.status == "healthy"
+        assert cleanup.remaining_count >= 1
+        assert readiness.status == "ready"
+        assert summary["team_ux_meaningful"] is False
+        assert not any("Team UX:" in issue for issue in summary["observability_current_issues"])
 
 
 def test_callback_failures_and_trust_signals_make_team_ux_not_ready() -> None:

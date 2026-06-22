@@ -222,7 +222,7 @@ def trust_signal_summary(session: Session, *, cleanup: CleanupMetrics | None = N
         )
         or 0
     )
-    stale_menu_confusion = cleanup.stale_callback_count + cleanup.multiple_active_count + (1 if cleanup.remaining_count else 0)
+    stale_menu_confusion = cleanup.multiple_active_count + (1 if cleanup.old_menu_risk and cleanup.failed_count >= 3 else 0)
     abandoned_screens = _count_friction(session, "abandon")
     repeated_back_usage = _count_friction(session, "back")
     help_usage = _count_friction(session, "help")
@@ -309,7 +309,7 @@ def team_ux_readiness(session: Session) -> TeamUXReadiness:
         )
         or 0
     )
-    navigation_clarity = 100 if open_nav == 0 and cleanup.status == "healthy" else 70 if open_nav <= 1 else 45
+    navigation_clarity = 100 if open_nav == 0 and not cleanup.old_menu_risk else 70 if open_nav <= 1 else 45
     screen_clarity = 100 if ux_issues == 0 else 80 if ux_issues <= 2 else 55
     stale_menu_safety = _score_from_cleanup(cleanup)
     callback_reliability = 100 if technical_issues == 0 and trust.callback_failures == 0 else 70 if technical_issues <= 1 else 45

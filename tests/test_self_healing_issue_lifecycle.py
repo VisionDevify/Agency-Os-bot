@@ -230,7 +230,7 @@ def test_callback_failure_review_screen_separates_historical_from_active() -> No
         assert "Active Failures:" in screen.text
 
 
-def test_button_health_details_reports_historical_callback_errors_without_active_alert() -> None:
+def test_button_health_details_reports_validating_callback_errors_without_active_alert() -> None:
     now = datetime.now(UTC)
     with session_scope() as session:
         owner = setup_owner_if_needed(session, telegram_user_id=1, owner_telegram_id=1)
@@ -241,5 +241,5 @@ def test_button_health_details_reports_historical_callback_errors_without_active
         screen = render_button_health_report_page(session, owner, details=True)
 
         assert "Active callback errors: 0" in screen.text
-        assert "Historical fixed callback errors:" in screen.text
-        assert "Historical Fixed Issues:" in screen.text
+        assert "Validating callback errors:" in screen.text
+        assert "Validating Logged Failures:" in screen.text

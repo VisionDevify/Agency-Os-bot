@@ -169,7 +169,7 @@ def test_multiple_active_menus_make_button_health_need_review() -> None:
         assert "Clean Menus" in str(screen.reply_markup.inline_keyboard)
 
 
-def test_old_menu_risk_surfaces_in_observability_and_selftest() -> None:
+def test_inactive_old_menus_are_reported_as_details_not_active_risk() -> None:
     with session_scope() as session:
         owner = setup_owner_if_needed(session, telegram_user_id=1, owner_telegram_id=1)
         track_bot_message(session, chat_id=10, user=owner, message_id=800, screen="menu")
@@ -179,10 +179,9 @@ def test_old_menu_risk_surfaces_in_observability_and_selftest() -> None:
         summary = production_observability_summary(session)
         selftest = render_ui_self_test_page(session, owner, details=True)
 
-        assert metrics.status == "needs_review"
-        assert "Telegram UI Cleanup:" in summary["observability_current_issues"][0] or any(
-            "Telegram UI Cleanup:" in item for item in summary["observability_current_issues"]
-        )
+        assert metrics.status == "healthy"
+        assert metrics.remaining_count >= 1
+        assert not any("Telegram UI Cleanup:" in item for item in summary["observability_current_issues"])
         assert "Telegram UI Cleanup:" in selftest.text
         assert "old temporary menu" in selftest.text
 

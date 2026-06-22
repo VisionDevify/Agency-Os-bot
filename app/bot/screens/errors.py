@@ -128,7 +128,7 @@ def render_button_health_report_page(
 ) -> Screen:
     if user is None:
         return Screen(text="Button Health Report\n\nOwner access required.", reply_markup=page_controls_markup("settings"))
-    health = run_button_issue_scan(session, actor=user) if run_now or not details else button_health_summary(session)
+    health = run_button_issue_scan(session, actor=user) if run_now else button_health_summary(session)
     team_ux = team_ux_readiness(session)
     if not details:
         total_issues = health.open_issue_count + health.telegram_ui_issue_count
@@ -184,15 +184,18 @@ def render_button_health_report_page(
                 ]
             ),
         )
-    report = run_callback_health_smoke_test(session, actor=user)
-    revalidated_at = datetime.now(UTC)
-    review = callback_failure_review(
-        session,
-        limit=10,
-        working_pages=report.working,
-        failing_pages=[failure.page for failure in report.failing],
-        revalidated_at=revalidated_at,
-    )
+    report = run_callback_health_smoke_test(session, actor=user) if run_now else None
+    if report is not None:
+        revalidated_at = datetime.now(UTC)
+        review = callback_failure_review(
+            session,
+            limit=10,
+            working_pages=report.working,
+            failing_pages=[failure.page for failure in report.failing],
+            revalidated_at=revalidated_at,
+        )
+    else:
+        review = callback_failure_review(session, limit=10)
     health = button_health_summary(session)
     lines = [
         "Fortuna Self-Test Technical Details",
@@ -222,10 +225,10 @@ def render_button_health_report_page(
         f"Evidence: {team_ux.evidence}",
         f"Next: {team_ux.next_action}",
         "",
-        f"Health Score: {report.score}%",
-        f"Working: {len(report.working)}",
-        f"Failing: {len(report.failing)}",
-        f"Untested: {len(report.untested)}",
+        f"Health Score: {report.score if report is not None else 'Last check only'}",
+        f"Working: {len(report.working) if report is not None else 'Not scanned on this view'}",
+        f"Failing: {len(report.failing) if report is not None else 'Not scanned on this view'}",
+        f"Untested: {len(report.untested) if report is not None else 'Not scanned on this view'}",
     ]
     if health.issues:
         lines.extend(["", "Open Button Issues:"])
@@ -248,7 +251,7 @@ def render_button_health_report_page(
             f"Callback event rows: {review.event_count}",
         ]
     )
-    if report.failing:
+    if report is not None and report.failing:
         lines.extend(["", "Failing Buttons:"])
         for failure in report.failing[:8]:
             lines.append(f"- {failure.page}: {failure.exception_type}")
@@ -269,11 +272,13 @@ def render_button_health_report_page(
             when = format_user_datetime(user, item.created_at) if item.created_at else "Unknown"
             lines.append(f"- {item.page}: {item.exception_type} at {when}")
             lines.append(f"  Evidence: {item.evidence_summary}")
-    if report.untested:
+    if report is not None and report.untested:
         lines.extend(["", "Skipped For Safety:"])
         for page in report.untested[:8]:
             lines.append(f"- {page}")
-    if not report.failing:
+    if report is None:
+        lines.extend(["", "Open Run Again to perform the safe smoke check."])
+    elif not report.failing:
         lines.extend(["", "Fortuna did not find renderer crashes in the safe smoke set."])
     return Screen(
         text="\n".join(lines),

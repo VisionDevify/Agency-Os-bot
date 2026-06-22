@@ -1477,19 +1477,22 @@ def render_ui_self_test_page(
     recovery_job = latest_recovery_job_summary(session)
     truth = truth_before_run or system_truth(session)
     cleanup = chat_cleanup_metrics(session)
-    recovery_issue_count = 0 if recovery.risk_level == "Low" else 1
+    recovery_issue_count = 1 if recovery.risk_level == "Critical" else 0
+    recovery_warning_count = 1 if recovery.status == "needs_review" and recovery.risk_level != "Critical" else 0
     recovery_job_issue_count = 1 if recovery_job["timed_out_marked"] else 0
     bot_issue_count = 0 if truth.bot_polling_safe else 1
     cleanup_issue_count = 1 if cleanup.old_menu_risk else 0
+    blocking_button_issue_count = button_health.technical_issue_count + button_health.navigation_issue_count
+    button_warning_count = 1 if button_health.ux_issue_count or button_health.telegram_ui_issue_count else 0
     questions = recent_help_questions(session, limit=3)
     if latest is None:
         status = "Not Run Yet"
         issues_found = (
-            button_health.open_issue_count
-            + button_health.telegram_ui_issue_count
+            blocking_button_issue_count
             + recovery_issue_count
             + recovery_job_issue_count
             + bot_issue_count
+            + cleanup_issue_count
         )
         last_check = "Not run yet"
         summary = "Fortuna has not checked the Telegram screen renderers yet."
@@ -1500,13 +1503,13 @@ def render_ui_self_test_page(
         warnings = len(latest.warnings_json or [])
         issues_found = (
             failures
-            + warnings
-            + button_health.open_issue_count
-            + button_health.telegram_ui_issue_count
+            + blocking_button_issue_count
             + recovery_issue_count
             + recovery_job_issue_count
             + bot_issue_count
+            + cleanup_issue_count
         )
+        non_blocking_warning_count = warnings + button_warning_count + recovery_warning_count
         systems_checked = latest.screens_checked
         last_check = format_user_datetime(actor, latest.created_at) if latest.created_at else "unknown time"
         if not truth.bot_polling_safe:
@@ -1535,21 +1538,24 @@ def render_ui_self_test_page(
             summary = "Recovery needs setup before Fortuna can call the system fully safe."
             recommended_action = recovery.next_best_move
         elif recovery.status == "needs_review":
-            status = "Needs Review"
+            status = "Watch"
             summary = "Recovery has verified backup evidence, but full restore protection is not complete yet."
             recommended_action = recovery.next_best_move
-        elif button_health.open_issue_count or button_health.telegram_ui_issue_count or cleanup_issue_count:
+            if issues_found == 0:
+                issues_found = 1
+        elif blocking_button_issue_count or cleanup_issue_count:
             status = "Needs Review"
             summary = "Old menu cleanup or button navigation needs review."
-            recommended_action = "Open Button Health." if button_health.open_issue_count else cleanup.next_action
+            recommended_action = "Open Button Health." if blocking_button_issue_count else cleanup.next_action
         elif failures:
             status = "Needs Attention"
             summary = f"Fortuna found {failures} screen failure{'s' if failures != 1 else ''}."
             recommended_action = "Open Technical Details and fix the first failed screen."
-        elif warnings:
+        elif non_blocking_warning_count:
             status = "Watch"
-            summary = f"Fortuna found {warnings} warning{'s' if warnings != 1 else ''}, but no critical screen failures."
+            summary = "Fortuna found one non-blocking warning, but no critical screen failures."
             recommended_action = "Review Technical Details when convenient."
+            issues_found = max(issues_found, 1)
         else:
             status = "Healthy"
             summary = "Fortuna did not find any critical issues."

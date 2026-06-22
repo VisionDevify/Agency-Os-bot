@@ -282,7 +282,7 @@ def run_button_issue_scan(session: Session, *, actor: User | None) -> ButtonHeal
                 active_keys.add(_issue_key(issue))
                 continue
             callbacks = _callbacks_from_markup(getattr(screen, "reply_markup", None))
-            if page != "menu":
+            if page not in {"menu", "command_center"}:
                 back = _back_target(callbacks)
                 if back is None:
                     issue = _record_issue(

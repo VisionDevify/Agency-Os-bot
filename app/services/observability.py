@@ -196,7 +196,8 @@ def production_observability_summary(session: Session) -> dict[str, object]:
     operations_status = "healthy" if truth.production_ready else ("critical" if production_risk == "unsafe" else "needs_attention")
     recovery_status = recovery.status
     recovery_issue_count = len(recovery.alerts) or (0 if recovery_status == "healthy" else 1)
-    button_scan_status = buttons.overall_status if buttons.open_issue_count else "healthy"
+    blocking_button_issue_count = buttons.technical_issue_count + buttons.navigation_issue_count
+    button_scan_status = buttons.overall_status if blocking_button_issue_count or buttons.telegram_ui_issue_count else "healthy"
     shared_status = compute_shared_status(
         [
             StatusCondition(
@@ -224,8 +225,8 @@ def production_observability_summary(session: Session) -> dict[str, object]:
                 "button_health",
                 button_scan_status,
                 "Button and navigation scan results.",
-                buttons.open_issue_count,
-                "Open Button Health." if buttons.open_issue_count else None,
+                blocking_button_issue_count + buttons.telegram_ui_issue_count,
+                "Open Button Health." if blocking_button_issue_count or buttons.telegram_ui_issue_count else None,
             ),
             StatusCondition(
                 "reliability",
@@ -313,7 +314,7 @@ def production_observability_summary(session: Session) -> dict[str, object]:
         observability_issues.append(f"Recovery Workflow: {str(recovery_job['active_type']).title()} is running.")
     if recovery_job["timed_out_marked"]:
         observability_issues.append("Recovery Workflow: a stale recovery job was marked timed out.")
-    button_issue_count = buttons.open_issue_count + buttons.telegram_ui_issue_count
+    button_issue_count = blocking_button_issue_count + buttons.telegram_ui_issue_count
     if button_issue_count:
         observability_issues.append(f"Navigation/Button Health: {button_issue_count} open issue(s).")
     if reliability["status"] != "healthy":
