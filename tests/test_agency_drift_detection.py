@@ -121,6 +121,23 @@ def test_command_verification_drift_resolves_after_success_record() -> None:
         assert not any(item.gap == "command_verification_missing" for item in report.active_findings)
 
 
+def test_selftest_drift_resolves_after_command_success_record() -> None:
+    with session_scope() as session:
+        session.add(
+            CallbackLatencyRecord(
+                callback_route="command:selftest",
+                received_at=datetime.now(UTC),
+                result="succeeded",
+                latency_label="excellent",
+            )
+        )
+        session.flush()
+
+        report = AgencyDriftEngine().generate(session)
+
+        assert not any(item.gap == "selftest_recent_evidence_missing" for item in report.active_findings)
+
+
 def test_manual_drift_resolves_when_evidence_appears() -> None:
     with session_scope() as session:
         plan = create_manual_plan_from_template(session, "creator_outreach")

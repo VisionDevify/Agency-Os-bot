@@ -397,6 +397,51 @@ def _active_failed_jobs(session: Session, *, recent_cutoff: datetime, limit: int
     return active_failed[:limit]
 
 
+def _latency_routes_for_revalidation(route: str | None) -> tuple[str, ...]:
+    if not route:
+        return ("unknown",)
+    routes = {route}
+    if route == "selftest":
+        routes.add("command:selftest")
+    elif route == "command:selftest":
+        routes.add("selftest")
+    return tuple(routes)
+
+
+def _slow_record_superseded_by_newer_success(session: Session, record: CallbackLatencyRecord) -> bool:
+    if record.received_at is None:
+        return False
+    newer_success_count = int(
+        session.scalar(
+            select(func.count(CallbackLatencyRecord.id)).where(
+                CallbackLatencyRecord.callback_route.in_(_latency_routes_for_revalidation(record.callback_route)),
+                CallbackLatencyRecord.result == "succeeded",
+                CallbackLatencyRecord.latency_label.in_(("excellent", "good")),
+                CallbackLatencyRecord.received_at > record.received_at,
+            )
+        )
+        or 0
+    )
+    return newer_success_count > 0
+
+
+def _active_slow_records(session: Session, *, recent_cutoff: datetime, limit: int = 5) -> list[CallbackLatencyRecord]:
+    candidate_limit = max(limit * 8, 40)
+    candidates = list(
+        session.scalars(
+            select(CallbackLatencyRecord)
+            .where(
+                CallbackLatencyRecord.received_at >= recent_cutoff,
+                CallbackLatencyRecord.latency_label.in_(("slow", "bad", "dead")),
+            )
+            .order_by(desc(CallbackLatencyRecord.total_latency_ms), desc(CallbackLatencyRecord.id))
+            .limit(candidate_limit)
+        ).all()
+    )
+    active = [record for record in candidates if not _slow_record_superseded_by_newer_success(session, record)]
+    return active[:limit]
+
+
 def cache_key_for(name: str, *parts: object) -> str:
     digest = hashlib.sha256("|".join(str(part) for part in parts).encode("utf-8")).hexdigest()[:24]
     return f"{name}:{digest}"
@@ -473,17 +518,7 @@ def reliability_summary(session: Session) -> dict[str, object]:
             CallbackLatencyRecord.total_latency_ms.is_not(None),
         )
     )
-    slow_records = list(
-        session.scalars(
-            select(CallbackLatencyRecord)
-            .where(
-                CallbackLatencyRecord.received_at >= recent_cutoff,
-                CallbackLatencyRecord.latency_label.in_(("slow", "bad", "dead")),
-            )
-            .order_by(desc(CallbackLatencyRecord.total_latency_ms), desc(CallbackLatencyRecord.id))
-            .limit(5)
-        ).all()
-    )
+    slow_records = _active_slow_records(session, recent_cutoff=recent_cutoff)
     open_button_issues = list(session.scalars(select(ButtonIssue).where(ButtonIssue.status == "open")).all())
     blocking_button_issues = [
         issue for issue in open_button_issues if (issue.issue_type or "") in BLOCKING_BUTTON_ISSUE_TYPES

@@ -1841,16 +1841,17 @@ async def selftest(message: Message) -> None:
             await message.answer("Self-test started. Open /botstatus and /reliability while it finishes.")
         else:
             _tracked_background_task(_run_selftest_background(bot, message.chat.id, user.id), task_name="selftest")
+        completed_at = acknowledged_at or datetime.now(UTC)
         _record_callback_latency_safe(
             session,
-            page="selftest",
+            page="command:selftest",
             received_at=received_at,
             acknowledged_at=acknowledged_at,
-            render_started_at=datetime.now(UTC),
-            render_finished_at=datetime.now(UTC),
-            edit_or_send_completed_at=datetime.now(UTC),
-            result="fallback_used",
-            safe_error_summary="selftest background task scheduled",
+            render_started_at=acknowledged_at,
+            render_finished_at=acknowledged_at,
+            edit_or_send_completed_at=completed_at,
+            result="succeeded" if acknowledged_at is not None else "fallback_used",
+            metadata={"background_task": True, "screen": "selftest"},
         )
         session.commit()
 

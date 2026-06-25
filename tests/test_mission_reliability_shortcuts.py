@@ -218,6 +218,11 @@ def test_selftest_command_acknowledges_without_inline_render(monkeypatch) -> Non
 
     assert message.answers[0].startswith("Running self-test")
     assert "Self-test started" in message.answers[-1]
+    with TestSessionLocal() as session:
+        record = session.query(CallbackLatencyRecord).filter_by(callback_route="command:selftest").one()
+        assert record.result == "succeeded"
+        assert record.latency_label in {"excellent", "good"}
+        assert record.safe_error_summary is None
 
 
 def test_selftest_background_render_skips_full_button_scan(monkeypatch) -> None:
@@ -707,6 +712,41 @@ def test_slow_callback_appears_in_reliability_and_observability() -> None:
         assert "ai_brain:evidence" not in screen.text
         assert summary["reliability_status"] == "needs_review"
         assert summary["reliability_slowest_area"] == "ai_brain:evidence"
+
+
+def test_new_selftest_success_retires_stale_speed_note() -> None:
+    with session_scope() as session:
+        now = datetime.now(UTC)
+        record_callback_latency(
+            session,
+            CallbackTiming(
+                callback_route="selftest",
+                received_at=now - timedelta(minutes=5),
+                acknowledged_at=now - timedelta(minutes=5),
+                render_started_at=now - timedelta(minutes=5),
+                render_finished_at=now - timedelta(minutes=5) + timedelta(milliseconds=3200),
+                edit_or_send_completed_at=now - timedelta(minutes=5) + timedelta(milliseconds=3500),
+            ),
+            result="succeeded",
+        )
+        record_callback_latency(
+            session,
+            CallbackTiming(
+                callback_route="command:selftest",
+                received_at=now,
+                acknowledged_at=now + timedelta(milliseconds=100),
+                render_started_at=now + timedelta(milliseconds=100),
+                render_finished_at=now + timedelta(milliseconds=100),
+                edit_or_send_completed_at=now + timedelta(milliseconds=100),
+            ),
+            result="succeeded",
+        )
+
+        summary = reliability_summary(session)
+
+        assert summary["status"] == "healthy"
+        assert summary["slowest_area"] == "None"
+        assert summary["slow_records"] == []
 
 
 def test_route_health_registry_contains_required_fields() -> None:
