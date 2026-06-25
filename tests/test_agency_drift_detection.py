@@ -121,6 +121,25 @@ def test_command_verification_drift_resolves_after_success_record() -> None:
         assert not any(item.gap == "command_verification_missing" for item in report.active_findings)
 
 
+def test_verify_navigation_summary_latency_does_not_create_reliability_drift() -> None:
+    with session_scope() as session:
+        session.add(
+            CallbackLatencyRecord(
+                callback_route="command:verify_navigation",
+                received_at=datetime.now(UTC),
+                total_latency_ms=5000,
+                result="succeeded",
+                latency_label="bad",
+                metadata_json={"verification_harness": True, "summary": True},
+            )
+        )
+        session.flush()
+
+        report = AgencyDriftEngine().generate(session)
+
+        assert not any(item.gap == "reliability_non_blocking_note" for item in report.active_findings)
+
+
 def test_selftest_drift_resolves_after_command_success_record() -> None:
     with session_scope() as session:
         session.add(

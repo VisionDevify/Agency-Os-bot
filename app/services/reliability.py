@@ -33,6 +33,7 @@ BLOCKING_BUTTON_ISSUE_TYPES = {
     "missing_home",
     "dead_end",
 }
+DIAGNOSTIC_SUMMARY_LATENCY_ROUTES = {"command:verify_navigation"}
 
 
 @dataclass(frozen=True)
@@ -433,6 +434,7 @@ def _active_slow_records(session: Session, *, recent_cutoff: datetime, limit: in
             .where(
                 CallbackLatencyRecord.received_at >= recent_cutoff,
                 CallbackLatencyRecord.latency_label.in_(("slow", "bad", "dead")),
+                ~CallbackLatencyRecord.callback_route.in_(tuple(DIAGNOSTIC_SUMMARY_LATENCY_ROUTES)),
             )
             .order_by(desc(CallbackLatencyRecord.total_latency_ms), desc(CallbackLatencyRecord.id))
             .limit(candidate_limit)

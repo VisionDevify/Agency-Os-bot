@@ -749,6 +749,30 @@ def test_new_selftest_success_retires_stale_speed_note() -> None:
         assert summary["slow_records"] == []
 
 
+def test_verify_navigation_summary_latency_is_not_a_slow_button_note() -> None:
+    with session_scope() as session:
+        now = datetime.now(UTC)
+        record_callback_latency(
+            session,
+            CallbackTiming(
+                callback_route="command:verify_navigation",
+                received_at=now,
+                acknowledged_at=now + timedelta(milliseconds=100),
+                render_started_at=now + timedelta(milliseconds=100),
+                render_finished_at=now + timedelta(milliseconds=5000),
+                edit_or_send_completed_at=now + timedelta(milliseconds=5000),
+            ),
+            result="succeeded",
+            metadata={"verification_harness": True, "summary": True},
+        )
+
+        summary = reliability_summary(session)
+
+        assert summary["status"] == "healthy"
+        assert summary["slowest_area"] == "None"
+        assert summary["slow_records"] == []
+
+
 def test_route_health_registry_contains_required_fields() -> None:
     with session_scope() as session:
         entries = route_health_registry(session)
